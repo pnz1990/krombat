@@ -1,0 +1,362 @@
+Kubernetes RPG —  Design Document for Code Generation and Implementation
+
+This document is the definitive, code-generation-ready design for Kubernetes RPG, an interactive, turn-based dungeon game implemented entirely as declarative Kubernetes state and orchestrated through a ResourceGraphDefinition-driven layer. It is written so other AI tools (code generators, infra synthesizers, frontend scaffolding agents) can consume it directly to produce working code, manifests, tests, and deployment pipelines. The design assumes an existing cluster with kro installed and configured to accept ResourceGraphDefinitions. kro and Kubernetes are the only control plane technologies required to run the core demo; additional optional components are described below.
+
+All core behaviors, invariants, and edge cases are spelled out precisely. Where templates, schemas, or example manifests are required for code generation, fully valid YAML or JSON blocks are provided. CEL expressions are included verbatim where used. The document uses a small, deterministic set of label, annotation, and status field names; generators should re-use these exact strings unless a migration path is explicitly implemented.
+
+SECTION 1 — OVERVIEW AND DESIGN INTENT
+Kubernetes RPG demonstrates that Kubernetes can act as a general-purpose orchestration and state machine platform by modeling game entities as Kubernetes resources reconciled by kro. The authoritative game state lives only in Kubernetes: the Dungeon custom resource and child objects. The system is intentionally turn-based and tolerant of multi-second reconciliation, which aligns with the performance envelope of Kubernetes and kro controllers. The demo is architected to be safe to run on a single development cluster, constrained by resource quotas to avoid accidental cluster overload.
+
+SECTION 2 — PRIMARY CONCEPTS AND NAMING CONVENTIONS
+Every game instance is represented by a Dungeon custom resource. Each Dungeon owns a dedicated Namespace. Monsters and the Boss are represented as Pod objects annotated with game state. Attacks are represented as Attack custom resources that materialize short-lived Jobs to mutate target pod metadata. Treasure is a Secret created after the boss has been defeated. The following naming conventions and metadata keys are authoritative and required by the reconciliation logic and the frontend UI. Labels and annotations are used for fast selection; status fields are authoritative summaries aggregated by kro.
+
+The authoritative label and annotation keys are:
+game.k8s.example/dungeon — label on every child object set to the owning Dungeon name.
+game.k8s.example/entity — label set to monster, boss, treasure, or attack.
+game.k8s.example/hp — annotation storing current hit points as an integer string.
+game.k8s.example/state — label storing alive, dead, pending, ready, or defeated.
+Dungeon Status fields written by kro: status.livingMonsters (integer), status.bossState (string), status.victory (boolean), status.lastEvent (object with timestamp and description). Use these exact keys for downstream tooling.
+
+SECTION 3 — RESOURCE DEFINITIONS (CRDs)
+The project uses three primary CRD types: Dungeon (instantiated from kro’s generated API via a ResourceGraphDefinition), Attack, and FeatureFlag (optional, for runtime toggles). The Attack CRD is a conventional, persistent CRD that triggers Jobs; Dungeon is produced through kro’s RGD mechanism (the RGD itself is provided later as a manifest). The Attack CRD schema and a minimal CRD manifest are provided below to serve as direct inputs to code generation tools.
+
+The Attack CRD OpenAPI v3 schema (condensed form) is:
+
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: attacks.game.k8s.example
+spec:
+  group: game.k8s.example
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                target:
+                  type: string
+                damage:
+                  type: integer
+            status:
+              type: object
+              properties:
+                processed:
+                  type: boolean
+                result:
+                  type: string
+  scope: Namespaced
+  names:
+    plural: attacks
+    singular: attack
+    kind: Attack
+
+Dungeon is not authored directly as a CRD here because kro’s ResourceGraphDefinition will generate a typed Dungeon CRD automatically from the RGD. The RGD itself defines the Dungeon schema and templates for all child resources; the RGD manifest is included in SECTION 5.
+
+SECTION 4 — RESOURCE GRAPH AND TEMPLATES (RGD)
+The ResourceGraphDefinition named dungeon-graph is the single source of code-generation truth for Dungeon instances. The RGD defines a Dungeon spec with parameters monsters (integer), difficulty (enum: easy|normal|hard), ttlHours (integer), and seed (optional string). It defines resource templates for: Namespace, Monster Pods (looped), Boss Pod, Observation Service, Treasure Secret, Attack Job template (referenced by the Attack controller), and Finalizer behavior.
+
+Below is a production-ready RGD fragment in YAML (sufficient for kro to generate the Dungeon CRD and generated controller templates). The fragment focuses on the dynamic monster creation, boss readiness gating, and conditional treasure creation. Replace placeholders such as {image} with chosen container images when generating code.
+
+apiVersion: controlplane.kro.run/v1alpha1
+kind: ResourceGraphDefinition
+metadata:
+  name: dungeon-graph
+spec:
+  group: game.k8s.example
+  version: v1
+  names:
+    kind: Dungeon
+    plural: dungeons
+  schema:
+    openAPIV3Schema:
+      type: object
+      properties:
+        spec:
+          type: object
+          properties:
+            monsters:
+              type: integer
+            difficulty:
+              type: string
+              enum:
+                - easy
+                - normal
+                - hard
+            ttlHours:
+              type: integer
+            seed:
+              type: string
+  graph:
+    - id: ns
+      kind: Namespace
+      template:
+        metadata:
+          name: "${meta.name}-ns"
+          labels:
+            game.k8s.example/dungeon: "${meta.name}"
+    - id: monsters-loop
+      kind: Pod
+      loop: "range(0, spec.monsters)"
+      dependsOn:
+        - ns
+      template:
+        metadata:
+          name: "${meta.name}-monster-${index}"
+          labels:
+            game.k8s.example/dungeon: "${meta.name}"
+            game.k8s.example/entity: "monster"
+            game.k8s.example/state: "alive"
+        annotations:
+          game.k8s.example/hp: "${{ if spec.difficulty == 'easy' }} 30 ${{ else if spec.difficulty == 'normal' }} 50 ${{ else }} 80 ${{ end }}"
+        spec:
+          containers:
+            - name: monster
+              image: "{monster-placeholder-image}"
+              args: ["--sleep=3600"]
+              resources:
+                requests:
+                  cpu: "10m"
+                  memory: "16Mi"
+    - id: boss
+      kind: Pod
+      dependsOn:
+        - monsters-loop
+      template:
+        metadata:
+          name: "${meta.name}-boss"
+          labels:
+            game.k8s.example/dungeon: "${meta.name}"
+            game.k8s.example/entity: "boss"
+            game.k8s.example/state: "pending"
+        annotations:
+          game.k8s.example/hp: "${{ if spec.difficulty == 'easy' }} 200 ${{ else if spec.difficulty == 'normal' }} 400 ${{ else }} 800 ${{ end }}"
+        spec:
+          containers:
+            - name: boss
+              image: "{boss-placeholder-image}"
+              args: ["--sleep=3600"]
+    - id: boss-readiness
+      evaluation:
+        expression: "count(resources(kind='Pod', labelSelector='game.k8s.example/dungeon=${meta.name},game.k8s.example/entity=monster,game.k8s.example/state=alive')) == 0"
+      action:
+        - set-label:
+            resourceRef: boss
+            label: game.k8s.example/state
+            value: "ready"
+    - id: treasure
+      kind: Secret
+      dependsOn:
+        - boss-readiness
+      when: "resources(kind='Pod', name='${meta.name}-boss').status.phase == 'Succeeded' || resources(kind='Pod', name='${meta.name}-boss').metadata.labels['game.k8s.example/state'] == 'defeated'"
+      template:
+        metadata:
+          name: "${meta.name}-treasure"
+          labels:
+            game.k8s.example/dungeon: "${meta.name}"
+            game.k8s.example/entity: "treasure"
+        stringData:
+          loot: "congratulations! your treasure code is ${meta.name}-LOOT"
+    - id: cleanup-finalizer
+      finalizer: true
+      dependsOn:
+        - ns
+
+The RGD above uses CEL-like templating constructs and kro templating semantics; code generators must translate the RGD fields into kro’s exact field names and templating dialect when producing manifests. The key semantics required are the loop for monster generation, a boss readiness evaluator that reads child resource state, and a conditional treasure creation gate. Generators must honor ownerReferences for owner=Dungeon to enable garbage collection.
+
+SECTION 5 — ATTACK FLOW AND JOB TEMPLATE
+Attacks are submitted by creating an Attack CR in the dungeon namespace. The Attack controller or an Attack Job template (one of the resources the kro controller can produce on Attack creation) must perform an atomic read-modify-write on the target monster pod’s annotations to decrement HP. To avoid race conditions, the Job implementation must use optimistic concurrency via Kubernetes API server patch operations with resourceVersion checks or JSON Patch with precondition on the metadata.annotations["game.k8s.example/hp"] value. If the Job detects concurrent modification, it must retry atomically up to a bounded retry count (recommended 5 retries with exponential backoff). If concurrency remains unresolved, the Job should emit a failure event and mark Attack.status.processed = true and result = "conflict".
+
+A canonical Attack Job template is below. It should be created by the Attack controller (or generated by kro if an Attack RGD is used) and executed as a short-lived pod that runs a small script using kubectl or client libraries. The script must:
+
+GET the target pod.
+
+Parse metadata.annotations["game.k8s.example/hp"].
+
+Compute newHP = max(0, oldHP - spec.damage).
+
+PATCH the pod annotations with the newHP using a strategic merge patch that includes the previously read resourceVersion as a precondition.
+
+If newHP == 0, PATCH the pod label game.k8s.example/state=dead.
+
+Emit event or update Attack.status.
+
+Example Job template (shell pseudocode executed inside job container):
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: attack-{{ attack.meta.name }}
+spec:
+  template:
+    spec:
+      serviceAccountName: attack-job-sa
+      containers:
+        - name: attacker
+          image: {kubectl-or-client-image}
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -e
+              NAMESPACE="{{ attack.meta.namespace }}"
+              TARGET="{{ spec.target }}"
+              DAMAGE={{ spec.damage }}
+              for i in 1 2 3 4 5; do
+                POD_JSON=$(kubectl get pod "$TARGET" -n "$NAMESPACE" -o json)
+                OLDHP=$(echo "$POD_JSON" | jq -r '.metadata.annotations["game.k8s.example/hp"] // "0"')
+                RV=$(echo "$POD_JSON" | jq -r '.metadata.resourceVersion')
+                if [ -z "$OLDHP" ]; then OLDHP=0; fi
+                NEWHP=$((OLDHP - DAMAGE))
+                if [ "$NEWHP" -lt 0 ]; then NEWHP=0; fi
+                PATCH="{\"metadata\":{\"annotations\":{\"game.k8s.example/hp\":\"$NEWHP\"}}}"
+                kubectl patch pod "$TARGET" -n "$NAMESPACE" --type=merge --patch "$PATCH" --resource-version="$RV" && break || sleep $((2**i))
+              done
+              if [ "$NEWHP" -le 0 ]; then
+                kubectl label pod "$TARGET" game.k8s.example/state=dead -n "$NAMESPACE" --overwrite
+              fi
+
+Implementations that use client libraries should use server side optimistic concurrency constructs rather than shell kubectl wrappers for reliability.
+
+SECTION 6 — DUNGEON STATUS AGGREGATION AND OBSERVABILITY METRICS
+Dungeon status must be recomputed by kro’s reconciliation engine after any child resource change. The status aggregation algorithm is:
+
+Query all Pods in the dungeon namespace with label game.k8s.example/entity in (monster,boss).
+
+livingMonsters = count(pods where label game.k8s.example/entity == monster and label game.k8s.example/state == alive).
+
+bossState = label game.k8s.example/state on boss pod or pending if not present.
+
+victory = true if livingMonsters == 0 and bossState == defeated or boss pod phase == Succeeded.
+
+lastEvent = latest event emitted by any Attack Job or Job completion.
+
+For observability, the system must export Prometheus metrics with the following stable metric names and labels:
+
+k8s_rpg_dungeon_living_monsters{dungeon="<name>",namespace="<ns>"} gauge
+k8s_rpg_dungeon_boss_state{dungeon="<name>",namespace="<ns>",state="<state>"} gauge (0/1 mapped per state)
+k8s_rpg_attack_jobs_total{dungeon="<name>",namespace="<ns>",result="<success|failure|conflict>"} counter
+k8s_rpg_attack_latency_seconds{dungeon="<name>"} histogram
+
+Implementations must ensure metrics are exported either by the kro controller (preferred) or by a lightweight exporter sidecar that scrapes the controller’s /metrics endpoint.
+
+SECTION 7 — BACKEND API CONTRACT FOR THE FRONTEND
+The backend is a minimal gateway and event aggregator. The backend must not hold authoritative state; it only validates requests, issues Kubernetes resource operations, and streams events. The backend must expose an OpenAPI-compatible REST API and a WebSocket event channel.
+
+REST endpoints (OpenAPI fragment style):
+
+POST /api/v1/dungeons
+Request body JSON schema: { "name": "string", "spec": { "monsters": integer, "difficulty": "easy|normal|hard", "ttlHours": integer } }
+Response: 201 created with Dungeon resource representation (standard Kubernetes unstructured JSON).
+
+POST /api/v1/dungeons/{namespace}/{dungeon}/attacks
+Request body JSON schema: { "target": "string", "damage": integer }
+Response: 202 accepted with created Attack resource JSON.
+
+GET /api/v1/dungeons
+Response: list of Dungeon summaries.
+
+GET /api/v1/dungeons/{namespace}/{dungeon}
+Response: full Dungeon status and child resource list.
+
+WebSocket /api/v1/events
+Event payload format as JSON: {"type":"DUNGEON_UPDATE"|"ATTACK_EVENT"|"JOB_RESULT", "dungeon":"<name>", "namespace":"<ns>", "payload": { ... } } where payload is the full resource JSON or a small typed event. The backend must maintain a watch on Dungeon, Attack, Job, and Pod objects and forward events as soon as received from the API server. The backend must support client reconnect semantics and initial snapshot fetch on WebSocket connect.
+
+SECTION 8 — FRONTEND SPECIFICATION (CONSUMER-READY)
+The frontend is a stateless React single-page application. The entire UI can be generated from a small component library. The document provides the required component contract so a frontend generator can scaffold the app.
+
+The application root performs the following workflow on load: fetch the list of dungeons, display tile cards for each dungeon with livingMonsters, bossState, and ttl. On dungeon click, subscribe to /api/v1/events WebSocket, request full Dungeon snapshot, and render the dungeon map.
+
+The dungeon view includes the following components with their required props and behaviors that AI tools can scaffold directly:
+
+DungeonMap props: { dungeon: DungeonObject }. Renders grid; each monster is a MonsterCard showing HP, state, and an Attack button. The Attack button triggers POST /api/v1/dungeons/{ns}/{dungeon}/attacks with target equal to the pod name and damage chosen by a small UI control.
+
+MonsterCard props: { name, hp, state, lastDamageTimestamp }. Animates HP bar on HP change using a simple CSS transition. If state == dead, the card shows a defeated overlay and Attack button is disabled.
+
+BossCard props: { name, hp, state }. If state != ready, it shows a locked badge. If state == ready, it allows targeting.
+
+EventLog shows chronological events received through WebSocket, with event types mapped to human readable messages.
+
+The frontend state model must treat the WebSocket as the real-time event source and reconcile UI by patching the cached snapshot with events rather than replacing entire objects on each event, to minimize re-renders and keep animations smooth.
+
+SECTION 9 — RBAC, SECURITY, AND QUOTAS
+The minimum set of cluster roles required are described so code generators can output precise manifests.
+
+A service account for the backend named rpg-backend-sa must have these namespaced permissions limited to game namespaces: get, list, watch, create, patch, update, delete on pods, jobs, secrets, configmaps, attacks.game.k8s.example, dungeons.game.k8s.example. A cluster scoped RoleBinding is not required; a Namespace-scoped Role bound to rpg-backend-sa is preferred per dungeon namespace during creation, and the backend may create Namespaces with limited elevated permission using a separate bootstrap service account with permission to create namespaces only.
+
+The Attack Job service account attack-job-sa requires patch and get on pods in the dungeon namespace and update on the Attack resource status. All permissions must be constrained by namespace and resource names via RBAC rules when possible.
+
+Network isolation is enforced with a default NetworkPolicy applied to every dungeon namespace denying ingress from outside the namespace and allowing only the backend to reach game resources. ResourceQuota per namespace must limit pods to 20, cpu to 1 core, memory to 1Gi to keep demo safe.
+
+All Jobs, Secrets, and logs must be scrubbed of any real secrets; treasure strings are syntactic and non-sensitive. The backend and frontend are not publicly exposed; access is provided exclusively via kubectl port-forward or kubectl proxy. No ingress, load balancer, or external DNS is required.
+
+SECTION 10 — FAILURE MODES, RACE CONDITIONS, AND MITIGATIONS
+The two classes of technical risk are concurrency on metadata mutation and excessive resource churn.
+
+Concurrency risk arises when multiple Attack Jobs attempt to patch the same pod annotation concurrently. The canonical mitigation is optimistic concurrency using resourceVersion in patches or server-side conditional updates. Implementations must use the Kubernetes API's resourceVersion precondition on update or JSON Patch with test operations to ensure the patch applies only if the annotation value matches an expected value. Retries must include backoff and a final failure path that marks the Attack resource with status.processed=true and status.result='conflict'.
+
+Resource churn risk arises from loops that create many pods or frequent Job creation. The RGD must enforce sensible upper bounds. The Dungeon schema must validate spec.monsters to a maximum of 10 for demo environments and cropless generators should include a guard rule to reject values above the limit. Attack rate limiting must be enforced by the backend and by a validating admission webhook or simple per-namespace rate limiter implemented via a small controller if required.
+
+Kubernetes latency and reconciliation timing also create user experience risk. The demo must be designed as strictly turn-based and display transitional UI states while reconciliation catches up. All UI actions should be optimistic locally but reconciled against the authoritative state from the API server; the frontend must display a pending state with a timeout and fallback in case updates do not arrive within a defined SLA (recommended 10s).
+
+SECTION 11 — TEST PLAN, QA, AND AUTOMATED VALIDATION
+The code generator should also produce a test harness. Unit tests are required for YAML/JSON serializers and for backend API handlers. Integration tests must run against a disposable Kind cluster and exercise the full flow:
+
+Create Dungeon via API. Verify Namespace and monster pods are created.
+
+Submit Attack targeting a monster. Verify Attack Job runs, monster HP decreases, state label updates if HP <= 0.
+
+Delete a monster pod manually and verify kro reconciles: if state was alive, pod is recreated with original HP; if dead, no recreation occurs.
+
+Defeat all monsters and verify boss readiness transitions and treasure Secret creation.
+
+Verify RBAC prevents unauthorized operations by attempting actions with insufficient permissions.
+
+Tests must assert Prometheus metrics are exported and that expected events appear in the WebSocket event stream.
+
+SECTION 12 — MIGRATION NOTES
+Because kro remains under active development, the design includes a migration strategy: all Dungeon instances created by RGD must include a spec.rgdVersion string. If kro or the RGD schema changes, the generated controller must implement an upgrade job that patches ownerReferences and migrates game.k8s.example/hp annotations to a new format if necessary. The migration path should be scripted and included in CI as a canary run.
+
+SECTION 13 — EXTENSIONS, UNEXPLORED USES, AND FUTURE PROOFS
+The dungeon model can be extended to scripted story campaigns with externally supplied narrative graphs, and the Attack/Job pattern can be reused to represent any declarative event that mutates resource metadata safely.
+
+SECTION 14 — ARTIFACTS FOR CODE GENERATION (COPY-PASTE READY)
+Below are the most important artifacts other AI tools can use directly to generate code. Use these blocks as canonical templates.
+
+Attack CRD (see SECTION 3 for YAML).
+
+RGD manifest dungeon-graph (see SECTION 4 YAML). Generators must produce a full kro-compatible RGD based on this fragment.
+
+Monster Pod template example (as used by RGD): already included in SECTION 4. Replace {monster-placeholder-image} with a minimal alpine or pause image customized to expose nothing.
+
+Attack Job template (see SECTION 5). Generators should replace shell kubectl flows with a small Go or Python client that uses API server patch operations.
+
+Backend OpenAPI specification snippet (convert the REST endpoint descriptions in SECTION 7 to a full OpenAPI spec).
+
+RBAC manifests: Role for backend and Role for attack jobs. Example role rules are provided in SECTION 9; generators must produce concrete YAML.
+
+SECTION 15 — DEPLOYMENT CHECKLIST AND OPERATION RUNBOOK
+To deploy the demo reliably, follow this checklist. Automators should implement these steps in CI as idempotent tasks.
+
+Step A: Verify kro is installed on the target cluster and verify ResourceGraphDefinition CRD is available.
+Step B: Apply the Attack CRD manifest.
+Step C: Apply the RGD manifest for dungeon-graph. kro will generate the Dungeon CRD and controller.
+Step D: Create an RBAC bootstrap role that allows the backend to create Namespaces and bind the runtime Role into each new dungeon namespace.
+Step E: Deploy the backend service and configure it with a kubeconfig that has the rpg-backend-sa permissions.
+Step F: Deploy frontend as a static-serving container in the cluster and access via kubectl port-forward.
+Step G: Apply NetworkPolicy and ResourceQuota templates for demo namespaces.
+Step H: Run the integration test suite against the deployed system.
+
+The operation runbook must include a quick recovery command list for common issues: how to cancel stuck Attack Jobs, how to manually set a monster state label, and how to clean up orphaned namespaces.
+
+SECTION 16 — METRICS, LOGS, AND ALERTS
+Operators should monitor the following and generate alerts: Attack job failure rate above 5% over 5m, reconciliation loop error rate increase above baseline, number of Dungeons per cluster exceeding safe threshold, and unusual creation of Secrets. Alerts should notify the platform team’s pager and create an automated remediation job that scales the cluster down or isolates misbehaving namespaces.
+
+SECTION 17 — FINAL NOTES FOR AI TOOL CONSUMPTION
+This document uses deterministic resource and metadata keys, explicit API contracts, and includes sample manifest fragments that are intentionally implementation-ready. AI tools that generate code should prefer client libraries for Kubernetes over shelling to kubectl. For reliability, prefer strongly typed languages for the backend (Go with client-go recommended) and any Job scripts should be small, deterministic binaries or Python scripts that use retry with exponential backoff and clear error codes.
+
+If an AI tool discovers any incompatibility between kro’s exact RGD field names and the templating dialect shown here, it must translate the intent exactly: dynamic loops, cross-resource expressions, readiness gating, and conditional resource creation. The expression examples should be implemented using kro’s supported templating and expression language (CEL or the kro dialect) as appropriate.

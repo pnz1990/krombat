@@ -1,0 +1,129 @@
+# Kubernetes RPG — Infrastructure as a Game Engine
+
+## Comprehensive Technical Design Document
+
+## 1. Executive Summary
+
+This document describes the architecture and implementation design of “Kubernetes RPG,” an interactive, turn-based dungeon game implemented entirely through declarative Kubernetes state and orchestrated using kro on top of Kubernetes. The purpose of the project is to demonstrate that Kubernetes, when combined with kro’s ResourceGraphDefinition (RGD) abstraction, can function as a programmable state machine and orchestration engine for arbitrary domain models, including game mechanics.
+
+The system models game entities such as dungeons, monsters, bosses, and treasure as Kubernetes resources. State transitions are driven through custom resources and reconciled via kro-defined graphs. A web-based graphical interface interacts with the Kubernetes API through a backend service, visualizing live state transitions in near real time. The project prioritizes clarity of orchestration, correctness of state transitions, and architectural elegance over gaming performance.
+
+This design aims to be production-quality in structure and reliability, while intentionally playful in domain.
+
+---
+
+## 2. Objectives and Non-Objectives
+
+The primary objective is to demonstrate dynamic resource graph composition, ordered reconciliation, cross-resource state derivation, and lifecycle enforcement using kro without writing custom controllers in Go. The system must clearly exhibit dependency resolution, dynamic resource generation based on user input, state propagation via Kubernetes metadata and status fields, and continuous reconciliation behavior under mutation and drift.
+
+The project is not intended to be a high-performance game engine, a multiplayer distributed real-time system, or a replacement for traditional game backends. Latency tolerance is measured in seconds, not milliseconds. Visual sophistication is secondary to architectural demonstration.
+
+---
+
+## 3. High-Level Architecture
+
+The system consists of four logical layers: a web-based frontend, an application backend service, the Kubernetes control plane, and the kro orchestration layer. The frontend is implemented as a React application responsible for rendering dungeon state and issuing player actions. The backend service exposes a REST or GraphQL API and acts as a controlled gateway to the Kubernetes API. The Kubernetes cluster hosts the custom resources and native objects representing game entities. The kro controller manages ResourceGraphDefinitions and orchestrates resource graphs derived from dungeon specifications.
+
+The frontend communicates exclusively with the backend service. The backend authenticates users, translates gameplay actions into Kubernetes custom resource operations, and subscribes to watch streams for live updates. The Kubernetes API stores all authoritative state. The kro controller reconciles dungeon resource graphs, ensuring proper ordering and lifecycle correctness. Native Kubernetes resources such as Pods and Jobs embody monsters and attacks respectively.
+
+---
+
+## 4. Domain Model
+
+The game domain revolves around a Dungeon custom resource. A Dungeon represents a complete, isolated game instance. Each dungeon corresponds to a dedicated Kubernetes namespace to guarantee resource isolation and clean teardown semantics.
+
+The Dungeon specification includes configurable parameters such as monster count, difficulty level, and optional modifiers. Difficulty determines initial monster hit points and boss strength. Monster count controls dynamic resource instantiation through CEL-driven templating in the RGD. Dungeon status aggregates derived information including number of living monsters, boss state, and victory conditions.
+
+Monsters are represented as individual Pods. Each monster pod contains no application container logic beyond a minimal placeholder container. The authoritative state of each monster is stored in Kubernetes labels and annotations, specifically fields for hit points and life state. The boss is similarly represented as a pod but includes readiness gating logic derived from dungeon-wide conditions.
+
+Treasure is represented as a Kubernetes Secret. It is created only after the boss transitions to a defeated state. Treasure exposure demonstrates lifecycle gating and conditional resource creation.
+
+Attacks are represented as Attack custom resources. An Attack resource defines a target and damage value. The creation of an Attack resource triggers execution of a Job that patches the target monster’s metadata and recalculates hit points.
+
+---
+
+## 5. ResourceGraphDefinition Design
+
+The core of the system is a ResourceGraphDefinition named DungeonGraph. This RGD defines the schema for the Dungeon custom resource and describes the complete resource graph for each dungeon instance.
+
+The RGD declares a schema with fields for monster count and difficulty. It defines resources including a namespace, a dynamic list of monster pods, a boss pod, a treasure secret, and a service endpoint for observation. The number of monster pods is computed using CEL expressions derived from spec.monsters. Each monster pod is parameterized with metadata labels encoding hit points calculated as a function of difficulty.
+
+The boss pod includes readiness conditions that evaluate a CEL expression referencing the aggregated status of monster pods. The boss does not transition to Ready until all monsters are marked dead. This dependency is declarative and embedded in the graph specification.
+
+The treasure secret is conditionally created based on the boss pod termination condition. This uses CEL expressions to detect boss completion and gate resource materialization. Finalizers are applied to the Dungeon resource to ensure all subordinate resources are deleted before namespace teardown.
+
+Status aggregation logic is embedded in the RGD to compute dungeon state, including total living monsters, boss state, and victory flag.
+
+---
+
+## 6. State Management Strategy
+
+All game state is stored in Kubernetes metadata and status fields. Monster hit points are encoded as annotations on the pod. Life state is encoded as a label for efficient selector-based querying. Dungeon status is computed by the kro reconciliation process, aggregating child resource state into summary fields.
+
+Attack resources serve as declarative events. The Attack RGD defines a Job template that retrieves the target monster pod and patches its annotations to decrement hit points. If hit points fall to zero or below, the job updates the monster’s life state label to dead. The kro controller ensures that these updates trigger re-evaluation of dungeon status.
+
+No external database is used. Kubernetes serves as the sole persistence layer. This reinforces the demonstration that Kubernetes can operate as a stateful control plane.
+
+---
+
+## 7. Backend Service Design
+
+The backend service is implemented in Go using client-go for Kubernetes API interaction. It exposes endpoints for dungeon creation, dungeon listing, attack submission, and event streaming. The backend validates user input and enforces simple authorization rules.
+
+The service establishes watch streams on Dungeon and Attack resources and pushes updates to the frontend via WebSockets. It maintains no business logic beyond validation and transformation. All authoritative state transitions occur inside Kubernetes.
+
+Error handling includes detection of failed jobs, invalid target references, and race conditions where multiple attacks occur simultaneously. The backend ensures idempotent operations by verifying resource existence before submission.
+
+---
+
+## 8. Frontend Design
+
+The frontend renders dungeon topology, monster health bars, boss status, and action controls. It subscribes to a WebSocket feed for real-time updates. Health bar animations reflect changes in monster annotations. Boss state transitions are visually represented by unlocking or graying out UI elements.
+
+The interface displays a timeline of events derived from Attack resource creation and job completion events. The design emphasizes clarity of state transitions and observable reconciliation behavior.
+
+The frontend does not contain business rules. All rules are encoded in Kubernetes resources and kro definitions.
+
+---
+
+## 9. Lifecycle and Cleanup
+
+Each Dungeon resource includes a finalizer ensuring that subordinate resources are deleted prior to removal. Namespace deletion is the final step in teardown. Attack resources are garbage-collected after job completion to prevent accumulation.
+
+Manual deletion of a monster pod demonstrates reconciliation behavior. The kro controller detects drift and recreates the monster pod with original hit points if its life state was alive, or omits recreation if marked dead. This behavior demonstrates state ownership and control-plane authority.
+
+---
+
+## 10. Performance and Scalability Considerations
+
+The system is designed for demonstration scale. Each dungeon contains a limited number of pods to prevent cluster strain. Job execution is serialized to avoid contention on metadata patches. Latency expectations are approximately one to three seconds per attack resolution, acceptable for turn-based gameplay.
+
+Horizontal scaling is possible by increasing cluster capacity. The architecture supports multiple concurrent dungeons isolated by namespace.
+
+---
+
+## 11. Security Considerations
+
+The backend service uses a service account with minimal RBAC permissions restricted to relevant namespaces and resource types. Neither the backend nor the frontend is publicly exposed; access is provided exclusively via kubectl port-forward or kubectl proxy. No ingress, load balancer, or external DNS is configured. Secrets used for treasure demonstration contain non-sensitive dummy data.
+
+Network policies isolate dungeon namespaces from other cluster workloads. Resource quotas limit pod counts and CPU usage to prevent misuse.
+
+---
+
+## 12. Demonstration Value
+
+This system demonstrates that Kubernetes, orchestrated via kro, can model complex domain-specific state machines without custom controllers. It highlights graph-based composition, dependency resolution, continuous reconciliation, lifecycle enforcement, dynamic resource generation, and status aggregation. The graphical interface makes invisible control-plane transitions visible and intuitive.
+
+The project reframes Kubernetes from “container scheduler” to “programmable distributed control plane.” The playful RPG metaphor lowers cognitive barriers while showcasing advanced orchestration capabilities.
+
+---
+
+## 13. Future Enhancements
+
+Future iterations may include multiplayer support, persistent player profiles stored as custom resources, AI-driven monsters implemented via sidecar containers, or integration with GitOps workflows to treat dungeon instances as version-controlled artifacts. Observability integration using Prometheus metrics and distributed tracing would further demonstrate production-grade capabilities.
+
+---
+
+## 14. Conclusion
+
+Kubernetes RPG is technically viable, architecturally sound, and conceptually powerful. By modeling game mechanics entirely through declarative resource graphs defined with kro, the system proves that Kubernetes can serve as a generalized orchestration engine beyond traditional infrastructure concerns. With a compelling graphical interface and disciplined implementation, this project would stand out as both innovative and instructive, suitable for technical demonstrations, conference talks, or internal platform showcases.

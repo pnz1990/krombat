@@ -52,6 +52,18 @@ All state transitions are driven by kro's reconciliation loop. The system is int
 - Kubernetes cluster with [kro](https://kro.run) installed
 - `kubectl` configured for the target cluster
 
+## Access
+
+The frontend and backend are not publicly exposed. Access is provided via `kubectl port-forward`:
+
+```bash
+# Backend API
+kubectl port-forward svc/rpg-backend 8080:8080
+
+# Frontend
+kubectl port-forward svc/rpg-frontend 3000:3000
+```
+
 ## License
 
 MIT
