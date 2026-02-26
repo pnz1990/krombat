@@ -66,10 +66,27 @@ echo "$RESP" | python3 -c "import json,sys; d=json.load(sys.stdin); assert any(x
   || fail "Created dungeon not in list"
 
 # --- Test 6: Get dungeon ---
-log "Test 6: Get dungeon"
+log "Test 6: Get dungeon response shape"
 sleep 15  # wait for kro
+RESP=$(curl -s "$BASE/api/v1/dungeons/default/$DUNGEON")
 CODE=$(curl -s -o /dev/null -w "%{http_code}" "$BASE/api/v1/dungeons/default/$DUNGEON")
 [ "$CODE" = "200" ] && pass "GET /dungeons/default/$DUNGEON -> 200" || fail "GET dungeon -> $CODE"
+
+# Verify response is a raw Dungeon CR (has metadata.name, spec, not wrapped in {dungeon:...})
+echo "$RESP" | python3 -c "
+import json,sys
+d=json.load(sys.stdin)
+assert 'metadata' in d, 'missing metadata'
+assert d['metadata']['name'] == '$DUNGEON', f'wrong name: {d[\"metadata\"][\"name\"]}'
+assert 'spec' in d, 'missing spec'
+assert 'monsterHP' in d['spec'], 'missing monsterHP'
+assert 'bossHP' in d['spec'], 'missing bossHP'
+assert 'dungeon' not in d, 'response should not be wrapped in dungeon key'
+assert 'pods' not in d, 'response should not contain pods'
+print('OK')
+" 2>/dev/null \
+  && pass "Response is raw Dungeon CR (metadata, spec, no pods)" \
+  || fail "Response shape incorrect — backend may be returning wrapped/old format"
 
 # --- Test 7: Get nonexistent dungeon ---
 log "Test 7: Get nonexistent dungeon"
