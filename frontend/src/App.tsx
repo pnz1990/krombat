@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { DungeonSummary, DungeonCR, listDungeons, getDungeon, createDungeon, submitAttack } from './api'
 import { useWebSocket, WSEvent } from './useWebSocket'
 
@@ -16,17 +16,26 @@ export default function App() {
   const [error, setError] = useState('')
   const [showLoot, setShowLoot] = useState(false)
 
+  const { connected, lastEvent } = useWebSocket()
+  const selectedRef = useRef(selected)
+  selectedRef.current = selected
+
   const refresh = useCallback(async () => {
     try {
       setDungeons(await listDungeons())
-      if (selected) setDetail(await getDungeon(selected.ns, selected.name))
+      const sel = selectedRef.current
+      if (sel) setDetail(await getDungeon(sel.ns, sel.name))
     } catch {}
-  }, [selected])
+  }, [])
 
-  const connected = useWebSocket(useCallback((e: WSEvent) => {
-    setEvents(prev => [e, ...prev].slice(0, 50))
+  // Refresh on WebSocket events
+  useEffect(() => { if (lastEvent) {
+    setEvents(prev => [lastEvent, ...prev].slice(0, 50))
     refresh()
-  }, [refresh]))
+  }}, [lastEvent, refresh])
+
+  // Initial load
+  useEffect(() => { refresh() }, [refresh])
 
   const handleCreate = async (name: string, monsters: number, difficulty: string) => {
     setError('')

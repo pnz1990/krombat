@@ -1,22 +1,38 @@
-import { useEffect, useRef, useCallback, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 export interface WSEvent {
   type: string; action: string; name: string; namespace: string; payload: any
 }
 
-export function useWebSocket(onEvent: (e: WSEvent) => void) {
+export function useWebSocket() {
   const wsRef = useRef<WebSocket | null>(null)
   const [connected, setConnected] = useState(false)
+  const [lastEvent, setLastEvent] = useState<WSEvent | null>(null)
 
-  const connect = useCallback(() => {
-    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const ws = new WebSocket(`${proto}//${window.location.host}/api/v1/events`)
-    wsRef.current = ws
-    ws.onopen = () => setConnected(true)
-    ws.onclose = () => { setConnected(false); setTimeout(connect, 3000) }
-    ws.onmessage = (e) => { try { onEvent(JSON.parse(e.data)) } catch {} }
-  }, [onEvent])
+  useEffect(() => {
+    let alive = true
+    let reconnectTimer: ReturnType<typeof setTimeout>
 
-  useEffect(() => { connect(); return () => wsRef.current?.close() }, [connect])
-  return connected
+    function connect() {
+      if (!alive) return
+      const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+      const ws = new WebSocket(`${proto}//${window.location.host}/api/v1/events`)
+      wsRef.current = ws
+
+      ws.onopen = () => setConnected(true)
+      ws.onclose = () => {
+        setConnected(false)
+        if (alive) reconnectTimer = setTimeout(connect, 3000)
+      }
+      ws.onerror = () => ws.close()
+      ws.onmessage = (e) => {
+        try { setLastEvent(JSON.parse(e.data)) } catch {}
+      }
+    }
+
+    connect()
+    return () => { alive = false; clearTimeout(reconnectTimer); wsRef.current?.close() }
+  }, [])
+
+  return { connected, lastEvent }
 }
