@@ -20,18 +20,22 @@ data "aws_availability_zones" "available" {
   }
 }
 
+locals {
+  azs = slice(data.aws_availability_zones.available.names, 0, 2)
+}
+
 # --- VPC ---
 
 module "vpc" {
   source  = "terraform-aws-modules/vpc/aws"
-  version = "~> 5.0"
+  version = "~> 6.0"
 
   name = "${var.cluster_name}-vpc"
   cidr = "10.0.0.0/16"
 
-  azs             = slice(data.aws_availability_zones.available.names, 0, 2)
-  private_subnets = ["10.0.1.0/24", "10.0.2.0/24"]
-  public_subnets  = ["10.0.101.0/24", "10.0.102.0/24"]
+  azs             = local.azs
+  private_subnets = [for k, v in local.azs : cidrsubnet("10.0.0.0/16", 4, k)]
+  public_subnets  = [for k, v in local.azs : cidrsubnet("10.0.0.0/16", 8, k + 48)]
 
   enable_nat_gateway   = true
   single_nat_gateway   = true
@@ -51,14 +55,14 @@ module "eks" {
   source  = "terraform-aws-modules/eks/aws"
   version = "~> 20.31"
 
-  cluster_name    = var.cluster_name
-  cluster_version = var.cluster_version
+  name              = var.cluster_name
+  kubernetes_version = var.cluster_version
 
-  cluster_endpoint_public_access = true
+  endpoint_public_access = true
 
   enable_cluster_creator_admin_permissions = true
 
-  cluster_compute_config = {
+  compute_config = {
     enabled    = true
     node_pools = ["general-purpose", "system"]
   }
@@ -67,25 +71,18 @@ module "eks" {
   subnet_ids = module.vpc.private_subnets
 }
 
-# --- IAM Roles for EKS Capabilities ---
+# --- EKS Capabilities ---
 
-data "aws_iam_policy_document" "capability_trust" {
-  statement {
-    effect = "Allow"
-    principals {
-      type        = "Service"
-      identifiers = ["capabilities.eks.amazonaws.com"]
-    }
-    actions = ["sts:AssumeRole", "sts:TagSession"]
-  }
+module "kro" {
+  source = "terraform-aws-modules/eks/aws//modules/capability"
+
+  type         = "KRO"
+  cluster_name = module.eks.cluster_name
 }
 
-resource "aws_iam_role" "kro_capability" {
-  name               = "${var.cluster_name}-kro-capability"
-  assume_role_policy = data.aws_iam_policy_document.capability_trust.json
-}
+module "argocd" {
+  source = "terraform-aws-modules/eks/aws//modules/capability"
 
-resource "aws_iam_role" "argocd_capability" {
-  name               = "${var.cluster_name}-argocd-capability"
-  assume_role_policy = data.aws_iam_policy_document.capability_trust.json
+  type         = "ARGOCD"
+  cluster_name = module.eks.cluster_name
 }
