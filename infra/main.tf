@@ -4,7 +4,7 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = ">= 5.75.0"
+      version = ">= 6.28.0"
     }
   }
 }
@@ -53,7 +53,7 @@ module "vpc" {
 
 module "eks" {
   source  = "terraform-aws-modules/eks/aws"
-  version = "~> 20.31"
+  version = "~> 21.0"
 
   name              = var.cluster_name
   kubernetes_version = var.cluster_version
@@ -71,6 +71,21 @@ module "eks" {
   subnet_ids = module.vpc.private_subnets
 }
 
+# --- Identity Center ---
+
+data "aws_ssoadmin_instances" "this" {}
+
+data "aws_identitystore_user" "admin" {
+  identity_store_id = one(data.aws_ssoadmin_instances.this.identity_store_ids)
+
+  alternate_identifier {
+    unique_attribute {
+      attribute_path  = "UserName"
+      attribute_value = "rrroizma"
+    }
+  }
+}
+
 # --- EKS Capabilities ---
 
 module "kro" {
@@ -85,4 +100,21 @@ module "argocd" {
 
   type         = "ARGOCD"
   cluster_name = module.eks.cluster_name
+
+  configuration = {
+    argo_cd = {
+      aws_idc = {
+        idc_instance_arn = one(data.aws_ssoadmin_instances.this.arns)
+        idc_region       = var.idc_region
+      }
+      namespace = "argocd"
+      rbac_role_mapping = [{
+        role = "ADMIN"
+        identity = [{
+          id   = data.aws_identitystore_user.admin.user_id
+          type = "SSO_USER"
+        }]
+      }]
+    }
+  }
 }
