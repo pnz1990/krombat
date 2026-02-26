@@ -1,0 +1,215 @@
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+:root {
+  --bg: #1a1a2e;
+  --bg-card: #16213e;
+  --border: #0f3460;
+  --accent: #e94560;
+  --gold: #f5c518;
+  --green: #00ff41;
+  --blue: #00d4ff;
+  --text: #eee;
+  --text-dim: #888;
+  --hp-bar: #e94560;
+  --hp-bg: #333;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: 'Press Start 2P', monospace;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 10px;
+  line-height: 1.6;
+  image-rendering: pixelated;
+}
+
+.app { max-width: 960px; margin: 0 auto; padding: 16px; }
+
+/* Header */
+.header {
+  text-align: center;
+  padding: 24px 0;
+  border-bottom: 4px solid var(--border);
+  margin-bottom: 24px;
+}
+.header h1 { font-size: 20px; color: var(--gold); text-shadow: 3px 3px 0 #000; letter-spacing: 2px; }
+.header p { font-size: 8px; color: var(--text-dim); margin-top: 8px; }
+
+/* Buttons */
+.btn {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 9px;
+  padding: 10px 16px;
+  border: 3px solid;
+  cursor: pointer;
+  text-transform: uppercase;
+  transition: all 0.1s;
+  image-rendering: pixelated;
+}
+.btn:hover { transform: translate(-2px, -2px); box-shadow: 4px 4px 0 #000; }
+.btn:active { transform: translate(0, 0); box-shadow: none; }
+.btn-primary { background: var(--accent); color: #fff; border-color: #c0392b; }
+.btn-gold { background: var(--gold); color: #000; border-color: #d4a017; }
+.btn-blue { background: var(--blue); color: #000; border-color: #0099cc; }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; box-shadow: none; }
+
+/* Cards */
+.card {
+  background: var(--bg-card);
+  border: 3px solid var(--border);
+  padding: 16px;
+  margin-bottom: 12px;
+}
+
+/* Dungeon List */
+.dungeon-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.dungeon-tile {
+  background: var(--bg-card);
+  border: 3px solid var(--border);
+  padding: 16px;
+  cursor: pointer;
+  transition: all 0.1s;
+}
+.dungeon-tile:hover { border-color: var(--gold); transform: translate(-2px, -2px); box-shadow: 4px 4px 0 #000; }
+.dungeon-tile h3 { color: var(--gold); font-size: 11px; margin-bottom: 8px; }
+.dungeon-tile .stats { font-size: 8px; color: var(--text-dim); }
+.dungeon-tile .stats span { margin-right: 12px; }
+.dungeon-tile .victory { color: var(--green); }
+.dungeon-tile .tag { display: inline-block; padding: 2px 6px; font-size: 7px; border: 2px solid; margin-right: 4px; }
+.tag-easy { color: var(--green); border-color: var(--green); }
+.tag-normal { color: var(--gold); border-color: var(--gold); }
+.tag-hard { color: var(--accent); border-color: var(--accent); }
+
+/* Create Form */
+.create-form {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  margin-bottom: 24px;
+  padding: 16px;
+  background: var(--bg-card);
+  border: 3px solid var(--border);
+}
+.create-form label { font-size: 8px; color: var(--text-dim); display: block; margin-bottom: 4px; }
+.create-form input, .create-form select {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 9px;
+  padding: 8px;
+  background: var(--bg);
+  color: var(--text);
+  border: 2px solid var(--border);
+  width: 140px;
+}
+
+/* Dungeon View */
+.dungeon-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+.dungeon-header h2 { font-size: 14px; color: var(--gold); }
+.back-btn { font-size: 8px; color: var(--text-dim); cursor: pointer; border: none; background: none; font-family: 'Press Start 2P', monospace; }
+.back-btn:hover { color: var(--text); }
+
+.status-bar {
+  display: flex;
+  gap: 16px;
+  font-size: 8px;
+  margin-bottom: 16px;
+  padding: 12px;
+  background: var(--bg-card);
+  border: 3px solid var(--border);
+}
+.status-bar .label { color: var(--text-dim); }
+.status-bar .value { color: var(--gold); margin-left: 4px; }
+
+/* Monster Grid */
+.monster-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-bottom: 16px; }
+
+/* Entity Card (Monster/Boss) */
+.entity-card {
+  background: var(--bg-card);
+  border: 3px solid var(--border);
+  padding: 16px;
+  text-align: center;
+  position: relative;
+  transition: border-color 0.2s;
+}
+.entity-card.alive { border-color: var(--green); }
+.entity-card.dead { border-color: #555; opacity: 0.5; }
+.entity-card.ready { border-color: var(--accent); animation: pulse 1s infinite; }
+.entity-card.pending { border-color: var(--border); }
+.entity-card.defeated { border-color: var(--gold); }
+
+@keyframes pulse { 0%,100% { box-shadow: 0 0 0 transparent; } 50% { box-shadow: 0 0 16px var(--accent); } }
+
+.entity-sprite { font-size: 40px; margin-bottom: 8px; }
+.entity-name { font-size: 9px; color: var(--text); margin-bottom: 4px; }
+.entity-state { font-size: 7px; text-transform: uppercase; margin-bottom: 8px; }
+.entity-state.alive { color: var(--green); }
+.entity-state.dead { color: #666; }
+.entity-state.ready { color: var(--accent); }
+.entity-state.pending { color: var(--text-dim); }
+.entity-state.defeated { color: var(--gold); }
+
+/* HP Bar */
+.hp-bar-container { margin: 8px 0; }
+.hp-bar-bg { background: var(--hp-bg); height: 12px; border: 2px solid #555; position: relative; }
+.hp-bar-fill {
+  height: 100%;
+  transition: width 0.5s ease-out;
+  background: var(--hp-bar);
+}
+.hp-bar-fill.high { background: var(--green); }
+.hp-bar-fill.mid { background: var(--gold); }
+.hp-bar-fill.low { background: var(--accent); }
+.hp-text { font-size: 7px; color: var(--text-dim); margin-top: 2px; }
+
+/* Attack Controls */
+.attack-controls { margin-top: 8px; display: flex; gap: 4px; justify-content: center; align-items: center; }
+.attack-controls input {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 8px;
+  width: 50px;
+  padding: 4px;
+  background: var(--bg);
+  color: var(--text);
+  border: 2px solid var(--border);
+  text-align: center;
+}
+
+/* Event Log */
+.event-log {
+  background: var(--bg-card);
+  border: 3px solid var(--border);
+  padding: 12px;
+  max-height: 200px;
+  overflow-y: auto;
+  font-size: 7px;
+}
+.event-log h3 { font-size: 9px; color: var(--text-dim); margin-bottom: 8px; }
+.event-entry { padding: 4px 0; border-bottom: 1px solid #222; color: var(--text-dim); }
+.event-entry .event-type { color: var(--blue); }
+.event-entry .event-time { color: #555; }
+
+/* Victory */
+.victory-banner {
+  text-align: center;
+  padding: 24px;
+  background: linear-gradient(135deg, #1a1a2e 0%, #2d1b4e 100%);
+  border: 4px solid var(--gold);
+  margin-bottom: 16px;
+  animation: victoryGlow 2s infinite;
+}
+@keyframes victoryGlow { 0%,100% { box-shadow: 0 0 10px var(--gold); } 50% { box-shadow: 0 0 30px var(--gold); } }
+.victory-banner h2 { font-size: 16px; color: var(--gold); margin-bottom: 8px; }
+.victory-banner .loot { font-size: 9px; color: var(--green); }
+
+/* Loading */
+.loading { text-align: center; padding: 40px; font-size: 10px; color: var(--text-dim); }
+.loading::after { content: '...'; animation: dots 1.5s infinite; }
+@keyframes dots { 0% { content: '.'; } 33% { content: '..'; } 66% { content: '...'; } }

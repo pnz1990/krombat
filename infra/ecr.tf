@@ -3,9 +3,31 @@ resource "aws_ecr_repository" "backend" {
   name  = "krombat/backend"
 }
 
+resource "aws_ecr_repository" "frontend" {
+  count = var.enable_ecr ? 1 : 0
+  name  = "krombat/frontend"
+}
+
 resource "aws_ecr_lifecycle_policy" "backend" {
   count      = var.enable_ecr ? 1 : 0
   repository = aws_ecr_repository.backend[0].name
+
+  policy = jsonencode({
+    rules = [{
+      rulePriority = 1
+      selection = {
+        tagStatus   = "any"
+        countType   = "imageCountMoreThan"
+        countNumber = 10
+      }
+      action = { type = "expire" }
+    }]
+  })
+}
+
+resource "aws_ecr_lifecycle_policy" "frontend" {
+  count      = var.enable_ecr ? 1 : 0
+  repository = aws_ecr_repository.frontend[0].name
 
   policy = jsonencode({
     rules = [{

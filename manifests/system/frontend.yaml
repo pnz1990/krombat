@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rpg-frontend
+  namespace: rpg-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rpg-frontend
+  template:
+    metadata:
+      labels:
+        app: rpg-frontend
+    spec:
+      containers:
+        - name: frontend
+          image: 569190534191.dkr.ecr.us-west-2.amazonaws.com/krombat/frontend:latest
+          ports:
+            - containerPort: 3000
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: "10m"
+              memory: "32Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rpg-frontend
+  namespace: rpg-system
+spec:
+  selector:
+    app: rpg-frontend
+  ports:
+    - port: 3000
+      targetPort: 3000

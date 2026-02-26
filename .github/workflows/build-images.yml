@@ -3,7 +3,7 @@ name: Build & Push Images
 on:
   push:
     branches: [main]
-    paths: [backend/**]
+    paths: [backend/**, frontend/**]
 
 permissions:
   id-token: write
@@ -11,25 +11,34 @@ permissions:
 
 env:
   AWS_REGION: us-west-2
-  ECR_REPO: krombat/backend
+  REGISTRY: 569190534191.dkr.ecr.us-west-2.amazonaws.com
 
 jobs:
   build-backend:
     runs-on: ubuntu-latest
+    if: contains(github.event.head_commit.modified, 'backend/') || contains(github.event.head_commit.added, 'backend/')
     steps:
       - uses: actions/checkout@v4
-
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
-
       - uses: aws-actions/amazon-ecr-login@v2
-        id: ecr
+      - run: |
+          docker build -t $REGISTRY/krombat/backend:${{ github.sha }} -t $REGISTRY/krombat/backend:latest backend/
+          docker push $REGISTRY/krombat/backend:${{ github.sha }}
+          docker push $REGISTRY/krombat/backend:latest
 
-      - name: Build and push
-        run: |
-          IMAGE=${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPO }}
-          docker build -t $IMAGE:${{ github.sha }} -t $IMAGE:latest backend/
-          docker push $IMAGE:${{ github.sha }}
-          docker push $IMAGE:latest
+  build-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: aws-actions/amazon-ecr-login@v2
+      - run: |
+          docker build -t $REGISTRY/krombat/frontend:${{ github.sha }} -t $REGISTRY/krombat/frontend:latest frontend/
+          docker push $REGISTRY/krombat/frontend:${{ github.sha }}
+          docker push $REGISTRY/krombat/frontend:latest
