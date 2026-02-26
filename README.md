@@ -33,11 +33,22 @@ All state transitions are driven by kro's reconciliation loop. The system is int
 │  React SPA  │────▶│  Go Backend │────▶│  Kubernetes API       │
 │  (stateless)│◀────│  (gateway)  │◀────│  + kro controller     │
 └─────────────┘  WS └─────────────┘watch└──────────────────────┘
+                                              ▲
+                                              │ sync
+                                         ┌────┴─────┐
+                                         │ Argo CD  │
+                                         │ (GitOps) │
+                                         └────┬─────┘
+                                              │
+                                         ┌────┴─────┐
+                                         │ Git Repo │
+                                         └──────────┘
 ```
 
 - **Frontend** — React SPA rendering dungeon state with real-time WebSocket updates
 - **Backend** — Stateless Go service that validates requests, proxies K8s operations, and streams events
 - **Kubernetes + kro** — Sole source of truth. kro runs as an [EKS Managed Capability](https://docs.aws.amazon.com/eks/latest/userguide/kro.html). RGDs define resource graphs with dependency resolution, dynamic pod generation, readiness gating, and conditional resource creation
+- **Argo CD** — Runs as an [EKS Managed Capability](https://docs.aws.amazon.com/eks/latest/userguide/argocd.html). Continuously syncs all cluster manifests (CRDs, RGDs, RBAC, deployments, policies) from this Git repo
 
 ## Key Demonstrations
 
@@ -49,7 +60,7 @@ All state transitions are driven by kro's reconciliation loop. The system is int
 
 ## Prerequisites
 
-- Amazon EKS cluster with the [kro managed capability](https://docs.aws.amazon.com/eks/latest/userguide/kro.html) enabled
+- Amazon EKS cluster with the [kro](https://docs.aws.amazon.com/eks/latest/userguide/kro.html) and [Argo CD](https://docs.aws.amazon.com/eks/latest/userguide/argocd.html) managed capabilities enabled
 - `kubectl` configured for the target cluster
 
 ## Access

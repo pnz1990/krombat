@@ -340,16 +340,13 @@ Backend OpenAPI specification snippet (convert the REST endpoint descriptions in
 RBAC manifests: Role for backend and Role for attack jobs. Example role rules are provided in SECTION 9; generators must produce concrete YAML.
 
 SECTION 15 — DEPLOYMENT CHECKLIST AND OPERATION RUNBOOK
-To deploy the demo reliably, follow this checklist. Automators should implement these steps in CI as idempotent tasks.
+To deploy the demo reliably, follow this checklist. All application manifests (CRDs, RGDs, RBAC, backend, frontend, NetworkPolicy, ResourceQuota) are stored in Git and deployed via Argo CD, which runs as an EKS Managed Capability alongside kro.
 
-Step A: Verify the kro managed capability is enabled on the EKS cluster and the ResourceGraphDefinition CRD is available.
-Step B: Apply the Attack CRD manifest.
-Step C: Apply the RGD manifest for dungeon-graph. kro will generate the Dungeon CRD and controller.
-Step D: Create an RBAC bootstrap role that allows the backend to create Namespaces and bind the runtime Role into each new dungeon namespace.
-Step E: Deploy the backend service and configure it with a kubeconfig that has the rpg-backend-sa permissions.
-Step F: Deploy frontend as a static-serving container in the cluster and access via kubectl port-forward.
-Step G: Apply NetworkPolicy and ResourceQuota templates for demo namespaces.
-Step H: Run the integration test suite against the deployed system.
+Step A: Verify the kro and Argo CD managed capabilities are enabled on the EKS cluster.
+Step B: Configure Argo CD repository access to the project Git repo.
+Step C: Create an Argo CD Application resource that targets the cluster manifests directory. Argo CD will sync and apply: the Attack CRD, the dungeon-graph RGD, RBAC roles, backend and frontend Deployments/Services, NetworkPolicy and ResourceQuota templates.
+Step D: Verify Argo CD has synced successfully and all resources are healthy.
+Step E: Run the integration test suite against the deployed system.
 
 The operation runbook must include a quick recovery command list for common issues: how to cancel stuck Attack Jobs, how to manually set a monster state label, and how to clean up orphaned namespaces.
 
