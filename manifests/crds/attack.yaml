@@ -1,0 +1,36 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: attacks.game.k8s.example
+spec:
+  group: game.k8s.example
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              required: [target, damage]
+              properties:
+                target:
+                  type: string
+                damage:
+                  type: integer
+            status:
+              type: object
+              properties:
+                processed:
+                  type: boolean
+                result:
+                  type: string
+      subresources:
+        status: {}
+  scope: Namespaced
+  names:
+    plural: attacks
+    singular: attack
+    kind: Attack
