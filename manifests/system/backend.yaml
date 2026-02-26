@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rpg-backend
+  namespace: rpg-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rpg-backend
+  template:
+    metadata:
+      labels:
+        app: rpg-backend
+    spec:
+      serviceAccountName: rpg-backend-sa
+      containers:
+        - name: backend
+          image: 569190534191.dkr.ecr.us-west-2.amazonaws.com/krombat/backend:latest
+          ports:
+            - containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rpg-backend
+  namespace: rpg-system
+spec:
+  selector:
+    app: rpg-backend
+  ports:
+    - port: 8080
+      targetPort: 8080
