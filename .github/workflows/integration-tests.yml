@@ -1,0 +1,54 @@
+name: Integration Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  integration-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: us-west-2
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Update kubeconfig
+        run: aws eks update-kubeconfig --region us-west-2 --name krombat
+
+      - name: Wait for Argo CD sync
+        run: |
+          echo "Triggering Argo CD hard refresh..."
+          kubectl annotate application krombat -n argocd argocd.argoproj.io/refresh=hard --overwrite
+
+          echo "Waiting for Argo CD to sync latest commit..."
+          for i in $(seq 1 60); do
+            SYNC=$(kubectl get application krombat -n argocd -o jsonpath='{.status.sync.status}' 2>/dev/null || echo "")
+            REVISION=$(kubectl get application krombat -n argocd -o jsonpath='{.status.sync.revision}' 2>/dev/null || echo "")
+            if [ "$SYNC" = "Synced" ] && [ "$REVISION" = "${{ github.sha }}" ]; then
+              echo "Argo CD synced to $REVISION"
+              break
+            fi
+            if [ "$i" -eq 30 ]; then
+              echo "Re-triggering refresh..."
+              kubectl annotate application krombat -n argocd argocd.argoproj.io/refresh=hard --overwrite
+            fi
+            echo "  Waiting... (sync=$SYNC, rev=${REVISION:0:8}, want=${{ github.sha }})"
+            sleep 5
+          done
+
+      - name: Run integration tests
+        run: ./tests/run.sh
