@@ -134,8 +134,10 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
   cr: DungeonCR; onBack: () => void; onAttack: (t: string, d: number) => void; events: WSEvent[]
   showLoot: boolean; onOpenLoot: () => void; onCloseLoot: () => void
 }) {
+  if (!cr?.metadata?.name) return <div className="loading">Loading dungeon</div>
   const spec = cr.spec || { monsters: 0, difficulty: 'normal', monsterHP: [], bossHP: 0 }
   const status = cr.status
+  const name = name
   const maxMonsterHP = { easy: 30, normal: 50, hard: 80 }[spec.difficulty] || 50
   const maxBossHP = { easy: 200, normal: 400, hard: 800 }[spec.difficulty] || 400
   const bossState = status?.bossState || (spec.bossHP > 0 ? ((spec.monsterHP || []).every(hp => hp === 0) ? 'ready' : 'pending') : 'defeated')
@@ -143,7 +145,7 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
   return (
     <div>
       <div className="dungeon-header">
-        <h2>⚔️ {cr.metadata.name}</h2>
+        <h2>⚔️ {name}</h2>
         <button className="back-btn" onClick={onBack}>← Back to dungeons</button>
       </div>
 
@@ -178,16 +180,16 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
       <div className="monster-grid">
         {(spec.monsterHP || []).map((hp, idx) => {
           const state = hp > 0 ? 'alive' : 'dead'
-          const name = `${cr.metadata.name}-monster-${idx}`
+          const mName = `${name}-monster-${idx}`
           return (
-            <EntityCard key={name} name={name} entity="monster"
+            <EntityCard key={mName} name={mName} entity="monster"
               state={state} hp={hp} maxHP={maxMonsterHP} onAttack={onAttack} />
           )
         })}
       </div>
 
       <h3 style={{ fontSize: '10px', marginBottom: 8, color: '#888' }}>BOSS</h3>
-      <EntityCard name={`${cr.metadata.name}-boss`} entity="boss"
+      <EntityCard name={`${name}-boss`} entity="boss"
         state={bossState} hp={spec.bossHP} maxHP={maxBossHP} onAttack={onAttack} />
 
       <h3 style={{ fontSize: '10px', margin: '16px 0 8px', color: '#888' }}>EVENT LOG</h3>
