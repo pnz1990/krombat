@@ -54,7 +54,7 @@ spec:
     # --- Boss pod ---
     - id: bossPod
       readyWhen:
-        - "${each.metadata.labels['game.k8s.example/state'] != 'pending'}"
+        - "${bossPod.metadata.labels['game.k8s.example/state'] != 'pending'}"
       template:
         apiVersion: v1
         kind: Pod
