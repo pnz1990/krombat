@@ -1,4 +1,12 @@
-# Kubernetes RPG
+<div align="center">
+  <img src="docs/logo-full.png" alt="Kubernetes RPG - KROMBAT" width="400" style="image-rendering: pixelated;">
+  
+  # Kubernetes RPG
+  
+  *An 8-bit dungeon crawler powered by Kubernetes*
+</div>
+
+---
 
 An interactive, turn-based dungeon game where the entire game state lives in Kubernetes — orchestrated by [kro](https://kro.run) ResourceGraphDefinitions running as an [EKS Managed Capability](https://docs.aws.amazon.com/eks/latest/userguide/kro.html). No custom controllers, no external databases. Just declarative resource graphs, CEL expressions, and the Kubernetes control plane acting as a programmable state machine.
 
