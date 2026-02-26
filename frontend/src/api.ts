@@ -5,14 +5,18 @@ export interface DungeonSummary {
   livingMonsters: number | null; bossState: string | null; victory: boolean | null
 }
 
-export interface DungeonDetail {
-  dungeon: { metadata: any; spec: any; status: any }
-  pods: { items: PodInfo[] } | null
-  loot: string
-}
-
-export interface PodInfo {
-  metadata: { name: string; labels: Record<string, string>; annotations: Record<string, string> }
+// GetDungeon now returns the raw Dungeon CR — all state is in spec + status
+export interface DungeonCR {
+  metadata: { name: string; namespace: string }
+  spec: {
+    monsters: number; difficulty: string
+    monsterHP: number[]; bossHP: number
+  }
+  status?: {
+    livingMonsters: number; bossState: string; victory: boolean
+    loot: string
+    state: string
+  }
 }
 
 export async function listDungeons(): Promise<DungeonSummary[]> {
@@ -21,7 +25,7 @@ export async function listDungeons(): Promise<DungeonSummary[]> {
   return r.json()
 }
 
-export async function getDungeon(ns: string, name: string): Promise<DungeonDetail> {
+export async function getDungeon(ns: string, name: string): Promise<DungeonCR> {
   const r = await fetch(`${BASE}/dungeons/${ns}/${name}`)
   if (!r.ok) throw new Error(await r.text())
   return r.json()

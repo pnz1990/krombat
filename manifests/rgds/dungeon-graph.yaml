@@ -16,6 +16,7 @@ spec:
       livingMonsters: "${size(monsterPods.filter(m, m.metadata.labels['game.k8s.example/state'] == 'alive'))}"
       bossState: "${bossPod.metadata.labels['game.k8s.example/state']}"
       victory: "${bossPod.metadata.labels['game.k8s.example/state'] == 'defeated'}"
+      loot: "${treasure.data.?loot.orValue('')}"
 
   resources:
     # --- Namespace per dungeon ---
@@ -104,7 +105,7 @@ spec:
             requests.cpu: "1"
             requests.memory: "1Gi"
 
-    # --- NetworkPolicy: deny all ingress except from rpg-system ---
+    # --- NetworkPolicy ---
     - id: netpol
       template:
         apiVersion: networking.k8s.io/v1

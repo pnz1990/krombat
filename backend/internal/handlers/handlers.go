@@ -124,6 +124,7 @@ func (h *Handler) ListDungeons(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(items)
 }
 
+// GetDungeon returns the Dungeon CR only — all state is in spec + status
 func (h *Handler) GetDungeon(w http.ResponseWriter, r *http.Request) {
 	ns := r.PathValue("namespace")
 	name := r.PathValue("name")
@@ -135,26 +136,8 @@ func (h *Handler) GetDungeon(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pods, err := h.client.Clientset.CoreV1().Pods(name).List(
-		context.Background(), metav1.ListOptions{LabelSelector: "game.k8s.example/entity"})
-	if err != nil {
-		pods = nil
-	}
-
-	var loot string
-	secret, err := h.client.Clientset.CoreV1().Secrets(name).Get(
-		context.Background(), name+"-treasure", metav1.GetOptions{})
-	if err == nil {
-		loot = string(secret.Data["loot"])
-	}
-
-	resp := map[string]interface{}{
-		"dungeon": dungeon.Object,
-		"pods":    pods,
-		"loot":    loot,
-	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+	json.NewEncoder(w).Encode(dungeon.Object)
 }
 
 type CreateAttackReq struct {

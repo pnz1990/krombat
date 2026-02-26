@@ -17,12 +17,6 @@ rules:
   - apiGroups: [game.k8s.example]
     resources: [dungeons, dungeons/status, attacks, attacks/status]
     verbs: [get, list, watch, create, update, patch, delete]
-  - apiGroups: [""]
-    resources: [pods, secrets, configmaps, namespaces, events]
-    verbs: [get, list, watch]
-  - apiGroups: [batch]
-    resources: [jobs]
-    verbs: [get, list, watch]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

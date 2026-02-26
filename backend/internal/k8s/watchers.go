@@ -20,7 +20,6 @@ var (
 func StartWatchers(client *Client, hub *ws.Hub) {
 	go watchResource(client, hub, DungeonGVR, "DUNGEON_UPDATE")
 	go watchResource(client, hub, AttackGVR, "ATTACK_EVENT")
-	go watchPods(client, hub)
 }
 
 func watchResource(client *Client, hub *ws.Hub, gvr schema.GroupVersionResource, eventType string) {
@@ -46,28 +45,6 @@ func watchResource(client *Client, hub *ws.Hub, gvr schema.GroupVersionResource,
 				Payload:   obj.Object,
 			}
 			data, _ := json.Marshal(msg)
-			hub.Broadcast(data)
-		}
-	}
-}
-
-func watchPods(client *Client, hub *ws.Hub) {
-	for {
-		watcher, err := client.Clientset.CoreV1().Pods("").Watch(context.Background(), metav1.ListOptions{
-			LabelSelector: "game.k8s.example/entity",
-		})
-		if err != nil {
-			log.Printf("Pod watch error: %v, retrying...", err)
-			continue
-		}
-		for event := range watcher.ResultChan() {
-			if event.Type == watch.Error {
-				continue
-			}
-			data, _ := json.Marshal(ws.Event{
-				Type:   "POD_UPDATE",
-				Action: string(event.Type),
-			})
 			hub.Broadcast(data)
 		}
 	}

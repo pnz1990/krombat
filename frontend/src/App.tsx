@@ -1,17 +1,16 @@
 import { useState, useCallback } from 'react'
-import { DungeonSummary, DungeonDetail, listDungeons, getDungeon, createDungeon, submitAttack } from './api'
+import { DungeonSummary, DungeonCR, listDungeons, getDungeon, createDungeon, submitAttack } from './api'
 import { useWebSocket, WSEvent } from './useWebSocket'
 
 const SPRITES: Record<string, string> = {
   monster_alive: '👹', monster_dead: '💀',
   boss_pending: '🔒', boss_ready: '🐉', boss_defeated: '👑',
-  treasure: '🏆',
 }
 
 export default function App() {
   const [dungeons, setDungeons] = useState<DungeonSummary[]>([])
   const [selected, setSelected] = useState<{ ns: string; name: string } | null>(null)
-  const [detail, setDetail] = useState<DungeonDetail | null>(null)
+  const [detail, setDetail] = useState<DungeonCR | null>(null)
   const [events, setEvents] = useState<WSEvent[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -56,7 +55,6 @@ export default function App() {
     setLoading(false)
   }
 
-  // Initial load
   useState(() => { listDungeons().then(setDungeons).catch(() => {}) })
 
   return (
@@ -80,7 +78,7 @@ export default function App() {
         <div className="loading">Loading dungeon</div>
       ) : detail ? (
         <DungeonView
-          detail={detail}
+          cr={detail}
           onBack={() => { setSelected(null); setDetail(null); setShowLoot(false); refresh() }}
           onAttack={handleAttack}
           events={events}
@@ -132,27 +130,23 @@ function DungeonList({ dungeons, onSelect }: { dungeons: DungeonSummary[]; onSel
   )
 }
 
-function DungeonView({ detail, onBack, onAttack, events, showLoot, onOpenLoot, onCloseLoot }: {
-  detail: DungeonDetail; onBack: () => void; onAttack: (t: string, d: number) => void; events: WSEvent[]
+function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onCloseLoot }: {
+  cr: DungeonCR; onBack: () => void; onAttack: (t: string, d: number) => void; events: WSEvent[]
   showLoot: boolean; onOpenLoot: () => void; onCloseLoot: () => void
 }) {
-  const { dungeon, pods } = detail
-  const spec = dungeon.spec || {}
-  const status = dungeon.status || {}
-  const podList = pods?.items || []
-  const monsters = podList.filter(p => p.metadata.labels['game.k8s.example/entity'] === 'monster')
-  const boss = podList.find(p => p.metadata.labels['game.k8s.example/entity'] === 'boss')
-  const maxMonsterHP = { easy: 30, normal: 50, hard: 80 }[spec.difficulty as string] || 50
-  const maxBossHP = { easy: 200, normal: 400, hard: 800 }[spec.difficulty as string] || 400
+  const { spec, status } = cr
+  const maxMonsterHP = { easy: 30, normal: 50, hard: 80 }[spec.difficulty] || 50
+  const maxBossHP = { easy: 200, normal: 400, hard: 800 }[spec.difficulty] || 400
+  const bossState = status?.bossState || (spec.bossHP > 0 ? (spec.monsterHP.every(hp => hp === 0) ? 'ready' : 'pending') : 'defeated')
 
   return (
     <div>
       <div className="dungeon-header">
-        <h2>⚔️ {dungeon.metadata.name}</h2>
+        <h2>⚔️ {cr.metadata.name}</h2>
         <button className="back-btn" onClick={onBack}>← Back to dungeons</button>
       </div>
 
-      {status.victory && (
+      {status?.victory && (
         <div className="victory-banner">
           <h2>🏆 VICTORY! 🏆</h2>
           <p className="loot">The dungeon has been conquered!</p>
@@ -167,39 +161,33 @@ function DungeonView({ detail, onBack, onAttack, events, showLoot, onOpenLoot, o
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div style={{ fontSize: 48, marginBottom: 12 }}>🏆</div>
             <h2 style={{ color: 'var(--gold)', fontSize: 14, marginBottom: 12 }}>TREASURE UNLOCKED</h2>
-            <div className="loot-content">{detail.loot || 'No loot found...'}</div>
+            <div className="loot-content">{status?.loot || 'The treasure awaits...'}</div>
             <button className="btn btn-gold" style={{ marginTop: 16 }} onClick={onCloseLoot}>Close</button>
           </div>
         </div>
       )}
 
       <div className="status-bar">
-        <div><span className="label">Monsters alive:</span><span className="value">{status.livingMonsters ?? '?'}</span></div>
-        <div><span className="label">Boss:</span><span className="value">{status.bossState ?? '?'}</span></div>
+        <div><span className="label">Monsters alive:</span><span className="value">{status?.livingMonsters ?? '?'}</span></div>
+        <div><span className="label">Boss:</span><span className="value">{bossState}</span></div>
         <div><span className="label">Difficulty:</span><span className="value">{spec.difficulty}</span></div>
       </div>
 
       <h3 style={{ fontSize: '10px', marginBottom: 8, color: '#888' }}>MONSTERS</h3>
       <div className="monster-grid">
-        {monsters.map(m => {
-          const state = m.metadata.labels['game.k8s.example/state']
-          const hp = parseInt(m.metadata.annotations['game.k8s.example/hp'] || '0')
+        {spec.monsterHP.map((hp, idx) => {
+          const state = hp > 0 ? 'alive' : 'dead'
+          const name = `${cr.metadata.name}-monster-${idx}`
           return (
-            <EntityCard key={m.metadata.name} name={m.metadata.name} entity="monster"
+            <EntityCard key={name} name={name} entity="monster"
               state={state} hp={hp} maxHP={maxMonsterHP} onAttack={onAttack} />
           )
         })}
       </div>
 
-      {boss && (
-        <>
-          <h3 style={{ fontSize: '10px', marginBottom: 8, color: '#888' }}>BOSS</h3>
-          <EntityCard name={boss.metadata.name} entity="boss"
-            state={boss.metadata.labels['game.k8s.example/state']}
-            hp={parseInt(boss.metadata.annotations['game.k8s.example/hp'] || '0')}
-            maxHP={maxBossHP} onAttack={onAttack} />
-        </>
-      )}
+      <h3 style={{ fontSize: '10px', marginBottom: 8, color: '#888' }}>BOSS</h3>
+      <EntityCard name={`${cr.metadata.name}-boss`} entity="boss"
+        state={bossState} hp={spec.bossHP} maxHP={maxBossHP} onAttack={onAttack} />
 
       <h3 style={{ fontSize: '10px', margin: '16px 0 8px', color: '#888' }}>EVENT LOG</h3>
       <div className="event-log">
