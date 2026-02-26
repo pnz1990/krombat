@@ -21,8 +21,8 @@ spec:
         apiVersion: batch/v1
         kind: Job
         metadata:
-          name: "${schema.metadata.name}"
-          namespace: ${schema.spec.dungeonNamespace}
+          name: ${schema.metadata.name}
+          namespace: ${schema.metadata.namespace}
         spec:
           backoffLimit: 3
           ttlSecondsAfterFinished: 300
@@ -33,50 +33,45 @@ spec:
               containers:
                 - name: attacker
                   image: bitnami/kubectl:latest
+                  env:
+                    - name: DUNGEON
+                      value: ${schema.spec.dungeonName}
+                    - name: DUNGEON_NS
+                      value: ${schema.spec.dungeonNamespace}
+                    - name: TARGET
+                      value: ${schema.spec.target}
+                    - name: DAMAGE
+                      value: "${string(schema.spec.damage)}"
                   command: ["/bin/bash", "-c"]
                   args:
                     - |
                       set -e
-                      DUNGEON="${schema.spec.dungeonName}"
-                      DUNGEON_NS="${schema.spec.dungeonNamespace}"
-                      TARGET="${schema.spec.target}"
-                      DAMAGE=${schema.spec.damage}
-
                       for i in 1 2 3 4 5; do
-                        # Get current dungeon CR
                         DUNGEON_JSON=$(kubectl get dungeon "$DUNGEON" -n "$DUNGEON_NS" -o json)
-                        RV=$(echo "$DUNGEON_JSON" | jq -r '.metadata.resourceVersion')
 
                         if echo "$TARGET" | grep -q "boss"; then
-                          # Boss attack
                           OLD_HP=$(echo "$DUNGEON_JSON" | jq -r '.spec.bossHP')
                           NEW_HP=$((OLD_HP - DAMAGE))
                           [ "$NEW_HP" -lt 0 ] && NEW_HP=0
                           PATCH="{\"spec\":{\"bossHP\":$NEW_HP}}"
                         else
-                          # Monster attack - extract index from target name (e.g., demo-monster-2 -> 2)
                           IDX=$(echo "$TARGET" | grep -oE '[0-9]+$')
                           OLD_HP=$(echo "$DUNGEON_JSON" | jq -r ".spec.monsterHP[$IDX]")
                           NEW_HP=$((OLD_HP - DAMAGE))
                           [ "$NEW_HP" -lt 0 ] && NEW_HP=0
-                          # Build JSON patch for the specific array index
                           HP_ARRAY=$(echo "$DUNGEON_JSON" | jq ".spec.monsterHP[$IDX] = $NEW_HP | .spec.monsterHP")
                           PATCH="{\"spec\":{\"monsterHP\":$HP_ARRAY}}"
                         fi
 
                         echo "Attacking $TARGET: HP $OLD_HP -> $NEW_HP (damage: $DAMAGE)"
 
-                        # Patch with resourceVersion for optimistic concurrency
-                        if kubectl patch dungeon "$DUNGEON" -n "$DUNGEON_NS" \
-                          --type=merge -p "$PATCH" \
-                          --subresource="" 2>&1; then
+                        if kubectl patch dungeon "$DUNGEON" -n "$DUNGEON_NS" --type=merge -p "$PATCH" 2>&1; then
                           echo "Attack successful!"
                           exit 0
                         fi
 
                         echo "Conflict, retrying ($i/5)..."
-                        sleep $((i))
+                        sleep $i
                       done
-
                       echo "Attack failed after retries"
                       exit 1

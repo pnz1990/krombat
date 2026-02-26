@@ -13,9 +13,9 @@ spec:
       monsterHP: "[]integer"
       bossHP: integer | default=0
     status:
-      livingMonsters: "${size(schema.spec.monsterHP.filter(hp, hp > 0))}"
-      bossState: "${schema.spec.bossHP > 0 ? (size(schema.spec.monsterHP.filter(hp, hp > 0)) == 0 ? 'ready' : 'pending') : 'defeated'}"
-      victory: "${schema.spec.bossHP == 0 && size(schema.spec.monsterHP) > 0 && size(schema.spec.monsterHP.filter(hp, hp > 0)) == 0}"
+      livingMonsters: "${size(monsterPods.filter(m, m.metadata.labels['game.k8s.example/state'] == 'alive'))}"
+      bossState: "${bossPod.metadata.labels['game.k8s.example/state']}"
+      victory: "${bossPod.metadata.labels['game.k8s.example/state'] == 'defeated'}"
 
   resources:
     # --- Namespace per dungeon ---
