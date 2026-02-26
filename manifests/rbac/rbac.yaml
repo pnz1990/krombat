@@ -63,4 +63,4 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: attack-job-sa
-    namespace: rpg-system
+    namespace: default
