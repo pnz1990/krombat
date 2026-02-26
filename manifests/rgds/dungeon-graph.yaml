@@ -76,10 +76,8 @@ spec:
                   cpu: "10m"
                   memory: "16Mi"
 
-    # --- Treasure (only after boss defeated) ---
+    # --- Treasure (created with dungeon, revealed by frontend only after boss defeated) ---
     - id: treasure
-      includeWhen:
-        - "${bossPod.metadata.labels['game.k8s.example/state'] == 'defeated'}"
       template:
         apiVersion: v1
         kind: Secret
