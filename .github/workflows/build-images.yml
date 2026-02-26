@@ -3,7 +3,6 @@ name: Build & Push Images
 on:
   push:
     branches: [main]
-    paths: [backend/**, frontend/**]
 
 permissions:
   id-token: write
