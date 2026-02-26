@@ -1,4 +1,5 @@
 <div align="center">
+  <img src="assets/logo.png" alt="Kubernetes RPG - KROMBAT" width="400">
   
   # Kubernetes RPG
   
