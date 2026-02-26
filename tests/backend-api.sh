@@ -84,7 +84,7 @@ CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeons/def
 
 # --- Test 9: Attack validation ---
 log "Test 9: Attack validation"
-CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeons/default/$DUNGEON/attacks" \
+CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeons/default/validation-test/attacks" \
   -H "Content-Type: application/json" -d '{"target":"","damage":0}')
 [ "$CODE" = "400" ] && pass "Invalid attack rejected -> 400" || fail "Invalid attack -> $CODE"
 
