@@ -12,7 +12,7 @@ Kubernetes RPG reframes Kubernetes from "container scheduler" to "general-purpos
 | Monster     | Pod (labels/annotations derived from Dungeon CR) |
 | Boss        | Pod (state derived from monster HP values) |
 | Attack      | Custom Resource → Job (patches Dungeon CR) |
-| Treasure    | Secret |
+| Treasure    | Secret (loot exposed via Dungeon CR status) |
 
 Each dungeon instance gets its own Namespace for isolation and clean teardown.
 
@@ -25,39 +25,40 @@ Each dungeon instance gets its own Namespace for isolation and clean teardown.
 5. **Boss unlocks** — when all monster HP=0, kro transitions the boss to `state=ready`
 6. **Defeat the boss** — attack the boss to reduce `bossHP` to 0; kro sets `state=defeated` and victory=true
 
-All state transitions are driven by kro's reconciliation loop. The system is intentionally turn-based with 1–3 second latency tolerance, matching Kubernetes' performance envelope.
+The backend and frontend only interact with kro-generated CRs (Dungeon and Attack). All game logic — HP calculations, state transitions, resource creation — lives in kro's CEL expressions and resource graph definitions.
 
 ## Architecture
 
 ```
 ┌─────────────┐     ┌─────────────┐     ┌──────────────────────┐
 │  React SPA  │────▶│  Go Backend │────▶│  Kubernetes API       │
-│  (stateless)│◀────│  (gateway)  │◀────│  + kro controller     │
+│  (8-bit UI) │◀────│  (gateway)  │◀────│  + kro controller     │
 └─────────────┘  WS └─────────────┘watch└──────────────────────┘
-                                              ▲
-                                              │ sync
-                                         ┌────┴─────┐
-                                         │ Argo CD  │
-                                         │ (GitOps) │
-                                         └────┬─────┘
-                                              │
-                                         ┌────┴─────┐
-                                         │ Git Repo │
-                                         └──────────┘
+     nginx              │                       ▲
+     proxy ─────────────┘                       │ sync
+                                           ┌────┴─────┐
+                                           │ Argo CD  │
+                                           │ (GitOps) │
+                                           └────┬─────┘
+                                                │
+                                           ┌────┴─────┐
+                                           │ Git Repo │
+                                           └──────────┘
 ```
 
-- **Frontend** — React SPA rendering dungeon state with real-time WebSocket updates (TODO)
-- **Backend** — Stateless Go service with REST API + WebSocket. Validates requests, proxies K8s operations, streams events. Includes rate limiting (1 attack/s per dungeon) and Prometheus metrics on `/metrics`
-- **Kubernetes + kro** — Sole source of truth. kro runs as an [EKS Managed Capability](https://docs.aws.amazon.com/eks/latest/userguide/kro.html). Two RGDs orchestrate the game: `dungeon-graph` (state management) and `attack-graph` (combat)
-- **Argo CD** — Runs as an [EKS Managed Capability](https://docs.aws.amazon.com/eks/latest/userguide/argocd.html). Continuously syncs all cluster manifests from this Git repo. GitHub webhook configured for ~6s sync latency
+- **Frontend** — 8-bit D&D-inspired React SPA with pixel art styling. Nginx reverse-proxies `/api/` to the backend. All game state derived from the Dungeon CR
+- **Backend** — Stateless Go service. Only touches Dungeon and Attack CRs — never reads Pods, Secrets, or Jobs. Includes rate limiting (1 attack/s per dungeon) and Prometheus metrics on `/metrics`
+- **Kubernetes + kro** — Sole source of truth. Two RGDs orchestrate the game: `dungeon-graph` (state management) and `attack-graph` (combat). kro runs as an [EKS Managed Capability](https://docs.aws.amazon.com/eks/latest/userguide/kro.html)
+- **Argo CD** — Runs as an [EKS Managed Capability](https://docs.aws.amazon.com/eks/latest/userguide/argocd.html). Continuously syncs all cluster manifests from this Git repo. GitHub webhook for ~6s sync latency
 
 ## Key Demonstrations
 
-- **Two-RGD orchestration** — `dungeon-graph` manages game state, `attack-graph` handles combat; both coordinated by kro
-- **Dynamic resource generation** — Monster pod count driven by CEL expressions in the RGD
+- **Two-RGD orchestration** — `dungeon-graph` manages game state, `attack-graph` handles combat
+- **Dynamic resource generation** — Monster pod count driven by CEL expressions
 - **Cross-resource state derivation** — Boss readiness depends on aggregated monster HP values via CEL
 - **Drift correction** — Delete an alive monster pod and kro recreates it with correct state from Dungeon CR
 - **Optimistic concurrency** — Attack Jobs use resourceVersion preconditions for safe concurrent Dungeon CR mutation
+- **CRs as the only interface** — Backend never touches native K8s objects; kro is the abstraction layer
 
 ## Project Structure
 
@@ -66,15 +67,21 @@ All state transitions are driven by kro's reconciliation loop. The system is int
 │   ├── cmd/                 # Entrypoint
 │   ├── internal/            # Handlers, K8s client, WebSocket hub
 │   └── Dockerfile           # Multi-stage build (distroless)
+├── frontend/                # React SPA
+│   ├── src/                 # App, API client, WebSocket hook, CSS
+│   ├── nginx.conf           # Reverse proxy to backend
+│   └── Dockerfile           # Node build + nginx runtime
 ├── manifests/               # Argo CD syncs this directory
 │   ├── apps/                # Argo CD Application
 │   ├── rbac/                # ServiceAccounts, Roles, Bindings
 │   ├── rgds/                # kro ResourceGraphDefinitions
-│   └── system/              # Backend deployment, dungeon reaper
+│   └── system/              # Backend/frontend deployments, dungeon reaper
 ├── infra/                   # Terraform (EKS, capabilities, ECR, CI)
 ├── tests/                   # Integration test suites
 │   ├── run.sh               # Game engine tests (27 tests)
 │   └── backend-api.sh       # Backend API tests (14 tests)
+├── scripts/                 # Utility scripts
+│   └── watch-dungeon.sh     # tmux dashboard for watching game state
 ├── docs/                    # Design documents and runbook
 └── .github/workflows/       # CI pipelines
 ```
@@ -85,15 +92,49 @@ All state transitions are driven by kro's reconciliation loop. The system is int
 - `kubectl` configured for the target cluster
 - See [infra/SETUP.md](infra/SETUP.md) for full provisioning guide
 
-## Access
+## Running the Game
 
-The backend is not publicly exposed. Access via `kubectl port-forward`:
+The backend and frontend run in the `rpg-system` namespace, deployed via Argo CD from the `manifests/` directory.
+
+### Access the UI
+
+```bash
+kubectl port-forward svc/rpg-frontend -n rpg-system 3000:3000
+```
+
+Open http://localhost:3000 — create a dungeon, attack monsters, defeat the boss.
+
+### Access the Backend API directly
 
 ```bash
 kubectl port-forward svc/rpg-backend -n rpg-system 8080:8080
 ```
 
-## Quick Start (kubectl only, no UI needed)
+```bash
+# Create a dungeon
+curl -X POST http://localhost:8080/api/v1/dungeons \
+  -H "Content-Type: application/json" \
+  -d '{"name":"my-dungeon","monsters":3,"difficulty":"normal"}'
+
+# List dungeons
+curl http://localhost:8080/api/v1/dungeons
+
+# Get dungeon state
+curl http://localhost:8080/api/v1/dungeons/default/my-dungeon
+
+# Attack a monster
+curl -X POST http://localhost:8080/api/v1/dungeons/default/my-dungeon/attacks \
+  -H "Content-Type: application/json" \
+  -d '{"target":"my-dungeon-monster-0","damage":50}'
+```
+
+### Watch game state (tmux dashboard)
+
+```bash
+./scripts/watch-dungeon.sh my-dungeon
+```
+
+### Play via kubectl only (no UI needed)
 
 ```bash
 # Create a dungeon
@@ -109,8 +150,8 @@ spec:
   bossHP: 400
 EOF
 
-# Wait for kro to reconcile (~10s), then check state
-kubectl get pods -n my-dungeon -o custom-columns='NAME:.metadata.name,HP:.metadata.annotations.game\.k8s\.example/hp,STATE:.metadata.labels.game\.k8s\.example/state'
+# Wait for kro (~10s), then check state
+kubectl get dungeon my-dungeon -o jsonpath='{.status}'
 
 # Attack a monster
 cat <<EOF | kubectl apply -f -
@@ -125,8 +166,8 @@ spec:
   damage: 50
 EOF
 
-# Check dungeon status
-kubectl get dungeon my-dungeon -o jsonpath='{.status}'
+# Clean up
+kubectl delete dungeon my-dungeon
 ```
 
 ## License
