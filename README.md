@@ -1,6 +1,6 @@
 # Kubernetes RPG
 
-An interactive, turn-based dungeon game where the entire game state lives in Kubernetes — orchestrated by [kro](https://kro.run) ResourceGraphDefinitions. No custom controllers, no external databases. Just declarative resource graphs, CEL expressions, and the Kubernetes control plane acting as a programmable state machine.
+An interactive, turn-based dungeon game where the entire game state lives in Kubernetes — orchestrated by [kro](https://kro.run) ResourceGraphDefinitions running as an [EKS Managed Capability](https://docs.aws.amazon.com/eks/latest/userguide/kro.html). No custom controllers, no external databases. Just declarative resource graphs, CEL expressions, and the Kubernetes control plane acting as a programmable state machine.
 
 ## Concept
 
@@ -37,7 +37,7 @@ All state transitions are driven by kro's reconciliation loop. The system is int
 
 - **Frontend** — React SPA rendering dungeon state with real-time WebSocket updates
 - **Backend** — Stateless Go service that validates requests, proxies K8s operations, and streams events
-- **Kubernetes + kro** — Sole source of truth. RGDs define resource graphs with dependency resolution, dynamic pod generation, readiness gating, and conditional resource creation
+- **Kubernetes + kro** — Sole source of truth. kro runs as an [EKS Managed Capability](https://docs.aws.amazon.com/eks/latest/userguide/kro.html). RGDs define resource graphs with dependency resolution, dynamic pod generation, readiness gating, and conditional resource creation
 
 ## Key Demonstrations
 
@@ -49,7 +49,7 @@ All state transitions are driven by kro's reconciliation loop. The system is int
 
 ## Prerequisites
 
-- Kubernetes cluster with [kro](https://kro.run) installed
+- Amazon EKS cluster with the [kro managed capability](https://docs.aws.amazon.com/eks/latest/userguide/kro.html) enabled
 - `kubectl` configured for the target cluster
 
 ## Access
