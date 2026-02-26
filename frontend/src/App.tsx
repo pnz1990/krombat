@@ -134,10 +134,11 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
   cr: DungeonCR; onBack: () => void; onAttack: (t: string, d: number) => void; events: WSEvent[]
   showLoot: boolean; onOpenLoot: () => void; onCloseLoot: () => void
 }) {
-  const { spec, status } = cr
+  const spec = cr.spec || { monsters: 0, difficulty: 'normal', monsterHP: [], bossHP: 0 }
+  const status = cr.status
   const maxMonsterHP = { easy: 30, normal: 50, hard: 80 }[spec.difficulty] || 50
   const maxBossHP = { easy: 200, normal: 400, hard: 800 }[spec.difficulty] || 400
-  const bossState = status?.bossState || (spec.bossHP > 0 ? (spec.monsterHP.every(hp => hp === 0) ? 'ready' : 'pending') : 'defeated')
+  const bossState = status?.bossState || (spec.bossHP > 0 ? ((spec.monsterHP || []).every(hp => hp === 0) ? 'ready' : 'pending') : 'defeated')
 
   return (
     <div>
@@ -175,7 +176,7 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
 
       <h3 style={{ fontSize: '10px', marginBottom: 8, color: '#888' }}>MONSTERS</h3>
       <div className="monster-grid">
-        {spec.monsterHP.map((hp, idx) => {
+        {(spec.monsterHP || []).map((hp, idx) => {
           const state = hp > 0 ? 'alive' : 'dead'
           const name = `${cr.metadata.name}-monster-${idx}`
           return (
