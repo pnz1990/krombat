@@ -19,10 +19,11 @@ Each dungeon instance gets its own Namespace for isolation and clean teardown.
 ## How It Works
 
 1. **Create a Dungeon** — specify monster count and difficulty (easy/normal/hard)
-2. **kro reconciles** — creates a namespace, monster pods, and a pending boss
-3. **Attack monsters** — submit Attack CRs that spawn Jobs to atomically decrement HP via annotation patches
-4. **Boss unlocks** — when all monsters are dead, the boss transitions to "ready"
-5. **Defeat the boss** — a Treasure Secret is conditionally created on victory
+2. **kro reconciles** — creates a namespace, monster pods (with HP from difficulty), a pending boss, and a treasure Secret
+3. **Attack monsters** — submit Attack CRs; kro's attack-graph RGD spawns a Job that patches the Dungeon CR's `monsterHP` array
+4. **kro re-reconciles** — derives pod labels from HP values: monsters with HP=0 become `state=dead`
+5. **Boss unlocks** — when all monster HP=0, kro transitions the boss to `state=ready`
+6. **Defeat the boss** — attack the boss to reduce `bossHP` to 0; kro sets `state=defeated` and victory=true
 
 All state transitions are driven by kro's reconciliation loop. The system is intentionally turn-based with 1–3 second latency tolerance, matching Kubernetes' performance envelope.
 
@@ -52,11 +53,12 @@ All state transitions are driven by kro's reconciliation loop. The system is int
 
 ## Key Demonstrations
 
+- **Two-RGD orchestration** — `dungeon-graph` manages game state, `attack-graph` handles combat; both coordinated by kro
 - **Dynamic resource generation** — Monster pod count driven by CEL expressions in the RGD
-- **Cross-resource state derivation** — Boss readiness depends on aggregated monster state
+- **Cross-resource state derivation** — Boss readiness depends on aggregated monster HP values
 - **Conditional resource creation** — Treasure only materializes after boss defeat
 - **Drift correction** — Delete an alive monster pod and kro recreates it; delete a dead one and it stays gone
-- **Optimistic concurrency** — Attack Jobs use resourceVersion preconditions for safe concurrent metadata mutation
+- **Optimistic concurrency** — Attack Jobs use resourceVersion preconditions for safe concurrent Dungeon CR mutation
 
 ## Prerequisites
 

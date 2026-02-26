@@ -10,10 +10,12 @@ spec:
     spec:
       monsters: integer | default=3 minimum=1 maximum=10
       difficulty: string | default="normal" enum=easy,normal,hard
+      monsterHP: "[]integer"
+      bossHP: integer | default=0
     status:
-      livingMonsters: ${size(monsterPods.filter(m, m.metadata.labels['game.k8s.example/state'] == 'alive'))}
-      bossState: ${bossPod.metadata.labels['game.k8s.example/state']}
-      victory: ${size(monsterPods.filter(m, m.metadata.labels['game.k8s.example/state'] == 'alive')) == 0 && bossPod.metadata.labels['game.k8s.example/state'] == 'defeated'}
+      livingMonsters: ${size(schema.spec.monsterHP.filter(hp, hp > 0))}
+      bossState: ${schema.spec.bossHP > 0 ? (size(schema.spec.monsterHP.filter(hp, hp > 0)) == 0 ? 'ready' : 'pending') : (schema.spec.bossHP == 0 && size(schema.spec.monsterHP) > 0 && size(schema.spec.monsterHP.filter(hp, hp > 0)) == 0 ? 'defeated' : 'pending')}
+      victory: ${schema.spec.bossHP == 0 && size(schema.spec.monsterHP) > 0 && size(schema.spec.monsterHP.filter(hp, hp > 0)) == 0}
 
   resources:
     # --- Namespace per dungeon ---
@@ -26,10 +28,10 @@ spec:
           labels:
             game.k8s.example/dungeon: ${schema.metadata.name}
 
-    # --- Monster pods (dynamic count) ---
+    # --- Monster pods (dynamic count from monsterHP array) ---
     - id: monsterPods
       forEach:
-        - idx: ${lists.range(schema.spec.monsters)}
+        - idx: ${lists.range(size(schema.spec.monsterHP))}
       template:
         apiVersion: v1
         kind: Pod
@@ -39,9 +41,9 @@ spec:
           labels:
             game.k8s.example/dungeon: ${schema.metadata.name}
             game.k8s.example/entity: monster
-            game.k8s.example/state: alive
+            game.k8s.example/state: "${schema.spec.monsterHP[idx] > 0 ? 'alive' : 'dead'}"
           annotations:
-            game.k8s.example/hp: "${schema.spec.difficulty == 'easy' ? '30' : schema.spec.difficulty == 'normal' ? '50' : '80'}"
+            game.k8s.example/hp: "${string(schema.spec.monsterHP[idx])}"
         spec:
           containers:
             - name: monster
@@ -53,8 +55,6 @@ spec:
 
     # --- Boss pod ---
     - id: bossPod
-      readyWhen:
-        - "${bossPod.metadata.labels['game.k8s.example/state'] != 'pending'}"
       template:
         apiVersion: v1
         kind: Pod
@@ -64,9 +64,9 @@ spec:
           labels:
             game.k8s.example/dungeon: ${schema.metadata.name}
             game.k8s.example/entity: boss
-            game.k8s.example/state: "${monsterPods.all(m, m.metadata.labels['game.k8s.example/state'] == 'dead') ? 'ready' : 'pending'}"
+            game.k8s.example/state: "${schema.spec.bossHP > 0 ? (size(schema.spec.monsterHP.filter(hp, hp > 0)) == 0 ? 'ready' : 'pending') : 'defeated'}"
           annotations:
-            game.k8s.example/hp: "${schema.spec.difficulty == 'easy' ? '200' : schema.spec.difficulty == 'normal' ? '400' : '800'}"
+            game.k8s.example/hp: "${string(schema.spec.bossHP)}"
         spec:
           containers:
             - name: boss
@@ -76,7 +76,7 @@ spec:
                   cpu: "10m"
                   memory: "16Mi"
 
-    # --- Treasure (created with dungeon, revealed by frontend only after boss defeated) ---
+    # --- Treasure (created with dungeon, content only meaningful after victory) ---
     - id: treasure
       template:
         apiVersion: v1
@@ -88,7 +88,7 @@ spec:
             game.k8s.example/dungeon: ${schema.metadata.name}
             game.k8s.example/entity: treasure
         stringData:
-          loot: "${'Congratulations! Treasure code: ' + schema.metadata.name + '-LOOT'}"
+          loot: "${'Treasure code: ' + schema.metadata.name + '-LOOT'}"
 
     # --- ResourceQuota per dungeon namespace ---
     - id: quota
