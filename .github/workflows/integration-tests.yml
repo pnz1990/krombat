@@ -52,3 +52,10 @@ jobs:
 
       - name: Run integration tests
         run: ./tests/run.sh
+
+      - name: Run backend API tests
+        run: |
+          kubectl port-forward svc/rpg-backend -n rpg-system 8080:8080 &
+          sleep 5
+          ./tests/backend-api.sh
+          kill %1 2>/dev/null || true
