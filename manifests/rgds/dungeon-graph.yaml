@@ -16,7 +16,7 @@ spec:
       livingMonsters: "${size(monsterPods.filter(m, m.metadata.labels['game.k8s.example/state'] == 'alive'))}"
       bossState: "${bossPod.metadata.labels['game.k8s.example/state']}"
       victory: "${bossPod.metadata.labels['game.k8s.example/state'] == 'defeated'}"
-      loot: "${'Treasure code: ' + schema.metadata.name + '-LOOT'}"
+      loot: "${'Treasure code: ' + ns.metadata.name + '-LOOT'}"
 
   resources:
     # --- Namespace per dungeon ---
