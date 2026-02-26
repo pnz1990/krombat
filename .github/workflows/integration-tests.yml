@@ -55,6 +55,8 @@ jobs:
 
       - name: Run backend API tests
         run: |
+          kubectl rollout restart deployment/rpg-backend -n rpg-system
+          kubectl rollout status deployment/rpg-backend -n rpg-system --timeout=120s
           kubectl port-forward svc/rpg-backend -n rpg-system 8080:8080 &
           sleep 5
           ./tests/backend-api.sh
