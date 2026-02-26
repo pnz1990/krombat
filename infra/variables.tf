@@ -33,3 +33,9 @@ variable "github_repo" {
   type        = string
   default     = "pnz1990/krombat"
 }
+
+variable "enable_ecr" {
+  description = "Enable ECR repository creation"
+  type        = bool
+  default     = true
+}

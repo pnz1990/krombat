@@ -1,0 +1,35 @@
+name: Build & Push Images
+
+on:
+  push:
+    branches: [main]
+    paths: [backend/**]
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-west-2
+  ECR_REPO: krombat/backend
+
+jobs:
+  build-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: aws-actions/amazon-ecr-login@v2
+        id: ecr
+
+      - name: Build and push
+        run: |
+          IMAGE=${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPO }}
+          docker build -t $IMAGE:${{ github.sha }} -t $IMAGE:latest backend/
+          docker push $IMAGE:${{ github.sha }}
+          docker push $IMAGE:latest
