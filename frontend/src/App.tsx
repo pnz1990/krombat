@@ -15,6 +15,7 @@ export default function App() {
   const [events, setEvents] = useState<WSEvent[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [showLoot, setShowLoot] = useState(false)
 
   const refresh = useCallback(async () => {
     try {
@@ -80,9 +81,12 @@ export default function App() {
       ) : detail ? (
         <DungeonView
           detail={detail}
-          onBack={() => { setSelected(null); setDetail(null); refresh() }}
+          onBack={() => { setSelected(null); setDetail(null); setShowLoot(false); refresh() }}
           onAttack={handleAttack}
           events={events}
+          showLoot={showLoot}
+          onOpenLoot={() => setShowLoot(true)}
+          onCloseLoot={() => setShowLoot(false)}
         />
       ) : null}
     </div>
@@ -128,8 +132,9 @@ function DungeonList({ dungeons, onSelect }: { dungeons: DungeonSummary[]; onSel
   )
 }
 
-function DungeonView({ detail, onBack, onAttack, events }: {
+function DungeonView({ detail, onBack, onAttack, events, showLoot, onOpenLoot, onCloseLoot }: {
   detail: DungeonDetail; onBack: () => void; onAttack: (t: string, d: number) => void; events: WSEvent[]
+  showLoot: boolean; onOpenLoot: () => void; onCloseLoot: () => void
 }) {
   const { dungeon, pods } = detail
   const spec = dungeon.spec || {}
@@ -151,6 +156,20 @@ function DungeonView({ detail, onBack, onAttack, events }: {
         <div className="victory-banner">
           <h2>🏆 VICTORY! 🏆</h2>
           <p className="loot">The dungeon has been conquered!</p>
+          <button className="btn btn-gold" style={{ marginTop: 12 }} onClick={onOpenLoot}>
+            🗝️ Open Treasure
+          </button>
+        </div>
+      )}
+
+      {showLoot && (
+        <div className="modal-overlay" onClick={onCloseLoot}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize: 48, marginBottom: 12 }}>🏆</div>
+            <h2 style={{ color: 'var(--gold)', fontSize: 14, marginBottom: 12 }}>TREASURE UNLOCKED</h2>
+            <div className="loot-content">{detail.loot || 'No loot found...'}</div>
+            <button className="btn btn-gold" style={{ marginTop: 16 }} onClick={onCloseLoot}>Close</button>
+          </div>
         </div>
       )}
 

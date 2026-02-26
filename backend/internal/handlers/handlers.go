@@ -141,9 +141,17 @@ func (h *Handler) GetDungeon(w http.ResponseWriter, r *http.Request) {
 		pods = nil
 	}
 
+	var loot string
+	secret, err := h.client.Clientset.CoreV1().Secrets(name).Get(
+		context.Background(), name+"-treasure", metav1.GetOptions{})
+	if err == nil {
+		loot = string(secret.Data["loot"])
+	}
+
 	resp := map[string]interface{}{
 		"dungeon": dungeon.Object,
 		"pods":    pods,
+		"loot":    loot,
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)

@@ -8,6 +8,7 @@ export interface DungeonSummary {
 export interface DungeonDetail {
   dungeon: { metadata: any; spec: any; status: any }
   pods: { items: PodInfo[] } | null
+  loot: string
 }
 
 export interface PodInfo {
