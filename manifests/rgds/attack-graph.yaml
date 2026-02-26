@@ -13,7 +13,7 @@ spec:
       target: string | required=true
       damage: integer | required=true
     status:
-      jobStatus: ${attackJob.status.?succeeded.orValue(0) > 0 ? 'success' : 'pending'}
+      jobStatus: "${attackJob.status.?succeeded.orValue(0) > 0 ? 'success' : 'pending'}"
 
   resources:
     - id: attackJob

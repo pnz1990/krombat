@@ -13,9 +13,9 @@ spec:
       monsterHP: "[]integer"
       bossHP: integer | default=0
     status:
-      livingMonsters: ${size(schema.spec.monsterHP.filter(hp, hp > 0))}
-      bossState: ${schema.spec.bossHP > 0 ? (size(schema.spec.monsterHP.filter(hp, hp > 0)) == 0 ? 'ready' : 'pending') : (schema.spec.bossHP == 0 && size(schema.spec.monsterHP) > 0 && size(schema.spec.monsterHP.filter(hp, hp > 0)) == 0 ? 'defeated' : 'pending')}
-      victory: ${schema.spec.bossHP == 0 && size(schema.spec.monsterHP) > 0 && size(schema.spec.monsterHP.filter(hp, hp > 0)) == 0}
+      livingMonsters: "${size(schema.spec.monsterHP.filter(hp, hp > 0))}"
+      bossState: "${schema.spec.bossHP > 0 ? (size(schema.spec.monsterHP.filter(hp, hp > 0)) == 0 ? 'ready' : 'pending') : 'defeated'}"
+      victory: "${schema.spec.bossHP == 0 && size(schema.spec.monsterHP) > 0 && size(schema.spec.monsterHP.filter(hp, hp > 0)) == 0}"
 
   resources:
     # --- Namespace per dungeon ---
@@ -76,7 +76,7 @@ spec:
                   cpu: "10m"
                   memory: "16Mi"
 
-    # --- Treasure (created with dungeon, content only meaningful after victory) ---
+    # --- Treasure ---
     - id: treasure
       template:
         apiVersion: v1
@@ -90,7 +90,7 @@ spec:
         stringData:
           loot: "${'Treasure code: ' + schema.metadata.name + '-LOOT'}"
 
-    # --- ResourceQuota per dungeon namespace ---
+    # --- ResourceQuota ---
     - id: quota
       template:
         apiVersion: v1
