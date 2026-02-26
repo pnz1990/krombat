@@ -34,63 +34,63 @@ spec:
         apiVersion: v1
         kind: Pod
         metadata:
-          name: ${schema.metadata.name + '-monster-' + string(idx)}
+          name: "${schema.metadata.name + '-monster-' + string(idx)}"
           namespace: ${schema.metadata.name}
           labels:
             game.k8s.example/dungeon: ${schema.metadata.name}
             game.k8s.example/entity: monster
             game.k8s.example/state: alive
           annotations:
-            game.k8s.example/hp: ${schema.spec.difficulty == 'easy' ? '30' : schema.spec.difficulty == 'normal' ? '50' : '80'}
+            game.k8s.example/hp: "${schema.spec.difficulty == 'easy' ? '30' : schema.spec.difficulty == 'normal' ? '50' : '80'}"
         spec:
           containers:
             - name: monster
               image: registry.k8s.io/pause:3.10
               resources:
                 requests:
-                  cpu: 10m
-                  memory: 16Mi
+                  cpu: "10m"
+                  memory: "16Mi"
 
     # --- Boss pod ---
     - id: bossPod
       readyWhen:
-        - ${each.metadata.labels['game.k8s.example/state'] != 'pending'}
+        - "${each.metadata.labels['game.k8s.example/state'] != 'pending'}"
       template:
         apiVersion: v1
         kind: Pod
         metadata:
-          name: ${schema.metadata.name + '-boss'}
+          name: "${schema.metadata.name + '-boss'}"
           namespace: ${schema.metadata.name}
           labels:
             game.k8s.example/dungeon: ${schema.metadata.name}
             game.k8s.example/entity: boss
-            game.k8s.example/state: ${monsterPods.all(m, m.metadata.labels['game.k8s.example/state'] == 'dead') ? 'ready' : 'pending'}
+            game.k8s.example/state: "${monsterPods.all(m, m.metadata.labels['game.k8s.example/state'] == 'dead') ? 'ready' : 'pending'}"
           annotations:
-            game.k8s.example/hp: ${schema.spec.difficulty == 'easy' ? '200' : schema.spec.difficulty == 'normal' ? '400' : '800'}
+            game.k8s.example/hp: "${schema.spec.difficulty == 'easy' ? '200' : schema.spec.difficulty == 'normal' ? '400' : '800'}"
         spec:
           containers:
             - name: boss
               image: registry.k8s.io/pause:3.10
               resources:
                 requests:
-                  cpu: 10m
-                  memory: 16Mi
+                  cpu: "10m"
+                  memory: "16Mi"
 
     # --- Treasure (only after boss defeated) ---
     - id: treasure
       includeWhen:
-        - ${bossPod.metadata.labels['game.k8s.example/state'] == 'defeated'}
+        - "${bossPod.metadata.labels['game.k8s.example/state'] == 'defeated'}"
       template:
         apiVersion: v1
         kind: Secret
         metadata:
-          name: ${schema.metadata.name + '-treasure'}
+          name: "${schema.metadata.name + '-treasure'}"
           namespace: ${schema.metadata.name}
           labels:
             game.k8s.example/dungeon: ${schema.metadata.name}
             game.k8s.example/entity: treasure
         stringData:
-          loot: ${'Congratulations! Treasure code: ' + schema.metadata.name + '-LOOT'}
+          loot: "${'Congratulations! Treasure code: ' + schema.metadata.name + '-LOOT'}"
 
     # --- ResourceQuota per dungeon namespace ---
     - id: quota
@@ -104,4 +104,4 @@ spec:
           hard:
             pods: "20"
             requests.cpu: "1"
-            requests.memory: 1Gi
+            requests.memory: "1Gi"

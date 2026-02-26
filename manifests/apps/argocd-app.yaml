@@ -13,7 +13,6 @@ spec:
       recurse: true
   destination:
     name: in-cluster
-    namespace: rpg-system
   syncPolicy:
     automated:
       prune: true
