@@ -103,3 +103,21 @@ spec:
             pods: "20"
             requests.cpu: "1"
             requests.memory: "1Gi"
+
+    # --- NetworkPolicy: deny all ingress except from rpg-system ---
+    - id: netpol
+      template:
+        apiVersion: networking.k8s.io/v1
+        kind: NetworkPolicy
+        metadata:
+          name: dungeon-default-deny
+          namespace: ${schema.metadata.name}
+        spec:
+          podSelector: {}
+          policyTypes:
+            - Ingress
+          ingress:
+            - from:
+                - namespaceSelector:
+                    matchLabels:
+                      kubernetes.io/metadata.name: rpg-system

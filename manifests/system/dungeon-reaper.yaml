@@ -1,0 +1,75 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: dungeon-reaper
+  namespace: rpg-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: dungeon-reaper
+rules:
+  - apiGroups: [game.k8s.example]
+    resources: [dungeons]
+    verbs: [get, list, delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: dungeon-reaper
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: dungeon-reaper
+subjects:
+  - kind: ServiceAccount
+    name: dungeon-reaper
+    namespace: rpg-system
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: dungeon-reaper
+  namespace: rpg-system
+spec:
+  schedule: "*/10 * * * *"
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      ttlSecondsAfterFinished: 600
+      template:
+        spec:
+          serviceAccountName: dungeon-reaper
+          restartPolicy: Never
+          containers:
+            - name: reaper
+              image: bitnami/kubectl:latest
+              command: ["/bin/bash", "-c"]
+              args:
+                - |
+                  set -e
+                  MAX_AGE_HOURS=${MAX_AGE_HOURS:-4}
+                  MAX_AGE_SECONDS=$((MAX_AGE_HOURS * 3600))
+                  NOW=$(date +%s)
+
+                  echo "Reaping dungeons older than ${MAX_AGE_HOURS}h..."
+
+                  kubectl get dungeons --all-namespaces -o json | jq -r '
+                    .items[] |
+                    "\(.metadata.namespace)/\(.metadata.name) \(.metadata.creationTimestamp)"
+                  ' | while read -r DUNGEON TS; do
+                    CREATED=$(date -d "$TS" +%s 2>/dev/null || date -jf "%Y-%m-%dT%H:%M:%SZ" "$TS" +%s 2>/dev/null || echo 0)
+                    AGE=$((NOW - CREATED))
+                    if [ "$AGE" -gt "$MAX_AGE_SECONDS" ]; then
+                      NS=$(echo "$DUNGEON" | cut -d/ -f1)
+                      NAME=$(echo "$DUNGEON" | cut -d/ -f2)
+                      echo "Deleting dungeon $NAME (namespace $NS, age: $((AGE/3600))h)"
+                      kubectl delete dungeon "$NAME" -n "$NS" || true
+                    fi
+                  done
+
+                  echo "Reaper complete."
+              env:
+                - name: MAX_AGE_HOURS
+                  value: "4"
