@@ -16,10 +16,10 @@ spec:
       bossHP: integer | default=0
       heroHP: integer | default=100
     status:
-      livingMonsters: "${size(monsterCRs.filter(m, m.status.?state.orValue('alive') == 'alive'))}"
-      bossState: "${bossCR.status.?state.orValue('pending')}"
-      victory: "${bossCR.status.?state.orValue('pending') == 'defeated'}"
-      defeat: "${heroCR.status.?state.orValue('alive') == 'defeated'}"
+      livingMonsters: "${size(monsterCRs.filter(m, m.status.?entityState.orValue('alive') == 'alive'))}"
+      bossState: "${bossCR.status.?entityState.orValue('pending')}"
+      victory: "${bossCR.status.?entityState.orValue('pending') == 'defeated'}"
+      defeat: "${heroCR.status.?entityState.orValue('alive') == 'defeated'}"
       loot: "${treasureCR.status.?loot.orValue('')}"
 
   resources:

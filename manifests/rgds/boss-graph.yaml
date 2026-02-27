@@ -15,7 +15,7 @@ spec:
       difficulty: string | default="normal"
       monstersAlive: integer | default=1
     status:
-      state: "${bossPod.metadata.labels['game.k8s.example/state']}"
+      entityState: "${bossPod.metadata.labels['game.k8s.example/state']}"
       hp: "${bossPod.metadata.annotations['game.k8s.example/hp']}"
 
   resources:

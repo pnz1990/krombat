@@ -14,7 +14,7 @@ spec:
       hp: integer | default=100
       difficulty: string | default="normal"
     status:
-      state: "${heroState.data.state}"
+      entityState: "${heroState.data.state}"
       hp: "${heroState.data.hp}"
 
   resources:

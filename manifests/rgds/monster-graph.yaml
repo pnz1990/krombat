@@ -15,7 +15,7 @@ spec:
       hp: integer | required=true
       difficulty: string | default="normal"
     status:
-      state: "${monsterPod.metadata.labels['game.k8s.example/state']}"
+      entityState: "${monsterPod.metadata.labels['game.k8s.example/state']}"
       hp: "${monsterPod.metadata.annotations['game.k8s.example/hp']}"
 
   resources:
