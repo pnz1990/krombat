@@ -415,23 +415,25 @@ spec:
                         EFFECT_NOTE=""
                         if echo "$REAL_TARGET" | grep -q "boss"; then
                           if [ "$NEW_HP" -gt 0 ]; then
-                            # Boss can inflict stun (15%) or burn (25%)
+                            # Boss can inflict stun (15%) or burn (25%) — only if not already active
                             EFFECT_ROLL=$((RANDOM % 100))
-                            if [ "$EFFECT_ROLL" -lt 15 ]; then
+                            if [ "$EFFECT_ROLL" -lt 15 ] && [ "$STUN_TURNS" -eq 0 ]; then
                               STUN_TURNS=1
                               EFFECT_NOTE=" Boss inflicts STUN! (1 turn)"
-                            elif [ "$EFFECT_ROLL" -lt 40 ]; then
+                            elif [ "$EFFECT_ROLL" -lt 40 ] && [ "$BURN_TURNS" -eq 0 ]; then
                               BURN_TURNS=2
                               EFFECT_NOTE=" Boss inflicts BURN! (2 turns, -8 HP/turn)"
                             fi
                           fi
                         else
                           if [ "$ALIVE" -gt 0 ] 2>/dev/null; then
-                            # Monsters can inflict poison (20%)
-                            EFFECT_ROLL=$((RANDOM % 100))
-                            if [ "$EFFECT_ROLL" -lt 20 ]; then
-                              POISON_TURNS=3
-                              EFFECT_NOTE=" Monsters inflict POISON! (3 turns, -5 HP/turn)"
+                            # Monsters can inflict poison (20%) — only if not already poisoned
+                            if [ "$POISON_TURNS" -eq 0 ]; then
+                              EFFECT_ROLL=$((RANDOM % 100))
+                              if [ "$EFFECT_ROLL" -lt 20 ]; then
+                                POISON_TURNS=3
+                                EFFECT_NOTE=" Monsters inflict POISON! (3 turns, -5 HP/turn)"
+                              fi
                             fi
                           fi
                         fi
