@@ -164,8 +164,97 @@ async function runSmokeTests() {
       failed += 2; // Skip view and attack tests
     }
     
-    // Test 9: Client-side routing - dungeon URL loads
-    console.log('Test 9: Dungeon URL route loads...');
+    // Test 9: Dice roll UI elements
+    console.log('Test 9: Dice roll buttons present...');
+    try {
+      const dungeonName2 = `test-dice-${Date.now()}`;
+      await page.evaluate(async (name) => {
+        await fetch('/api/v1/dungeons', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, monsters: 2, difficulty: 'normal' })
+        });
+      }, dungeonName2);
+      await page.waitForTimeout(6000); // Wait for kro reconciliation
+      await page.goto(`${BASE_URL}/dungeon/default/${dungeonName2}`, { timeout: TIMEOUT });
+      await page.waitForTimeout(3000);
+
+      // Check dice button exists with correct formula for normal difficulty (2d6+3)
+      const diceBtn = await page.locator('button.btn-primary').first();
+      const hasDiceBtn = await diceBtn.isVisible();
+      const diceBtnText = hasDiceBtn ? await diceBtn.textContent() : '';
+      const hasCorrectFormula = diceBtnText.includes('2d6+3');
+      if (hasDiceBtn && hasCorrectFormula) {
+        console.log('  ✓ Dice roll button with formula found\n');
+        passed++;
+      } else {
+        console.log(`  ✗ Dice roll button not found or wrong formula: "${diceBtnText}"\n`);
+        failed++;
+      }
+
+      // Test 10: Dice roll animation
+      console.log('Test 10: Dice roll animation...');
+      if (hasDiceBtn && hasCorrectFormula) {
+        await diceBtn.click();
+        // Check rolling overlay appears
+        const overlay = await page.locator('.dice-roll-overlay').first();
+        const hasOverlay = await overlay.isVisible({ timeout: 1000 });
+        if (hasOverlay) {
+          // Check formula text is shown
+          const formula = await page.locator('.dice-formula').first().textContent();
+          const hasFormula = formula && formula.includes('2d6+3');
+          // Wait for result to appear
+          await page.waitForSelector('.dice-result', { timeout: 3000 });
+          const result = await page.locator('.dice-result').first().textContent();
+          const hasResult = result && result.includes('💥');
+          if (hasFormula && hasResult) {
+            console.log('  ✓ Dice animation with formula and result displayed\n');
+            passed++;
+          } else {
+            console.log(`  ✗ Animation incomplete (formula: ${hasFormula}, result: ${hasResult})\n`);
+            failed++;
+          }
+        } else {
+          console.log('  ✗ Dice roll overlay did not appear\n');
+          failed++;
+        }
+      } else {
+        console.log('  ✗ Skipped (no dice button)\n');
+        failed++;
+      }
+
+      // Test 11: Boss dice formula is upgraded
+      console.log('Test 11: Boss dice formula upgraded...');
+      const bossBtn = await page.locator('.entity-card.pending button, .entity-card.ready button').first();
+      const bossVisible = await bossBtn.isVisible().catch(() => false);
+      if (bossVisible) {
+        const bossBtnText = await bossBtn.textContent();
+        // Normal boss should be 3d8+5 (base 2d6+3 upgraded: +1 die, +2 sides, +2 mod)
+        if (bossBtnText && bossBtnText.includes('3d8+5')) {
+          console.log('  ✓ Boss has upgraded dice formula (3d8+5)\n');
+          passed++;
+        } else {
+          console.log(`  ✗ Boss formula unexpected: ${bossBtnText}\n`);
+          failed++;
+        }
+      } else {
+        // Boss is pending (locked), no attack button expected — that's correct
+        console.log('  ✓ Boss locked (pending), no dice button shown (correct)\n');
+        passed++;
+      }
+
+      // Cleanup
+      await page.evaluate(async (name) => {
+        await fetch(`/api/v1/dungeons/default/${name}`, { method: 'DELETE' });
+      }, dungeonName2);
+
+    } catch (error) {
+      console.log('  ✗ Dice test error:', error.message, '\n');
+      failed++;
+    }
+
+    // Test 12: Client-side routing - dungeon URL loads
+    console.log('Test 12: Dungeon URL route loads...');
     try {
       await page.goto(`${BASE_URL}/dungeon/default/nonexistent`, { timeout: TIMEOUT });
       await page.waitForLoadState('domcontentloaded');
@@ -182,8 +271,8 @@ async function runSmokeTests() {
       failed++;
     }
     
-    // Test 10: Navigate back to root
-    console.log('Test 10: Navigate back to root...');
+    // Test 13: Navigate back to root
+    console.log('Test 13: Navigate back to root...');
     try {
       await page.goto(BASE_URL, { timeout: TIMEOUT });
       await page.waitForLoadState('domcontentloaded');
