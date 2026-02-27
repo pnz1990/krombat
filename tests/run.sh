@@ -355,55 +355,88 @@ HEAL_MANA=$(kubectl get dungeon "$ABILITY_DUNGEON" -o jsonpath='{.spec.heroMana}
 [ "$HEAL_MANA" = "3" ] && pass "Mage heal: mana 5->3 (costs 2)" || fail "Mage heal mana=$HEAL_MANA (expected 3)"
 
 # Warrior taunt test
-kubectl patch dungeon "$ABILITY_DUNGEON" --type=merge -p '{"spec":{"heroClass":"warrior","heroHP":150,"heroMana":0}}' 2>/dev/null
-sleep 5
+TAUNT_DUNGEON="test-taunt-$(date +%s)"
+cat <<EOF | kubectl apply -f -
+apiVersion: game.k8s.example/v1alpha1
+kind: Dungeon
+metadata:
+  name: $TAUNT_DUNGEON
+spec:
+  monsters: 1
+  difficulty: easy
+  monsterHP: [30]
+  bossHP: 200
+  heroHP: 150
+  heroClass: warrior
+  modifier: none
+EOF
+wait_for "taunt dungeon ready" \
+  "kubectl get dungeon $TAUNT_DUNGEON -o jsonpath='{.status.livingMonsters}' 2>/dev/null | grep -q 1" 60
 
 cat <<EOF | kubectl apply -f -
 apiVersion: game.k8s.example/v1alpha1
 kind: Attack
 metadata:
-  name: ${ABILITY_DUNGEON}-taunt
+  name: ${TAUNT_DUNGEON}-taunt
 spec:
-  dungeonName: $ABILITY_DUNGEON
+  dungeonName: $TAUNT_DUNGEON
   dungeonNamespace: default
   target: taunt
   damage: 0
 EOF
 
 wait_for "taunt job complete" \
-  "kubectl get job ${ABILITY_DUNGEON}-taunt -o jsonpath='{.status.succeeded}' 2>/dev/null | grep -q 1" 60
-sleep 5
+  "kubectl get job ${TAUNT_DUNGEON}-taunt -o jsonpath='{.status.succeeded}' 2>/dev/null | grep -q 1" 60
 
-TAUNT=$(kubectl get dungeon "$ABILITY_DUNGEON" -o jsonpath='{.spec.tauntActive}')
-[ "$TAUNT" = "1" ] && pass "Warrior taunt: tauntActive=1" || fail "Warrior taunt=$TAUNT (expected 1)"
+wait_for "taunt active" \
+  "[ \$(kubectl get dungeon $TAUNT_DUNGEON -o jsonpath='{.spec.tauntActive}' 2>/dev/null) = '1' ]" 15 \
+  && pass "Warrior taunt: tauntActive=1" || fail "Warrior taunt failed"
+
+kubectl delete dungeon "$TAUNT_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
 
 # Rogue backstab test
-kubectl patch dungeon "$ABILITY_DUNGEON" --type=merge -p '{"spec":{"heroClass":"rogue","heroHP":100,"heroMana":0,"tauntActive":0,"monsterHP":[30]}}' 2>/dev/null
-sleep 5
+BACKSTAB_DUNGEON="test-backstab-$(date +%s)"
+cat <<EOF | kubectl apply -f -
+apiVersion: game.k8s.example/v1alpha1
+kind: Dungeon
+metadata:
+  name: $BACKSTAB_DUNGEON
+spec:
+  monsters: 1
+  difficulty: easy
+  monsterHP: [30]
+  bossHP: 200
+  heroHP: 100
+  heroClass: rogue
+  modifier: none
+EOF
+wait_for "backstab dungeon ready" \
+  "kubectl get dungeon $BACKSTAB_DUNGEON -o jsonpath='{.status.livingMonsters}' 2>/dev/null | grep -q 1" 60
 
 cat <<EOF | kubectl apply -f -
 apiVersion: game.k8s.example/v1alpha1
 kind: Attack
 metadata:
-  name: ${ABILITY_DUNGEON}-backstab
+  name: ${BACKSTAB_DUNGEON}-backstab
 spec:
-  dungeonName: $ABILITY_DUNGEON
+  dungeonName: $BACKSTAB_DUNGEON
   dungeonNamespace: default
-  target: ${ABILITY_DUNGEON}-monster-0-backstab
+  target: ${BACKSTAB_DUNGEON}-monster-0-backstab
   damage: 15
 EOF
 
 wait_for "backstab job complete" \
-  "kubectl get job ${ABILITY_DUNGEON}-backstab -o jsonpath='{.status.succeeded}' 2>/dev/null | grep -q 1" 60
-sleep 5
+  "kubectl get job ${BACKSTAB_DUNGEON}-backstab -o jsonpath='{.status.succeeded}' 2>/dev/null | grep -q 1" 60
 
-BS_CD=$(kubectl get dungeon "$ABILITY_DUNGEON" -o jsonpath='{.spec.backstabCooldown}')
-BS_HP=$(kubectl get dungeon "$ABILITY_DUNGEON" -o jsonpath='{.spec.monsterHP[0]}')
+wait_for "backstab applied" \
+  "[ \$(kubectl get dungeon $BACKSTAB_DUNGEON -o jsonpath='{.spec.backstabCooldown}' 2>/dev/null) = '3' ]" 15
+
+BS_CD=$(kubectl get dungeon "$BACKSTAB_DUNGEON" -o jsonpath='{.spec.backstabCooldown}')
+BS_HP=$(kubectl get dungeon "$BACKSTAB_DUNGEON" -o jsonpath='{.spec.monsterHP[0]}')
 [ "$BS_CD" = "3" ] && pass "Rogue backstab: cooldown=3" || fail "Backstab cooldown=$BS_CD (expected 3)"
-# 15 * 3 = 45, monster had 30 HP, so should be 0
 [ "$BS_HP" = "0" ] && pass "Rogue backstab: 3x damage kills monster" || fail "Backstab monster HP=$BS_HP (expected 0)"
 
-kubectl delete dungeon "$ABILITY_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
+kubectl delete dungeon "$BACKSTAB_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
 
 # --- Test 10: Dungeon modifiers ---
 
