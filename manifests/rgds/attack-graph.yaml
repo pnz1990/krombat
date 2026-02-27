@@ -91,7 +91,9 @@ spec:
                           esac
                           MAX_HP=100
                           case "$HERO_CLASS" in warrior) MAX_HP=150 ;; mage) MAX_HP=80 ;; rogue) MAX_HP=100 ;; esac
-                          if [ "${MANA_ADD:-0}" -gt 0 ]; then
+                          MANA_ADD_VAL=0
+                          if [ -n "$MANA_ADD" ]; then MANA_ADD_VAL=$MANA_ADD; fi
+                          if [ "$MANA_ADD_VAL" -gt 0 ]; then
                             NEW_MANA=$((HERO_MANA + MANA_ADD))
                             [ "$NEW_MANA" -gt 5 ] && NEW_MANA=5
                             HERO_ACTION="Used $ITEM_TYPE! Mana: $HERO_MANA -> $NEW_MANA"
@@ -121,7 +123,9 @@ spec:
                             armor-common) AB=10 ;; armor-rare) AB=20 ;; armor-epic) AB=30 ;;
                             *) echo "Cannot equip $ITEM_TYPE"; exit 1 ;;
                           esac
-                          if [ "${WB:-0}" -gt 0 ]; then
+                          WB_VAL=0
+                          if [ -n "$WB" ]; then WB_VAL=$WB; fi
+                          if [ "$WB_VAL" -gt 0 ]; then
                             HERO_ACTION="Equipped $ITEM_TYPE! +$WB damage for $WU attacks"
                             PATCH="{\"spec\":{\"weaponBonus\":$WB,\"weaponUses\":$WU,\"inventory\":\"$NEW_INV\",\"backstabCooldown\":$BACKSTAB_CD,\"lastHeroAction\":\"$HERO_ACTION\",\"lastEnemyAction\":\"Item equipped\"}}"
                           else
