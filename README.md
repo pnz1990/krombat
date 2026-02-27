@@ -3,16 +3,16 @@
   
   # Kubernetes RPG
   
-  *An 8-bit dungeon crawler powered by Kubernetes*
+  *An 8-bit dungeon crawler powered by kro*
 </div>
 
 ---
 
-An interactive, turn-based dungeon game where the entire game state lives in Kubernetes — orchestrated by [kro](https://kro.run) ResourceGraphDefinitions running as an [EKS Managed Capability](https://docs.aws.amazon.com/eks/latest/userguide/kro.html). No custom controllers, no external databases. Just declarative resource graphs, CEL expressions, and the Kubernetes control plane acting as a programmable state machine.
+An interactive, turn-based dungeon game where the entire game state is orchestrated by [kro](https://kro.run) ResourceGraphDefinitions running as an [EKS Managed Capability](https://docs.aws.amazon.com/eks/latest/userguide/kro.html). No custom controllers, no external databases. Just declarative resource graphs, CEL expressions, and kro turning Kubernetes into a programmable game engine.
 
 ## Concept
 
-Kubernetes RPG reframes Kubernetes from "container scheduler" to "general-purpose orchestration engine" by modeling RPG game mechanics entirely as Kubernetes resources:
+Kubernetes RPG demonstrates how [kro](https://kro.run) transforms Kubernetes into a general-purpose orchestration engine. Using kro's ResourceGraphDefinitions, we model RPG game mechanics entirely as declarative resource graphs:
 
 | Game Entity | Kubernetes Resource |
 |-------------|-------------------|
@@ -33,7 +33,7 @@ Each dungeon instance gets its own Namespace for isolation and clean teardown.
 5. **Boss unlocks** — when all monster HP=0, kro transitions the boss to `state=ready`
 6. **Defeat the boss** — attack the boss to reduce `bossHP` to 0; kro sets `state=defeated` and victory=true
 
-The backend and frontend only interact with kro-generated CRs (Dungeon and Attack). All game logic — HP calculations, state transitions, resource creation — lives in kro's CEL expressions and resource graph definitions.
+The backend and frontend only interact with kro-generated CRs (Dungeon and Attack). All game logic — HP calculations, state transitions, resource creation — lives in kro's CEL expressions and resource graph definitions. **kro is the game engine.**
 
 ## Architecture
 
