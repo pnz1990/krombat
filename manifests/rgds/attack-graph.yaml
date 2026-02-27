@@ -129,7 +129,7 @@ spec:
                             HERO_ACTION="Equipped $ITEM_TYPE! +$WEAPON_VAL damage for $WEAPON_USES_VAL attacks"
                             PATCH="{\"spec\":{\"weaponBonus\":$WEAPON_VAL,\"weaponUses\":$WEAPON_USES_VAL,\"inventory\":\"$NEW_INV\",\"backstabCooldown\":$BACKSTAB_CD,\"lastHeroAction\":\"$HERO_ACTION\",\"lastEnemyAction\":\"Item equipped\"}}"
                           else
-                            HERO_ACTION="Equipped $ITEM_TYPE! +${AB}% defense"
+                            HERO_ACTION="Equipped $ITEM_TYPE! Armor +$ARMOR_VAL pct defense"
                             PATCH="{\"spec\":{\"armorBonus\":$ARMOR_VAL,\"inventory\":\"$NEW_INV\",\"backstabCooldown\":$BACKSTAB_CD,\"lastHeroAction\":\"$HERO_ACTION\",\"lastEnemyAction\":\"Item equipped\"}}"
                           fi
                           echo "$HERO_ACTION"
