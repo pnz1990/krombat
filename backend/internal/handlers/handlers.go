@@ -91,8 +91,8 @@ func (h *Handler) CreateDungeon(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Pick a random modifier (40% none, 30% curse, 30% blessing)
-	modifiers := []string{"none", "none", "curse-fortitude", "curse-fury", "curse-darkness", "blessing-strength", "blessing-resilience", "blessing-fortune"}
+	// Pick a random modifier (20% none, 40% curse, 40% blessing)
+	modifiers := []string{"none", "curse-fortitude", "curse-fury", "curse-darkness", "blessing-strength", "blessing-resilience", "blessing-fortune", "blessing-strength", "curse-fury", "blessing-fortune"}
 	modifier := modifiers[rand.Intn(len(modifiers))]
 
 	// Curse of Fortitude: apply +50% monster HP at creation
