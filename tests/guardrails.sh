@@ -102,6 +102,38 @@ echo "$RESULT" | grep -q "no" \
   && pass "rpg-backend-sa CANNOT create namespaces" \
   || fail "rpg-backend-sa can create namespaces (should not)"
 
+# --- Game logic leak checks ---
+
+echo ""
+echo "--- Game logic leak checks ---"
+
+# Frontend should not have hardcoded HP/damage maps
+FRONTEND_FILE="frontend/src/App.tsx"
+GAME_LOGIC_LEAKS=0
+
+# Check for hardcoded maxHP maps
+if grep -q "warrior.*150.*mage.*80.*rogue.*100" "$FRONTEND_FILE" 2>/dev/null; then
+  echo "  ❌ Frontend has hardcoded hero HP map"; GAME_LOGIC_LEAKS=1
+else
+  echo "  ✅ No hardcoded hero HP map in frontend"; pass "No hardcoded hero HP map"
+fi
+
+# Check for hardcoded difficulty HP maps
+if grep -q "easy.*30.*normal.*50.*hard.*80" "$FRONTEND_FILE" 2>/dev/null; then
+  echo "  ❌ Frontend has hardcoded monster HP map"; GAME_LOGIC_LEAKS=1
+else
+  echo "  ✅ No hardcoded monster HP map in frontend"; pass "No hardcoded monster HP map"
+fi
+
+# Check for hardcoded DICE config
+if grep -q "^const DICE" "$FRONTEND_FILE" 2>/dev/null; then
+  echo "  ❌ Frontend has hardcoded DICE config"; GAME_LOGIC_LEAKS=1
+else
+  echo "  ✅ No hardcoded DICE config in frontend"; pass "No hardcoded DICE config"
+fi
+
+[ "$GAME_LOGIC_LEAKS" -eq 0 ] || fail "Game logic leaked into frontend"
+
 # --- API response guardrails ---
 
 echo ""

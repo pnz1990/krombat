@@ -305,10 +305,10 @@ function DungeonView({ cr, onBack, onAttack, onDelete, events, showLoot, onOpenL
   const spec = cr.spec || { monsters: 0, difficulty: 'normal', monsterHP: [], bossHP: 0, heroHP: 100, currentTurn: 'hero', turnRound: 1 }
   const status = cr.status
   const dungeonName = cr.metadata.name
-  const maxMonsterHP = ({ easy: 30, normal: 50, hard: 80 } as Record<string,number>)[spec.difficulty] || 50
-  const maxBossHP = ({ easy: 200, normal: 400, hard: 800 } as Record<string,number>)[spec.difficulty] || 400
+  const maxMonsterHP = Number(status?.maxMonsterHP) || 50
+  const maxBossHP = Number(status?.maxBossHP) || 400
   const heroHP = spec.heroHP ?? 100
-  const maxHeroHP = { warrior: 150, mage: 80, rogue: 100 }[spec.heroClass || 'warrior'] || 100
+  const maxHeroHP = Number(status?.maxHeroHP) || 100
   const isDefeated = status?.defeated || heroHP <= 0
   const bossState = status?.bossState || 'pending'
   const isHeroTurn = !currentTurn || currentTurn === 'hero'
@@ -547,11 +547,11 @@ function DungeonView({ cr, onBack, onAttack, onDelete, events, showLoot, onOpenL
           if (state === 'alive' && animPhase === 'enemy-attack') mAction = 'attack'
           return (
             <EntityCard key={mName} name={mName} entity="monster"
-              state={state} hp={hp} maxHP={maxMonsterHP} difficulty={spec.difficulty} onAttack={onAttack} disabled={isDefeated || !!attackPhase}
+              state={state} hp={hp} maxHP={maxMonsterHP} diceFormula={status?.diceFormula || "2d10+8"} onAttack={onAttack} disabled={isDefeated || !!attackPhase}
               spriteType={mSprite} spriteAction={mAction}
               floatingDmg={floatingDmg?.target === mName ? floatingDmg.amount : null}
               heroClass={spec.heroClass} backstabCooldown={spec.backstabCooldown}
-              tooltip={`${mSprite} · HP: ${hp}/${maxMonsterHP} · Counter: ${({easy:5,normal:8,hard:12})[spec.difficulty] || 8} dmg/monster`} />
+              tooltip={`${mSprite} · HP: ${hp}/${maxMonsterHP} · Counter: ${status?.monsterCounter || '?'} dmg/monster`} />
           )
         })}
       </div>
@@ -564,11 +564,11 @@ function DungeonView({ cr, onBack, onAttack, onDelete, events, showLoot, onOpenL
         if (bossState === 'ready' && animPhase === 'enemy-attack' && attackTarget?.includes('boss')) bAction = 'attack'
         if (status?.victory) bAction = 'dead'
         return <EntityCard name={`${dungeonName}-boss`} entity="boss"
-          state={bossState} hp={spec.bossHP} maxHP={maxBossHP} difficulty={spec.difficulty} onAttack={onAttack} disabled={isDefeated || !!attackPhase}
+          state={bossState} hp={spec.bossHP} maxHP={maxBossHP} diceFormula={status?.diceFormula || "2d10+8"} onAttack={onAttack} disabled={isDefeated || !!attackPhase}
           spriteType="dragon" spriteAction={bAction}
           floatingDmg={floatingDmg?.target?.includes('boss') ? floatingDmg.amount : null}
           heroClass={spec.heroClass} backstabCooldown={spec.backstabCooldown}
-          tooltip={`Dragon · HP: ${spec.bossHP}/${maxBossHP} · ${bossState === 'pending' ? 'Kill all monsters to unlock' : bossState === 'ready' ? 'Ready to fight!' : 'Defeated'} · Counter: ${({easy:15,normal:25,hard:40})[spec.difficulty] || 25} dmg`} />
+          tooltip={`Dragon · HP: ${spec.bossHP}/${maxBossHP} · ${bossState === 'pending' ? 'Kill all monsters to unlock' : bossState === 'ready' ? 'Ready to fight!' : 'Defeated'} · Counter: ${status?.bossCounter || '?'} dmg`} />
       })()}
       </div>
 
@@ -617,10 +617,10 @@ function formatEventMsg(e: WSEvent): string {
   return `${e.action} ${e.type}`
 }
 
-const DICE: Record<string, { count: number; sides: number; mod: number }> = {
-  easy: { count: 2, sides: 8, mod: 5 },
-  normal: { count: 2, sides: 10, mod: 8 },
-  hard: { count: 3, sides: 10, mod: 10 },
+// Parse dice formula from CR status (e.g. "2d8+5" -> {count:2, sides:8, mod:5})
+function parseDice(formula: string): { count: number; sides: number; mod: number } {
+  const m = formula.match(/(\d+)d(\d+)\+(\d+)/)
+  return m ? { count: +m[1], sides: +m[2], mod: +m[3] } : { count: 2, sides: 10, mod: 8 }
 }
 
 function rollDice(count: number, sides: number): number[] {
@@ -631,9 +631,9 @@ function diceLabel(d: { count: number; sides: number; mod: number }) {
   return `${d.count}d${d.sides}+${d.mod}`
 }
 
-function EntityCard({ name, entity, state, hp, maxHP, difficulty, onAttack, disabled, spriteType, spriteAction, tooltip, floatingDmg, heroClass, backstabCooldown }: {
+function EntityCard({ name, entity, state, hp, maxHP, diceFormula, onAttack, disabled, spriteType, spriteAction, tooltip, floatingDmg, heroClass, backstabCooldown }: {
   name: string; entity: string; state: string; hp: number; maxHP: number
-  difficulty: string; onAttack: (target: string, damage: number) => void; disabled?: boolean
+  diceFormula: string; onAttack: (target: string, damage: number) => void; disabled?: boolean
   spriteType: string; spriteAction: SpriteAction; tooltip?: string; floatingDmg?: string | null
   heroClass?: string; backstabCooldown?: number
 }) {
@@ -644,7 +644,7 @@ function EntityCard({ name, entity, state, hp, maxHP, difficulty, onAttack, disa
   const pct = maxHP > 0 ? (hp / maxHP) * 100 : 0
   const hpClass = pct > 60 ? 'high' : pct > 30 ? 'mid' : 'low'
   const canAttack = !disabled && !rolling && ((entity === 'monster' && state === 'alive') || (entity === 'boss' && state === 'ready'))
-  const base = DICE[difficulty] || DICE.normal
+  const base = parseDice(diceFormula)
   const d = entity === 'boss' ? { count: base.count + 1, sides: base.sides + 2, mod: base.mod + 2 } : base
 
   const handleRoll = () => {

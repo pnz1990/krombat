@@ -22,6 +22,7 @@ export interface DungeonCR {
   status?: {
     livingMonsters: number; bossState: string; victory: boolean; defeated: boolean
     loot: string; maxMonsterHP: number; maxBossHP: number
+    maxHeroHP: number; diceFormula: string; monsterCounter: number; bossCounter: number
     modifier?: string; modifierType?: string
   }
 }

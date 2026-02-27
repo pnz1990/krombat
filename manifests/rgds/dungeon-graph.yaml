@@ -37,6 +37,12 @@ spec:
       loot: "${treasureCR.status.?loot.orValue('')}"
       modifier: "${modifierCR.status.?effect.orValue('No modifier')}"
       modifierType: "${modifierCR.status.?modifierType.orValue('none')}"
+      maxMonsterHP: "${schema.spec.difficulty == 'easy' ? '30' : schema.spec.difficulty == 'hard' ? '80' : '50'}"
+      maxBossHP: "${schema.spec.difficulty == 'easy' ? '200' : schema.spec.difficulty == 'hard' ? '800' : '400'}"
+      maxHeroHP: "${schema.spec.heroClass == 'warrior' ? '150' : schema.spec.heroClass == 'mage' ? '80' : '100'}"
+      diceFormula: "${schema.spec.difficulty == 'easy' ? '2d8+5' : schema.spec.difficulty == 'hard' ? '3d10+10' : '2d10+8'}"
+      monsterCounter: "${schema.spec.difficulty == 'easy' ? '2' : schema.spec.difficulty == 'hard' ? '6' : '4'}"
+      bossCounter: "${schema.spec.difficulty == 'easy' ? '2' : schema.spec.difficulty == 'hard' ? '15' : '10'}"
 
   resources:
     # --- Namespace per dungeon ---

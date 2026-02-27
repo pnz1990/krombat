@@ -37,7 +37,7 @@ func (h *Handler) AttackWithRateLimit() http.HandlerFunc {
 	})
 }
 
-var hpByDifficulty = map[string]struct{ monster, boss int64 }{
+var defaultHP = map[string]struct{ monster, boss int64 }{
 	"easy":   {30, 200},
 	"normal": {50, 400},
 	"hard":   {80, 800},
@@ -70,7 +70,7 @@ func (h *Handler) CreateDungeon(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Use client-provided HP values, or derive from difficulty
-	hp, _ := hpByDifficulty[req.Difficulty]
+	hp, _ := defaultHP[req.Difficulty]
 	monsterHP := make([]interface{}, req.Monsters)
 	for i := range monsterHP {
 		monsterHP[i] = hp.monster
