@@ -90,15 +90,20 @@ export default function App() {
       // Phase 3: Resolve — poll for updated state with timeout
       setAttackPhase('⏳ Resolving...')
       let updated = detail!
-      for (let attempt = 0; attempt < 5; attempt++) {
+      let resolved = false
+      for (let attempt = 0; attempt < 8; attempt++) {
         const fetched = await getDungeon(selected.ns, selected.name)
         if (fetched.spec.lastHeroAction !== detail?.spec.lastHeroAction) {
           updated = fetched
+          resolved = true
           break
         }
         await new Promise(r => setTimeout(r, 1000))
       }
       setDetail(updated)
+      // Small delay so React renders the HP update before re-enabling buttons
+      await new Promise(r => setTimeout(r, 100))
+      if (!resolved) setError('Attack may still be processing — state will update shortly')
 
       // Show counter-attack damage on hero
       const oldHP = detail?.spec.heroHP ?? 100
