@@ -168,3 +168,39 @@ terraform -chdir=infra output cloudwatch_dashboard_url
 
 ### Alarms
 - `krombat-backend-restarts` — fires when backend pod restarts > 3 times in 5 minutes
+
+
+## Child RGDs (RGD Composition)
+
+### Check child CR status
+```bash
+kubectl get monsters,bosses,heroes,treasures -n <dungeon-name>
+```
+
+### Check child CR details
+```bash
+kubectl get monster <dungeon>-monster-0 -n <dungeon> -o jsonpath='{.status.entityState}'
+kubectl get boss <dungeon>-boss -n <dungeon> -o jsonpath='{.status.entityState}'
+kubectl get hero <dungeon>-hero -n <dungeon> -o jsonpath='{.status.entityState}'
+```
+
+### Child RGD not reconciling
+```bash
+# Check all RGDs are Active
+kubectl get rgd
+
+# If a child RGD is Inactive, check its error
+kubectl get rgd <name> -o jsonpath='{.status.conditions[?(@.type=="Ready")].message}'
+
+# Delete and let Argo CD recreate (child RGDs have sync-wave: -1)
+kubectl delete rgd <name>
+```
+
+### Dungeon status shows wrong values
+The dungeon status is derived from child CR statuses. If it's wrong:
+```bash
+# Check the chain: Dungeon spec → child CR spec → child CR status → Dungeon status
+kubectl get dungeon <name> -o jsonpath='{.spec.monsterHP}'
+kubectl get monster <name>-monster-0 -n <name> -o jsonpath='{.spec.hp} {.status.entityState}'
+kubectl get dungeon <name> -o jsonpath='{.status.livingMonsters}'
+```

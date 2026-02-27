@@ -5,19 +5,24 @@ A turn-based dungeon RPG where the entire game state lives in Kubernetes, orches
 
 ## Architecture
 - **EKS Auto Mode** cluster (K8s 1.34) in us-west-2
-- **kro** (EKS Managed Capability) — two RGDs orchestrate the game:
-  - `dungeon-graph`: Dungeon CR → Namespace, Monster Pods, Boss Pod, Treasure Secret, ResourceQuota, NetworkPolicy. Status exposes livingMonsters, bossState, victory, loot — all computed via CEL
-  - `attack-graph`: Attack CR → Job that patches Dungeon CR's monsterHP/bossHP
+- **kro** (EKS Managed Capability) — six RGDs orchestrate the game via CR chaining:
+  - `dungeon-graph` (parent): Dungeon CR → Namespace, Hero CR, Monster CRs, Boss CR, Treasure CR, ResourceQuota, NetworkPolicy
+  - `hero-graph`: Hero CR → ConfigMap (state carrier with HP/state)
+  - `monster-graph`: Monster CR → Pod (alive/dead labels derived from HP)
+  - `boss-graph`: Boss CR → Pod (pending/ready/defeated from HP + monstersAlive)
+  - `treasure-graph`: Treasure CR → Secret (loot)
+  - `attack-graph`: Attack CR → Job that patches Dungeon CR's monsterHP/bossHP/heroHP
 - **Argo CD** (EKS Managed Capability) — GitOps deployment from `manifests/` directory. GitHub webhook for ~6s sync
 - **Go Backend** — REST API + WebSocket gateway in `rpg-system` namespace. ONLY interacts with Dungeon and Attack CRs (game.k8s.example). Never reads Pods, Secrets, Jobs, or any native K8s objects. Rate limiting (1 attack/s/dungeon), Prometheus metrics on `/metrics`. Image in ECR
 - **React Frontend** — 8-bit D&D-inspired SPA with pixel art styling (Press Start 2P font). Nginx reverse-proxies `/api/` to backend. Derives all state from Dungeon CR (spec.monsterHP, status.bossState, status.loot). Image in ECR
 
 ## Game Flow
-1. Create Dungeon CR with `monsters`, `difficulty`, `monsterHP: []int`, `bossHP: int`
-2. kro creates namespace + pods with labels derived from HP values via CEL
-3. Create Attack CR → kro spawns Job → Job patches Dungeon CR HP fields
-4. kro reconciles: HP=0 → state=dead, all dead → boss=ready, bossHP=0 → victory=true
-5. Victory → treasure loot from `status.loot` (CEL-computed)
+1. Create Dungeon CR with `monsters`, `difficulty`, `monsterHP: []int`, `bossHP: int`, `heroHP: int`
+2. kro (dungeon-graph) creates namespace + child CRs (Hero, Monster×N, Boss, Treasure)
+3. Child RGDs reconcile CRs into native resources (Pods, ConfigMaps, Secrets)
+4. Create Attack CR → kro (attack-graph) spawns Job → Job patches Dungeon CR HP fields
+5. kro cascades: Dungeon CR → child CRs updated → child RGDs update Pods → Dungeon status updated
+6. Victory when bossHP=0, Defeat when heroHP=0
 
 ## Key Design Decisions
 - **CRs as the only interface** — backend and frontend ONLY touch Dungeon and Attack CRs. kro is the abstraction layer for all native K8s objects
