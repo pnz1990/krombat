@@ -53,6 +53,9 @@ jobs:
       - name: Run integration tests
         run: ./tests/run.sh
 
+      - name: Run guardrail tests
+        run: ./tests/guardrails.sh
+
       - name: Run backend API tests
         run: |
           kubectl rollout restart deployment/rpg-backend -n rpg-system
