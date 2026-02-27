@@ -252,6 +252,38 @@ body {
 }
 
 /* Dice Roll */
+
+/* Turn Bar */
+.turn-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  background: var(--bg-card);
+  border: 3px solid var(--border);
+  font-size: 8px;
+}
+.turn-round { color: var(--text-dim); white-space: nowrap; }
+.turn-order { display: flex; gap: 4px; flex: 1; flex-wrap: wrap; }
+.turn-token {
+  padding: 3px 6px;
+  border: 2px solid var(--border);
+  color: var(--text-dim);
+  font-size: 7px;
+  white-space: nowrap;
+}
+.turn-token.active {
+  border-color: var(--gold);
+  color: var(--gold);
+  background: rgba(245, 197, 24, 0.1);
+  animation: turnPulse 0.8s infinite alternate;
+}
+.turn-token.dead { opacity: 0.3; text-decoration: line-through; }
+@keyframes turnPulse { from { box-shadow: 0 0 0 transparent; } to { box-shadow: 0 0 8px var(--gold); } }
+.turn-indicator { color: var(--green); white-space: nowrap; font-size: 7px; }
+
+/* Dice Roll */
 .dice-roll-overlay {
   position: absolute;
   inset: 0;

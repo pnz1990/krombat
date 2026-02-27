@@ -19,6 +19,9 @@ export default function App() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [showLoot, setShowLoot] = useState(false)
+  const [currentTurn, setCurrentTurn] = useState('hero')
+  const [turnRound, setTurnRound] = useState(1)
+  const animatingRef = useRef(false)
 
   const { connected, lastEvent } = useWebSocket(selected?.ns, selected?.name)
   const selectedRef = useRef(selected)
@@ -43,6 +46,8 @@ export default function App() {
     if (selected) {
       setLoading(true)
       setEvents([])
+      setCurrentTurn('hero')
+      setTurnRound(1)
       getDungeon(selected.ns, selected.name)
         .then(d => setDetail(d))
         .catch(e => setError(e.message))
@@ -63,10 +68,38 @@ export default function App() {
   }
 
   const handleAttack = async (target: string, damage: number) => {
-    if (!selected) return
+    if (!selected || currentTurn !== 'hero') return
     setError('')
     try {
       await submitAttack(selected.ns, selected.name, target, damage)
+      // Animate enemy turns while backend processes counter-attacks
+      if (!animatingRef.current) {
+        animatingRef.current = true
+        const spec = detail?.spec
+        const monsterHP = spec?.monsterHP || []
+        const bossState = detail?.status?.bossState
+        // Build enemy turn order: alive monsters then boss if ready
+        const enemies: string[] = []
+        monsterHP.forEach((hp, i) => {
+          // If we just attacked this monster with enough damage to kill it, skip
+          const justKilled = target.endsWith(`monster-${i}`) && hp - damage <= 0
+          if (hp > 0 && !justKilled) enemies.push(`monster-${i}`)
+        })
+        if (bossState === 'ready' || (bossState === 'pending' && monsterHP.every((hp, i) => {
+          const justKilled = target.endsWith(`monster-${i}`) && hp - damage <= 0
+          return hp <= 0 || justKilled
+        }))) {
+          // Boss becomes ready if we just killed the last monster
+          if (spec && spec.bossHP > 0) enemies.push('boss')
+        }
+        for (const enemy of enemies) {
+          setCurrentTurn(enemy)
+          await new Promise(r => setTimeout(r, 600))
+        }
+        setCurrentTurn('hero')
+        setTurnRound(r => r + 1)
+        animatingRef.current = false
+      }
       setTimeout(refresh, 3000)
     } catch (e: any) { setError(e.message) }
   }
@@ -103,6 +136,8 @@ export default function App() {
           showLoot={showLoot}
           onOpenLoot={() => setShowLoot(true)}
           onCloseLoot={() => setShowLoot(false)}
+          currentTurn={currentTurn}
+          turnRound={turnRound}
         />
       ) : null}
     </div>
@@ -148,9 +183,10 @@ function DungeonList({ dungeons, onSelect }: { dungeons: DungeonSummary[]; onSel
   )
 }
 
-function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onCloseLoot }: {
+function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onCloseLoot, currentTurn, turnRound }: {
   cr: DungeonCR; onBack: () => void; onAttack: (t: string, d: number) => void; events: WSEvent[]
   showLoot: boolean; onOpenLoot: () => void; onCloseLoot: () => void
+  currentTurn: string; turnRound: number
 }) {
   if (!cr?.metadata?.name) return <div className="loading">Loading dungeon</div>
   const spec = cr.spec || { monsters: 0, difficulty: 'normal', monsterHP: [], bossHP: 0 }
@@ -162,6 +198,17 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
   const maxHeroHP = 100
   const isDefeated = heroHP <= 0
   const bossState = status?.bossState || (spec.bossHP > 0 ? ((spec.monsterHP || []).every(hp => hp === 0) ? 'ready' : 'pending') : 'defeated')
+  const isHeroTurn = currentTurn === 'hero'
+  const gameOver = isDefeated || status?.victory
+
+  // Build turn order for display
+  const turnOrder: { id: string; label: string; alive: boolean }[] = [{ id: 'hero', label: '🛡️ Hero', alive: !isDefeated }]
+  ;(spec.monsterHP || []).forEach((hp, i) => {
+    turnOrder.push({ id: `monster-${i}`, label: `👹 M${i}`, alive: hp > 0 })
+  })
+  if (bossState !== 'pending') {
+    turnOrder.push({ id: 'boss', label: '🐉 Boss', alive: bossState === 'ready' })
+  }
 
   return (
     <div>
@@ -169,6 +216,22 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
         <h2>⚔️ {dungeonName}</h2>
         <button className="back-btn" onClick={onBack}>← Back to dungeons</button>
       </div>
+
+      {!gameOver && (
+        <div className="turn-bar">
+          <span className="turn-round">Round {turnRound}</span>
+          <div className="turn-order">
+            {turnOrder.map(t => (
+              <span key={t.id} className={`turn-token${currentTurn === t.id ? ' active' : ''}${!t.alive ? ' dead' : ''}`}>
+                {t.label}
+              </span>
+            ))}
+          </div>
+          <span className="turn-indicator">
+            {isHeroTurn ? '⚔️ Your turn!' : `💀 ${currentTurn} attacks!`}
+          </span>
+        </div>
+      )}
 
       {isDefeated && (
         <div className="defeat-banner">
@@ -220,14 +283,14 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
           const mName = `${dungeonName}-monster-${idx}`
           return (
             <EntityCard key={mName} name={mName} entity="monster"
-              state={state} hp={hp} maxHP={maxMonsterHP} difficulty={spec.difficulty} onAttack={onAttack} disabled={isDefeated} />
+              state={state} hp={hp} maxHP={maxMonsterHP} difficulty={spec.difficulty} onAttack={onAttack} disabled={isDefeated || !isHeroTurn} />
           )
         })}
       </div>
 
       <h3 style={{ fontSize: '10px', marginBottom: 8, color: '#888' }}>BOSS</h3>
       <EntityCard name={`${dungeonName}-boss`} entity="boss"
-        state={bossState} hp={spec.bossHP} maxHP={maxBossHP} difficulty={spec.difficulty} onAttack={onAttack} disabled={isDefeated} />
+        state={bossState} hp={spec.bossHP} maxHP={maxBossHP} difficulty={spec.difficulty} onAttack={onAttack} disabled={isDefeated || !isHeroTurn} />
 
       <h3 style={{ fontSize: '10px', margin: '16px 0 8px', color: '#888' }}>EVENT LOG</h3>
       <div className="event-log">
