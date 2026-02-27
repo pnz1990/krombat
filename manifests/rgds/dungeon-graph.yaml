@@ -110,7 +110,6 @@ spec:
           namespace: ${ns.metadata.name}
         spec:
           dungeonName: ${schema.metadata.name}
-          bossDefeated: "${schema.spec.bossHP <= 0 ? 1 : 0}"
 
     # --- Modifier CR (conditional: only created when modifier is not "none") ---
     - id: modifierCR
