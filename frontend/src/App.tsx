@@ -215,7 +215,6 @@ export default function App() {
           cr={detail}
           onBack={() => { navigate('/'); refresh() }}
           onAttack={handleAttack}
-          onDelete={handleDelete}
           attackPhase={attackPhase}
           animPhase={animPhase}
           attackTarget={attackTarget}
@@ -292,8 +291,8 @@ function DungeonList({ dungeons, onSelect, onDelete, deleting }: {
   )
 }
 
-function DungeonView({ cr, onBack, onAttack, onDelete, events, showLoot, onOpenLoot, onCloseLoot, currentTurn, turnRound, attackPhase, animPhase, attackTarget, showHelp, onToggleHelp, floatingDmg, lootDrop, onDismissLoot }: {
-  cr: DungeonCR; onBack: () => void; onAttack: (t: string, d: number) => void; onDelete: () => void; events: WSEvent[]
+function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onCloseLoot, currentTurn, turnRound, attackPhase, animPhase, attackTarget, showHelp, onToggleHelp, floatingDmg, lootDrop, onDismissLoot }: {
+  cr: DungeonCR; onBack: () => void; onAttack: (t: string, d: number) => void; events: WSEvent[]
   showLoot: boolean; onOpenLoot: () => void; onCloseLoot: () => void
   currentTurn: string; turnRound: number; attackPhase: string | null
   animPhase: string; attackTarget: string | null
@@ -329,7 +328,6 @@ function DungeonView({ cr, onBack, onAttack, onDelete, events, showLoot, onOpenL
         <h2>⚔️ {dungeonName}</h2>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <button className="help-btn" onClick={onToggleHelp}>?</button>
-          <button className="help-btn" style={{ color: 'var(--accent)', borderColor: 'var(--accent)' }} onClick={onDelete}>🗑️</button>
           <button className="back-btn" onClick={onBack}>← Back</button>
         </div>
       </div>
