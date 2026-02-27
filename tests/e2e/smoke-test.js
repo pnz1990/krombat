@@ -76,7 +76,7 @@ async function runTests() {
 
     // Navigate to dungeon
     await page.waitForTimeout(5000); // kro reconciliation
-    await page.goto(`${BASE_URL}/dungeon/tests/${dName}`, { timeout: TIMEOUT });
+    await page.goto(`${BASE_URL}/dungeon/default/${dName}`, { timeout: TIMEOUT });
     await page.waitForTimeout(3000);
 
     // === SECTION 5: Dungeon View ===
