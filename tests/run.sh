@@ -61,6 +61,9 @@ spec:
   difficulty: easy
   monsterHP: [30, 30]
   bossHP: 200
+  heroHP: 150
+  heroClass: warrior
+  modifier: none
 EOF
 
 wait_for "namespace created" "kubectl get ns $DUNGEON_NAME" 60 \
@@ -279,6 +282,9 @@ spec:
   difficulty: easy
   monsterHP: [30]
   bossHP: 200
+  heroHP: 150
+  heroClass: warrior
+  modifier: none
 EOF
 
 wait_for "drift dungeon ready" \
