@@ -105,8 +105,10 @@ spec:
         spec:
           dungeonName: ${schema.metadata.name}
 
-    # --- Modifier CR (depends on ns via namespace reference) ---
+    # --- Modifier CR (conditional: only created when modifier is not "none") ---
     - id: modifierCR
+      includeWhen:
+        - ${schema.spec.modifier != "none"}
       template:
         apiVersion: game.k8s.example/v1alpha1
         kind: Modifier

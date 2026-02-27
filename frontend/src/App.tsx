@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { DungeonSummary, DungeonCR, listDungeons, getDungeon, createDungeon, submitAttack, deleteDungeon } from './api'
 import { useWebSocket, WSEvent } from './useWebSocket'
 
-import { Sprite, getMonsterSprite, SpriteAction } from './Sprite'
+import { Sprite, getMonsterSprite, SpriteAction, ItemSprite } from './Sprite'
 
 export default function App() {
   const { ns, name } = useParams<{ ns: string; name: string }>()
@@ -360,8 +360,8 @@ function DungeonView({ cr, onBack, onAttack, onDelete, events, showLoot, onOpenL
         <div><span className="label">Boss:</span><span className="value">{bossState}</span></div>
         <div><span className="label">Difficulty:</span><span className="value">{spec.difficulty}</span></div>
         {spec.modifier && spec.modifier !== 'none' && (
-          <div title={status?.modifier || spec.modifier}>
-            <span className="label">{spec.modifier.startsWith('curse') ? '🔴' : '🟢'}</span>
+          <div title={status?.modifier || spec.modifier} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <ItemSprite id={spec.modifier} size={20} />
             <span className="value">{status?.modifier || spec.modifier}</span>
           </div>
         )}
@@ -420,23 +420,20 @@ function DungeonView({ cr, onBack, onAttack, onDelete, events, showLoot, onOpenL
         const wu = spec.weaponUses || 0
         const ab = spec.armorBonus || 0
         if (items.length === 0 && wb === 0 && ab === 0) return null
-        const ICONS: Record<string, string> = { weapon: '🗡️', armor: '🛡️', hppotion: '❤️', manapotion: '💎' }
         const RARITY_COLOR: Record<string, string> = { common: '#aaa', rare: '#5dade2', epic: '#9b59b6' }
         return (
           <div className="inventory-bar">
-            {wb > 0 && <span className="equip-badge" title={`+${wb} damage, ${wu} uses left`}>🗡️+{wb}({wu})</span>}
-            {ab > 0 && <span className="equip-badge" title={`+${ab}% defense`}>🛡️+{ab}%</span>}
+            {wb > 0 && <span className="equip-badge" title={`+${wb} damage, ${wu} uses left`}><ItemSprite id={`weapon-common`} size={16} /> +{wb}({wu})</span>}
+            {ab > 0 && <span className="equip-badge" title={`+${ab}% defense`}><ItemSprite id={`armor-common`} size={16} /> +{ab}%</span>}
             {items.map((item, i) => {
-              const [type, rarity] = [item.split('-').slice(0, -1).join('-'), item.split('-').pop()!]
-              const icon = ICONS[type] || '📦'
-              const isUsable = type.includes('potion')
-              const isEquippable = type === 'weapon' || type === 'armor'
+              const rarity = item.split('-').pop()!
+              const isUsable = item.includes('potion')
               return (
                 <button key={i} className="item-btn" disabled={!!attackPhase}
                   style={{ borderColor: RARITY_COLOR[rarity] || '#aaa' }}
                   title={`${item} (click to ${isUsable ? 'use' : 'equip'})`}
                   onClick={() => onAttack(isUsable ? `use-${item}` : `equip-${item}`, 0)}>
-                  {icon}
+                  <ItemSprite id={item} size={24} />
                 </button>
               )
             })}
