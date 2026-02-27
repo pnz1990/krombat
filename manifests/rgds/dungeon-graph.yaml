@@ -12,6 +12,7 @@ spec:
       difficulty: string | default="normal" enum=easy,normal,hard
       monsterHP: "[]integer"
       bossHP: integer | default=0
+      heroHP: integer | default=100
     status:
       livingMonsters: "${size(monsterPods.filter(m, m.metadata.labels['game.k8s.example/state'] == 'alive'))}"
       bossState: "${bossPod.metadata.labels['game.k8s.example/state']}"

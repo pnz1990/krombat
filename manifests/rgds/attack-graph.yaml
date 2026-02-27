@@ -48,25 +48,50 @@ spec:
                       set -e
                       for i in 1 2 3 4 5; do
                         DUNGEON_JSON=$(kubectl get dungeon "$DUNGEON" -n "$DUNGEON_NS" -o json)
+                        HERO_HP=$(echo "$DUNGEON_JSON" | jq -r '.spec.heroHP // 100')
+                        DIFFICULTY=$(echo "$DUNGEON_JSON" | jq -r '.spec.difficulty // "normal"')
 
+                        # Calculate hero's attack on target
                         if echo "$TARGET" | grep -q "boss"; then
                           OLD_HP=$(echo "$DUNGEON_JSON" | jq -r '.spec.bossHP')
                           NEW_HP=$((OLD_HP - DAMAGE))
                           [ "$NEW_HP" -lt 0 ] && NEW_HP=0
-                          PATCH="{\"spec\":{\"bossHP\":$NEW_HP}}"
+                          # Boss counter-attack (hits harder)
+                          case "$DIFFICULTY" in
+                            easy)   COUNTER=15 ;;
+                            normal) COUNTER=25 ;;
+                            hard)   COUNTER=40 ;;
+                          esac
+                          [ "$NEW_HP" -gt 0 ] && HERO_HP=$((HERO_HP - COUNTER))
+                          [ "$HERO_HP" -lt 0 ] && HERO_HP=0
+                          PATCH="{\"spec\":{\"bossHP\":$NEW_HP,\"heroHP\":$HERO_HP}}"
                         else
                           IDX=$(echo "$TARGET" | grep -oE '[0-9]+$')
                           OLD_HP=$(echo "$DUNGEON_JSON" | jq -r ".spec.monsterHP[$IDX]")
                           NEW_HP=$((OLD_HP - DAMAGE))
                           [ "$NEW_HP" -lt 0 ] && NEW_HP=0
                           HP_ARRAY=$(echo "$DUNGEON_JSON" | jq ".spec.monsterHP[$IDX] = $NEW_HP | .spec.monsterHP")
-                          PATCH="{\"spec\":{\"monsterHP\":$HP_ARRAY}}"
+                          # All alive monsters counter-attack
+                          case "$DIFFICULTY" in
+                            easy)   COUNTER=5 ;;
+                            normal) COUNTER=8 ;;
+                            hard)   COUNTER=12 ;;
+                          esac
+                          ALIVE=$(echo "$DUNGEON_JSON" | jq '[.spec.monsterHP[] | select(. > 0)] | length')
+                          # Subtract the one we just killed if NEW_HP=0
+                          [ "$NEW_HP" -eq 0 ] && [ "$ALIVE" -gt 0 ] && ALIVE=$((ALIVE - 1))
+                          TOTAL_COUNTER=$((ALIVE * COUNTER))
+                          [ "$TOTAL_COUNTER" -gt 0 ] && HERO_HP=$((HERO_HP - TOTAL_COUNTER))
+                          [ "$HERO_HP" -lt 0 ] && HERO_HP=0
+                          PATCH="{\"spec\":{\"monsterHP\":$HP_ARRAY,\"heroHP\":$HERO_HP}}"
                         fi
 
-                        echo "Attacking $TARGET: HP $OLD_HP -> $NEW_HP (damage: $DAMAGE)"
+                        echo "Hero attacks $TARGET: HP $OLD_HP -> $NEW_HP (damage: $DAMAGE)"
+                        [ "$TOTAL_COUNTER" -gt 0 ] 2>/dev/null && echo "Monsters counter-attack: hero takes $TOTAL_COUNTER damage (hero HP: $HERO_HP)" || true
+                        [ "$COUNTER" -gt 0 ] 2>/dev/null && echo "$TARGET" | grep -q "boss" && echo "Boss counter-attacks: hero takes $COUNTER damage (hero HP: $HERO_HP)" || true
 
                         if kubectl patch dungeon "$DUNGEON" -n "$DUNGEON_NS" --type=merge -p "$PATCH" 2>&1; then
-                          echo "Attack successful!"
+                          echo "Turn complete!"
                           exit 0
                         fi
 

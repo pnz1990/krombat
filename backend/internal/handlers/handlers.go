@@ -76,6 +76,7 @@ func (h *Handler) CreateDungeon(w http.ResponseWriter, r *http.Request) {
 			"difficulty": req.Difficulty,
 			"monsterHP":  monsterHP,
 			"bossHP":     hp.boss,
+			"heroHP":     int64(100),
 		},
 	}}
 
