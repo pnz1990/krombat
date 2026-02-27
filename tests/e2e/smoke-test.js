@@ -85,6 +85,85 @@ async function runSmokeTests() {
       failed++;
     }
     
+    // Test 6: Create dungeon
+    console.log('Test 6: Create dungeon...');
+    try {
+      const dungeonName = `test-${Date.now()}`;
+      const createResponse = await page.evaluate(async (name) => {
+        const res = await fetch('/api/v1/dungeons', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: name,
+            monsters: 2,
+            difficulty: 'easy'
+          })
+        });
+        return { status: res.status, ok: res.ok, data: await res.json() };
+      }, dungeonName);
+      
+      if (createResponse.ok) {
+        console.log(`  ✓ Dungeon created: ${dungeonName}\n`);
+        passed++;
+        
+        // Test 7: View dungeon
+        console.log('Test 7: View dungeon details...');
+        await page.waitForTimeout(2000); // Wait for reconciliation
+        const dungeonResponse = await page.evaluate(async (name) => {
+          const res = await fetch(`/api/v1/dungeons/default/${name}`);
+          return { status: res.status, ok: res.ok, data: await res.json() };
+        }, dungeonName);
+        
+        if (dungeonResponse.ok && dungeonResponse.data.status) {
+          console.log('  ✓ Dungeon details retrieved\n');
+          passed++;
+          
+          // Test 8: Attack monster
+          console.log('Test 8: Attack monster...');
+          const monsterTarget = `${dungeonName}-monster-0`;
+          const attackResponse = await page.evaluate(async (name, target) => {
+            const res = await fetch(`/api/v1/dungeons/default/${name}/attacks`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                target: target,
+                damage: 30
+              })
+            });
+            return { status: res.status, ok: res.ok };
+          }, dungeonName, monsterTarget);
+          
+          if (attackResponse.ok) {
+            console.log('  ✓ Attack submitted successfully\n');
+            passed++;
+          } else {
+            console.log(`  ✗ Attack failed with status ${attackResponse.status}\n`);
+            failed++;
+          }
+        } else {
+          console.log('  ✗ Could not retrieve dungeon details\n');
+          failed++;
+          failed++; // Skip attack test
+        }
+        
+        // Cleanup: Delete dungeon
+        console.log('Cleanup: Deleting test dungeon...');
+        await page.evaluate(async (name) => {
+          await fetch(`/api/v1/dungeons/default/${name}`, { method: 'DELETE' });
+        }, dungeonName);
+        console.log('  ✓ Cleanup complete\n');
+        
+      } else {
+        console.log(`  ✗ Failed to create dungeon: ${createResponse.status}\n`);
+        failed++;
+        failed += 2; // Skip view and attack tests
+      }
+    } catch (error) {
+      console.log('  ✗ Dungeon creation failed:', error.message, '\n');
+      failed++;
+      failed += 2; // Skip view and attack tests
+    }
+    
     // Summary
     console.log('━'.repeat(50));
     console.log(`Results: ${passed} passed, ${failed} failed`);
