@@ -17,6 +17,7 @@ export default function App() {
   const [error, setError] = useState('')
   const [showLoot, setShowLoot] = useState(false)
   const [attackPhase, setAttackPhase] = useState<string | null>(null)
+  const [showHelp, setShowHelp] = useState(false)
   const [attackTarget, setAttackTarget] = useState<string | null>(null)
   const [animPhase, setAnimPhase] = useState<'idle' | 'hero-attack' | 'enemy-attack' | 'done'>('idle')
 
@@ -63,26 +64,50 @@ export default function App() {
     setEvents(prev => [{ type: 'COMBAT', action: icon, name: msg, namespace: '', payload: null }, ...prev].slice(0, 30))
   }
 
+  const [floatingDmg, setFloatingDmg] = useState<{ target: string; amount: string; color: string } | null>(null)
+
   const handleAttack = async (target: string, damage: number) => {
-    if (!selected) return
+    if (!selected || attackPhase) return
     setError('')
     const shortTarget = target.split('-').slice(-2).join('-')
     try {
+      // Phase 1: Hero attacks
       setAttackTarget(target)
       setAnimPhase('hero-attack')
       setAttackPhase(`⚔️ Attacking ${shortTarget}...`)
-      addEvent('⚔️', `Hero deals ${damage} damage to ${shortTarget}`)
+      setFloatingDmg({ target, amount: `-${damage}`, color: '#e94560' })
       await submitAttack(selected.ns, selected.name, target, damage)
       await new Promise(r => setTimeout(r, 1500))
-      setAttackPhase('💀 Enemies counter-attack!')
+      setFloatingDmg(null)
+
+      // Phase 2: Enemy counter-attack
       setAnimPhase('enemy-attack')
+      setAttackPhase('💀 Enemies counter-attack!')
       await new Promise(r => setTimeout(r, 1500))
-      setAttackPhase(null)
-      setAnimPhase('idle')
-      setAttackTarget(null)
-      const updated = await getDungeon(selected.ns, selected.name)
+
+      // Phase 3: Resolve — poll for updated state with timeout
+      setAttackPhase('⏳ Resolving...')
+      let updated = detail!
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const fetched = await getDungeon(selected.ns, selected.name)
+        if (fetched.spec.lastHeroAction !== detail?.spec.lastHeroAction) {
+          updated = fetched
+          break
+        }
+        await new Promise(r => setTimeout(r, 1000))
+      }
       setDetail(updated)
-      // Read action log from Dungeon CR (written by attack Job)
+
+      // Show counter-attack damage on hero
+      const oldHP = detail?.spec.heroHP ?? 100
+      const newHP = updated.spec.heroHP ?? 100
+      const hpLost = oldHP - newHP
+      if (hpLost > 0) {
+        setFloatingDmg({ target: 'hero', amount: `-${hpLost}`, color: '#e94560' })
+        setTimeout(() => setFloatingDmg(null), 1000)
+      }
+
+      // Read combat log from Dungeon CR
       const heroAction = updated.spec.lastHeroAction
       const enemyAction = updated.spec.lastEnemyAction
       if (heroAction) addEvent('⚔️', heroAction)
@@ -91,7 +116,17 @@ export default function App() {
       if (s?.victory) addEvent('🏆', 'VICTORY! Boss defeated!')
       else if (s?.bossState === 'ready') addEvent('🐉', 'Boss unlocked! All monsters slain!')
       else if ((updated.spec.heroHP ?? 100) <= 0) addEvent('💀', 'Hero has fallen...')
-    } catch (e: any) { setError(e.message); setAttackPhase(null); setAnimPhase('idle'); setAttackTarget(null) }
+
+      setAttackPhase(null)
+      setAnimPhase('idle')
+      setAttackTarget(null)
+    } catch (e: any) {
+      setError(e.message)
+      setAttackPhase(null)
+      setAnimPhase('idle')
+      setAttackTarget(null)
+      setFloatingDmg(null)
+    }
   }
 
   const handleSelect = (ns: string, name: string) => {
@@ -130,12 +165,15 @@ export default function App() {
           attackPhase={attackPhase}
           animPhase={animPhase}
           attackTarget={attackTarget}
+          floatingDmg={floatingDmg}
           events={events}
           showLoot={showLoot}
           onOpenLoot={() => setShowLoot(true)}
           onCloseLoot={() => setShowLoot(false)}
           currentTurn={'hero'}
           turnRound={1}
+          showHelp={showHelp}
+          onToggleHelp={() => setShowHelp(h => !h)}
         />
       ) : null}
     </div>
@@ -187,11 +225,13 @@ function DungeonList({ dungeons, onSelect }: { dungeons: DungeonSummary[]; onSel
   )
 }
 
-function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onCloseLoot, currentTurn, turnRound, attackPhase, animPhase, attackTarget }: {
+function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onCloseLoot, currentTurn, turnRound, attackPhase, animPhase, attackTarget, showHelp, onToggleHelp, floatingDmg }: {
   cr: DungeonCR; onBack: () => void; onAttack: (t: string, d: number) => void; events: WSEvent[]
   showLoot: boolean; onOpenLoot: () => void; onCloseLoot: () => void
   currentTurn: string; turnRound: number; attackPhase: string | null
   animPhase: string; attackTarget: string | null
+  showHelp: boolean; onToggleHelp: () => void
+  floatingDmg: { target: string; amount: string; color: string } | null
 }) {
   if (!cr?.metadata?.name) return <div className="loading">Loading dungeon</div>
   const spec = cr.spec || { monsters: 0, difficulty: 'normal', monsterHP: [], bossHP: 0, heroHP: 100, currentTurn: 'hero', turnRound: 1 }
@@ -219,8 +259,54 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
     <div>
       <div className="dungeon-header">
         <h2>⚔️ {dungeonName}</h2>
-        <button className="back-btn" onClick={onBack}>← Back to dungeons</button>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <button className="help-btn" onClick={onToggleHelp}>?</button>
+          <button className="back-btn" onClick={onBack}>← Back</button>
+        </div>
       </div>
+
+      {showHelp && (
+        <div className="modal-overlay" onClick={onToggleHelp}>
+          <div className="modal help-modal" onClick={e => e.stopPropagation()}>
+            <h2 style={{ color: 'var(--gold)', fontSize: 12, marginBottom: 12 }}>📖 HOW TO PLAY</h2>
+            <div className="help-section">
+              <h3>⚔️ Combat</h3>
+              <p>Click a monster or boss to roll dice and attack. After your attack, all alive enemies counter-attack automatically.</p>
+              <p>Kill all monsters to unlock the boss. Defeat the boss to win!</p>
+            </div>
+            <div className="help-section">
+              <h3>🎲 Dice by Difficulty</h3>
+              <table className="help-table">
+                <thead><tr><th>Diff</th><th>Monster HP</th><th>Boss HP</th><th>Dice</th></tr></thead>
+                <tbody>
+                  <tr><td className="tag-easy">Easy</td><td>30</td><td>200</td><td>2d8+5</td></tr>
+                  <tr><td className="tag-normal">Normal</td><td>50</td><td>400</td><td>2d10+8</td></tr>
+                  <tr><td className="tag-hard">Hard</td><td>80</td><td>800</td><td>3d10+10</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div className="help-section">
+              <h3>🛡️ Hero Classes</h3>
+              <table className="help-table">
+                <thead><tr><th>Class</th><th>HP</th><th>Special</th></tr></thead>
+                <tbody>
+                  <tr><td>⚔️ Warrior</td><td>150</td><td>20% damage reduction on counter-attacks</td></tr>
+                  <tr><td>🔮 Mage</td><td>80</td><td>1.5x boss damage. 5 mana (1/attack, half dmg at 0)</td></tr>
+                  <tr><td>🗡️ Rogue</td><td>100</td><td>1.2x damage. 30% dodge on counter-attacks</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div className="help-section">
+              <h3>💡 Tips</h3>
+              <p>• Kill monsters first to reduce counter-attack damage</p>
+              <p>• Warrior: tank through with high HP</p>
+              <p>• Mage: rush the boss with 1.5x damage before mana runs out</p>
+              <p>• Rogue: pray for dodge procs</p>
+            </div>
+            <button className="btn btn-gold" style={{ marginTop: 12 }} onClick={onToggleHelp}>Got it!</button>
+          </div>
+        </div>
+      )}
 
       {!gameOver && (
         <div className={`turn-bar ${attackPhase ? 'attacking' : ''}`}>
@@ -262,7 +348,12 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
         <div><span className="label">Difficulty:</span><span className="value">{spec.difficulty}</span></div>
       </div>
 
-      <div className="hero-bar">
+      <div className="hero-bar" style={{ position: 'relative' }} title={
+        spec.heroClass === 'mage' ? 'Mage · 80 HP · 1.5x boss damage · 5 mana (1/attack, half dmg at 0)' :
+        spec.heroClass === 'rogue' ? 'Rogue · 100 HP · 1.2x damage · 30% dodge on counter-attacks' :
+        'Warrior · 150 HP · 20% damage reduction on counter-attacks'
+      }>
+        {floatingDmg?.target === 'hero' && <div className="floating-dmg" style={{ color: floatingDmg.color }}>{floatingDmg.amount}</div>}
         <Sprite spriteType={spec.heroClass || 'warrior'} size={64}
           action={isDefeated ? 'dead' : status?.victory ? 'victory' : animPhase === 'hero-attack' ? 'attack' : animPhase === 'enemy-attack' ? 'hurt' : 'idle'} />
         <span className="hero-label">{(spec.heroClass || 'warrior').toUpperCase()}</span>
@@ -286,7 +377,9 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
           return (
             <EntityCard key={mName} name={mName} entity="monster"
               state={state} hp={hp} maxHP={maxMonsterHP} difficulty={spec.difficulty} onAttack={onAttack} disabled={isDefeated || !!attackPhase}
-              spriteType={mSprite} spriteAction={mAction} />
+              spriteType={mSprite} spriteAction={mAction}
+              floatingDmg={floatingDmg?.target === mName ? floatingDmg.amount : null}
+              tooltip={`${mSprite} · HP: ${hp}/${maxMonsterHP} · Counter: ${({easy:5,normal:8,hard:12})[spec.difficulty] || 8} dmg/monster`} />
           )
         })}
       </div>
@@ -300,7 +393,9 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
         if (status?.victory) bAction = 'dead'
         return <EntityCard name={`${dungeonName}-boss`} entity="boss"
           state={bossState} hp={spec.bossHP} maxHP={maxBossHP} difficulty={spec.difficulty} onAttack={onAttack} disabled={isDefeated || !!attackPhase}
-          spriteType="dragon" spriteAction={bAction} />
+          spriteType="dragon" spriteAction={bAction}
+          floatingDmg={floatingDmg?.target?.includes('boss') ? floatingDmg.amount : null}
+          tooltip={`Dragon · HP: ${spec.bossHP}/${maxBossHP} · ${bossState === 'pending' ? 'Kill all monsters to unlock' : bossState === 'ready' ? 'Ready to fight!' : 'Defeated'} · Counter: ${({easy:15,normal:25,hard:40})[spec.difficulty] || 25} dmg`} />
       })()}
       </div>
 
@@ -363,10 +458,10 @@ function diceLabel(d: { count: number; sides: number; mod: number }) {
   return `${d.count}d${d.sides}+${d.mod}`
 }
 
-function EntityCard({ name, entity, state, hp, maxHP, difficulty, onAttack, disabled, spriteType, spriteAction }: {
+function EntityCard({ name, entity, state, hp, maxHP, difficulty, onAttack, disabled, spriteType, spriteAction, tooltip, floatingDmg }: {
   name: string; entity: string; state: string; hp: number; maxHP: number
   difficulty: string; onAttack: (target: string, damage: number) => void; disabled?: boolean
-  spriteType: string; spriteAction: SpriteAction
+  spriteType: string; spriteAction: SpriteAction; tooltip?: string; floatingDmg?: string | null
 }) {
   const [rolling, setRolling] = useState(false)
   const [displayDice, setDisplayDice] = useState<number[]>([])
@@ -403,7 +498,8 @@ function EntityCard({ name, entity, state, hp, maxHP, difficulty, onAttack, disa
   }
 
   return (
-    <div className={`entity-card ${state}`}>
+    <div className={`entity-card ${state}`} title={tooltip} style={{ position: 'relative' }}>
+      {floatingDmg && <div className="floating-dmg" style={{ color: '#e94560' }}>{floatingDmg}</div>}
       {(rolling || total !== null) && (
         <div className="dice-roll-overlay">
           <div className="dice-formula">Rolling {diceLabel(d)}...</div>

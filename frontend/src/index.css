@@ -254,6 +254,28 @@ body {
 /* Dice Roll */
 
 /* Turn Bar */
+
+/* Help */
+.help-btn {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 10px;
+  width: 28px; height: 28px;
+  background: var(--bg-card);
+  color: var(--gold);
+  border: 2px solid var(--gold);
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.help-btn:hover { background: var(--gold); color: #000; }
+.help-modal { max-width: 500px; text-align: left; max-height: 80vh; overflow-y: auto; }
+.help-section { margin-bottom: 12px; }
+.help-section h3 { font-size: 9px; color: var(--gold); margin-bottom: 6px; }
+.help-section p { font-size: 7px; color: var(--text-dim); margin-bottom: 4px; line-height: 1.8; }
+.help-table { width: 100%; font-size: 7px; border-collapse: collapse; margin-bottom: 4px; }
+.help-table th { color: var(--text-dim); text-align: left; padding: 4px; border-bottom: 1px solid var(--border); }
+.help-table td { padding: 4px; color: var(--text); border-bottom: 1px solid #222; }
+
+/* Turn Bar */
 .turn-bar {
   display: flex;
   align-items: center;
@@ -381,3 +403,21 @@ body {
 .hero-sprite.rogue { background-image: url('/sprites/rogue.png'); }
 
 .mana-text { font-size: 8px; color: #9b59b6; white-space: nowrap; }
+
+/* Floating damage numbers */
+.floating-dmg {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 16px;
+  font-weight: bold;
+  text-shadow: 2px 2px 0 #000;
+  animation: floatUp 1s ease-out forwards;
+  pointer-events: none;
+  z-index: 10;
+}
+@keyframes floatUp {
+  0% { opacity: 1; transform: translateX(-50%) translateY(0); }
+  100% { opacity: 0; transform: translateX(-50%) translateY(-40px); }
+}
