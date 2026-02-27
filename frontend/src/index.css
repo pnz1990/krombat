@@ -439,3 +439,10 @@ body {
 .btn-ability:hover:not(:disabled) { background: #3a2a5e; }
 .btn-ability:disabled { opacity: 0.4; cursor: not-allowed; }
 .cooldown-text { font-size: 7px; color: #888; }
+
+/* Inventory */
+.inventory-bar { display: flex; gap: 4px; align-items: center; margin: 4px 0 8px; flex-wrap: wrap; }
+.equip-badge { font-size: 7px; padding: 2px 6px; background: #1a2a1a; border: 1px solid #4a4; border-radius: 4px; color: #8f8; }
+.item-btn { font-size: 14px; padding: 2px 4px; background: #1a1a2a; border: 1px solid; border-radius: 4px; cursor: pointer; }
+.item-btn:hover:not(:disabled) { background: #2a2a4a; }
+.item-btn:disabled { opacity: 0.4; cursor: not-allowed; }

@@ -14,7 +14,8 @@ export interface DungeonCR {
     currentTurn: string; turnRound: number
     heroClass?: string; heroMana?: number
     tauntActive?: number; backstabCooldown?: number
-    modifier?: string
+    modifier?: string; inventory?: string
+    weaponBonus?: number; weaponUses?: number; armorBonus?: number
     lastHeroAction?: string; lastEnemyAction?: string
   }
   status?: {

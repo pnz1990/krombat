@@ -394,6 +394,36 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
         </div>
       )}
 
+      {(() => {
+        const items = (spec.inventory || '').split(',').filter(Boolean)
+        const wb = spec.weaponBonus || 0
+        const wu = spec.weaponUses || 0
+        const ab = spec.armorBonus || 0
+        if (items.length === 0 && wb === 0 && ab === 0) return null
+        const ICONS: Record<string, string> = { weapon: '🗡️', armor: '🛡️', hppotion: '❤️', manapotion: '💎' }
+        const RARITY_COLOR: Record<string, string> = { common: '#aaa', rare: '#5dade2', epic: '#9b59b6' }
+        return (
+          <div className="inventory-bar">
+            {wb > 0 && <span className="equip-badge" title={`+${wb} damage, ${wu} uses left`}>🗡️+{wb}({wu})</span>}
+            {ab > 0 && <span className="equip-badge" title={`+${ab}% defense`}>🛡️+{ab}%</span>}
+            {items.map((item, i) => {
+              const [type, rarity] = [item.split('-').slice(0, -1).join('-'), item.split('-').pop()!]
+              const icon = ICONS[type] || '📦'
+              const isUsable = type.includes('potion')
+              const isEquippable = type === 'weapon' || type === 'armor'
+              return (
+                <button key={i} className="item-btn" disabled={!!attackPhase}
+                  style={{ borderColor: RARITY_COLOR[rarity] || '#aaa' }}
+                  title={`${item} (click to ${isUsable ? 'use' : 'equip'})`}
+                  onClick={() => onAttack(isUsable ? `use-${item}` : `equip-${item}`, 0)}>
+                  {icon}
+                </button>
+              )
+            })}
+          </div>
+        )
+      })()}
+
       <h3 style={{ fontSize: '10px', marginBottom: 8, color: '#888' }}>MONSTERS</h3>
       <div className="monster-grid">
         {(spec.monsterHP || []).map((hp, idx) => {

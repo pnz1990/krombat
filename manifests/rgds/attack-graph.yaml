@@ -55,6 +55,10 @@ spec:
                         TAUNT_ACTIVE=$(echo "$DUNGEON_JSON" | jq -r '.spec.tauntActive // 0')
                         BACKSTAB_CD=$(echo "$DUNGEON_JSON" | jq -r '.spec.backstabCooldown // 0')
                         MODIFIER=$(echo "$DUNGEON_JSON" | jq -r '.spec.modifier // "none"')
+                        INVENTORY=$(echo "$DUNGEON_JSON" | jq -r '.spec.inventory // ""')
+                        WEAPON_BONUS=$(echo "$DUNGEON_JSON" | jq -r '.spec.weaponBonus // 0')
+                        WEAPON_USES=$(echo "$DUNGEON_JSON" | jq -r '.spec.weaponUses // 0')
+                        ARMOR_BONUS=$(echo "$DUNGEON_JSON" | jq -r '.spec.armorBonus // 0')
 
                         # Decrement backstab cooldown each turn
                         [ "$BACKSTAB_CD" -gt 0 ] && BACKSTAB_CD=$((BACKSTAB_CD - 1))
@@ -64,6 +68,72 @@ spec:
                         CLASS_NOTE=""
                         HERO_ACTION=""
                         ENEMY_ACTION=""
+
+                        INVENTORY_PATCH=""
+                        WEAPON_PATCH=""
+
+                        # === USE ITEM ===
+                        if echo "$TARGET" | grep -q "^use-"; then
+                          ITEM_TYPE=$(echo "$TARGET" | sed 's/^use-//')
+                          if ! echo ",$INVENTORY," | grep -q ",$ITEM_TYPE,"; then
+                            echo "Item $ITEM_TYPE not in inventory"; exit 1
+                          fi
+                          # Remove first occurrence from inventory
+                          NEW_INV=$(echo "$INVENTORY" | sed "s/$ITEM_TYPE//" | sed 's/,,/,/g' | sed 's/^,//;s/,$//')
+                          case "$ITEM_TYPE" in
+                            hppotion-common) HEAL=20 ;;
+                            hppotion-rare) HEAL=40 ;;
+                            hppotion-epic) HEAL=999 ;;
+                            manapotion-common) HEAL=0; MANA_ADD=2 ;;
+                            manapotion-rare) HEAL=0; MANA_ADD=3 ;;
+                            manapotion-epic) HEAL=0; MANA_ADD=5 ;;
+                            *) echo "Unknown item $ITEM_TYPE"; exit 1 ;;
+                          esac
+                          MAX_HP=100
+                          case "$HERO_CLASS" in warrior) MAX_HP=150 ;; mage) MAX_HP=80 ;; rogue) MAX_HP=100 ;; esac
+                          if [ "${MANA_ADD:-0}" -gt 0 ]; then
+                            NEW_MANA=$((HERO_MANA + MANA_ADD))
+                            [ "$NEW_MANA" -gt 5 ] && NEW_MANA=5
+                            HERO_ACTION="Used $ITEM_TYPE! Mana: $HERO_MANA -> $NEW_MANA"
+                            PATCH="{\"spec\":{\"heroMana\":$NEW_MANA,\"inventory\":\"$NEW_INV\",\"backstabCooldown\":$BACKSTAB_CD,\"lastHeroAction\":\"$HERO_ACTION\",\"lastEnemyAction\":\"Item used\"}}"
+                          else
+                            NEW_HP=$((HERO_HP + HEAL))
+                            [ "$NEW_HP" -gt "$MAX_HP" ] && NEW_HP=$MAX_HP
+                            HERO_ACTION="Used $ITEM_TYPE! HP: $HERO_HP -> $NEW_HP"
+                            PATCH="{\"spec\":{\"heroHP\":$NEW_HP,\"inventory\":\"$NEW_INV\",\"backstabCooldown\":$BACKSTAB_CD,\"lastHeroAction\":\"$HERO_ACTION\",\"lastEnemyAction\":\"Item used\"}}"
+                          fi
+                          echo "$HERO_ACTION"
+                          if kubectl patch dungeon "$DUNGEON" -n "$DUNGEON_NS" --type=merge -p "$PATCH" 2>&1; then
+                            echo "Item used!"; exit 0
+                          fi
+                          echo "Conflict, retrying ($i/5)..."; sleep $i; continue
+                        fi
+
+                        # === EQUIP ITEM ===
+                        if echo "$TARGET" | grep -q "^equip-"; then
+                          ITEM_TYPE=$(echo "$TARGET" | sed 's/^equip-//')
+                          if ! echo ",$INVENTORY," | grep -q ",$ITEM_TYPE,"; then
+                            echo "Item $ITEM_TYPE not in inventory"; exit 1
+                          fi
+                          NEW_INV=$(echo "$INVENTORY" | sed "s/$ITEM_TYPE//" | sed 's/,,/,/g' | sed 's/^,//;s/,$//')
+                          case "$ITEM_TYPE" in
+                            weapon-common) WB=5; WU=3 ;; weapon-rare) WB=10; WU=3 ;; weapon-epic) WB=20; WU=3 ;;
+                            armor-common) AB=10 ;; armor-rare) AB=20 ;; armor-epic) AB=30 ;;
+                            *) echo "Cannot equip $ITEM_TYPE"; exit 1 ;;
+                          esac
+                          if [ "${WB:-0}" -gt 0 ]; then
+                            HERO_ACTION="Equipped $ITEM_TYPE! +$WB damage for $WU attacks"
+                            PATCH="{\"spec\":{\"weaponBonus\":$WB,\"weaponUses\":$WU,\"inventory\":\"$NEW_INV\",\"backstabCooldown\":$BACKSTAB_CD,\"lastHeroAction\":\"$HERO_ACTION\",\"lastEnemyAction\":\"Item equipped\"}}"
+                          else
+                            HERO_ACTION="Equipped $ITEM_TYPE! +${AB}% defense"
+                            PATCH="{\"spec\":{\"armorBonus\":$AB,\"inventory\":\"$NEW_INV\",\"backstabCooldown\":$BACKSTAB_CD,\"lastHeroAction\":\"$HERO_ACTION\",\"lastEnemyAction\":\"Item equipped\"}}"
+                          fi
+                          echo "$HERO_ACTION"
+                          if kubectl patch dungeon "$DUNGEON" -n "$DUNGEON_NS" --type=merge -p "$PATCH" 2>&1; then
+                            echo "Item equipped!"; exit 0
+                          fi
+                          echo "Conflict, retrying ($i/5)..."; sleep $i; continue
+                        fi
 
                         # === MAGE HEAL ===
                         if [ "$TARGET" = "hero" ]; then
@@ -184,6 +254,18 @@ spec:
                           fi
                         fi
 
+                        # Apply weapon bonus
+                        if [ "$WEAPON_USES" -gt 0 ]; then
+                          EFFECTIVE_DAMAGE=$((EFFECTIVE_DAMAGE + WEAPON_BONUS))
+                          WEAPON_USES=$((WEAPON_USES - 1))
+                          CLASS_NOTE="$CLASS_NOTE [+$WEAPON_BONUS wpn]"
+                          if [ "$WEAPON_USES" -eq 0 ]; then
+                            WEAPON_BONUS=0
+                            CLASS_NOTE="$CLASS_NOTE [weapon broke!]"
+                          fi
+                        fi
+                        WEAPON_PATCH=",\"weaponBonus\":$WEAPON_BONUS,\"weaponUses\":$WEAPON_USES"
+
                         # Calculate hero's attack on target
                         if echo "$REAL_TARGET" | grep -q "boss"; then
                           OLD_HP=$(echo "$DUNGEON_JSON" | jq -r '.spec.bossHP')
@@ -200,6 +282,10 @@ spec:
                             elif [ "$MODIFIER" = "blessing-resilience" ]; then
                               COUNTER=$((COUNTER / 2))
                             fi
+                            # Apply armor bonus
+                            if [ "$ARMOR_BONUS" -gt 0 ]; then
+                              COUNTER=$((COUNTER * (100 - ARMOR_BONUS) / 100))
+                            fi
                             if [ "$HERO_CLASS" = "warrior" ]; then
                               COUNTER=$((COUNTER * 4 / 5))
                             elif [ "$HERO_CLASS" = "rogue" ]; then
@@ -213,6 +299,16 @@ spec:
                           fi
                           [ "$HERO_HP" -lt 0 ] && HERO_HP=0
                           HP_PATCH="\"bossHP\":$NEW_HP"
+                          # Boss guaranteed loot drop
+                          if [ "$NEW_HP" -eq 0 ]; then
+                            RARITY_ROLL=$((RANDOM % 2))
+                            if [ "$RARITY_ROLL" -eq 0 ]; then RARITY="rare"; else RARITY="epic"; fi
+                            TYPE_ROLL=$((RANDOM % 3))
+                            case "$TYPE_ROLL" in 0) ITEM="weapon-$RARITY" ;; 1) ITEM="armor-$RARITY" ;; 2) ITEM="hppotion-$RARITY" ;; esac
+                            if [ -n "$INVENTORY" ]; then INVENTORY="$INVENTORY,$ITEM"; else INVENTORY="$ITEM"; fi
+                            INVENTORY_PATCH=",\"inventory\":\"$INVENTORY\""
+                            CLASS_NOTE="$CLASS_NOTE Boss dropped $ITEM!"
+                          fi
                         else
                           IDX=$(echo "$REAL_TARGET" | grep -oE '[0-9]+$')
                           OLD_HP=$(echo "$DUNGEON_JSON" | jq -r ".spec.monsterHP[$IDX]")
@@ -225,6 +321,28 @@ spec:
                             MANA_PATCH=",\"heroMana\":$HERO_MANA"
                             CLASS_NOTE="$CLASS_NOTE +1 mana!"
                           fi
+                          # Loot drop on monster kill
+                          if [ "$NEW_HP" -eq 0 ]; then
+                            DROP_CHANCE=30
+                            case "$DIFFICULTY" in easy) DROP_CHANCE=40 ;; normal) DROP_CHANCE=30 ;; hard) DROP_CHANCE=25 ;; esac
+                            DROP_ROLL=$((RANDOM % 100))
+                            if [ "$DROP_ROLL" -lt "$DROP_CHANCE" ]; then
+                              RARITY_ROLL=$((RANDOM % 100))
+                              if [ "$RARITY_ROLL" -lt 60 ]; then RARITY="common"
+                              elif [ "$RARITY_ROLL" -lt 90 ]; then RARITY="rare"
+                              else RARITY="epic"; fi
+                              TYPE_ROLL=$((RANDOM % 4))
+                              case "$TYPE_ROLL" in
+                                0) ITEM="weapon-$RARITY" ;;
+                                1) ITEM="armor-$RARITY" ;;
+                                2) ITEM="hppotion-$RARITY" ;;
+                                3) if [ "$HERO_CLASS" = "mage" ]; then ITEM="manapotion-$RARITY"; else ITEM="hppotion-$RARITY"; fi ;;
+                              esac
+                              if [ -n "$INVENTORY" ]; then INVENTORY="$INVENTORY,$ITEM"; else INVENTORY="$ITEM"; fi
+                              INVENTORY_PATCH=",\"inventory\":\"$INVENTORY\""
+                              CLASS_NOTE="$CLASS_NOTE Dropped $ITEM!"
+                            fi
+                          fi
                           # All alive monsters counter-attack
                           case "$DIFFICULTY" in
                             easy)   COUNTER=2 ;; normal) COUNTER=4 ;; hard) COUNTER=6 ;;
@@ -235,6 +353,10 @@ spec:
                           # Apply modifier to monster counter
                           if [ "$MODIFIER" = "blessing-resilience" ]; then
                             TOTAL_COUNTER=$((TOTAL_COUNTER / 2))
+                          fi
+                          # Apply armor bonus
+                          if [ "$ARMOR_BONUS" -gt 0 ]; then
+                            TOTAL_COUNTER=$((TOTAL_COUNTER * (100 - ARMOR_BONUS) / 100))
                           fi
                           if [ "$TOTAL_COUNTER" -gt 0 ]; then
                             if [ "$HERO_CLASS" = "warrior" ]; then
@@ -268,7 +390,7 @@ spec:
                           fi
                         fi
 
-                        PATCH="{\"spec\":{$HP_PATCH,\"heroHP\":$HERO_HP,\"tauntActive\":$TAUNT_ACTIVE,\"backstabCooldown\":$BACKSTAB_CD,\"lastHeroAction\":\"$HERO_ACTION\",\"lastEnemyAction\":\"$ENEMY_ACTION\"$MANA_PATCH}}"
+                        PATCH="{\"spec\":{$HP_PATCH,\"heroHP\":$HERO_HP,\"tauntActive\":$TAUNT_ACTIVE,\"backstabCooldown\":$BACKSTAB_CD,\"lastHeroAction\":\"$HERO_ACTION\",\"lastEnemyAction\":\"$ENEMY_ACTION\"$MANA_PATCH$WEAPON_PATCH$INVENTORY_PATCH}}"
 
                         echo "$HERO_ACTION"
                         echo "$ENEMY_ACTION"

@@ -20,6 +20,10 @@ spec:
       tauntActive: integer | default=0
       backstabCooldown: integer | default=0
       modifier: string | default="none"
+      inventory: string | default=""
+      weaponBonus: integer | default=0
+      weaponUses: integer | default=0
+      armorBonus: integer | default=0
       lastHeroAction: string | default=""
       lastEnemyAction: string | default=""
     status:
