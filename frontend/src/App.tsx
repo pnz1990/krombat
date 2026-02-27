@@ -19,6 +19,7 @@ export default function App() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [showLoot, setShowLoot] = useState(false)
+  const [attackPhase, setAttackPhase] = useState<string | null>(null)
 
   const { connected, lastEvent } = useWebSocket(selected?.ns, selected?.name)
   const selectedRef = useRef(selected)
