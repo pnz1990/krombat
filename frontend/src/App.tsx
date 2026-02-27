@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
 import { DungeonSummary, DungeonCR, listDungeons, getDungeon, createDungeon, submitAttack } from './api'
 import { useWebSocket, WSEvent } from './useWebSocket'
 
@@ -8,8 +9,11 @@ const SPRITES: Record<string, string> = {
 }
 
 export default function App() {
+  const { ns, name } = useParams<{ ns: string; name: string }>()
+  const navigate = useNavigate()
+  const selected = ns && name ? { ns, name } : null
+
   const [dungeons, setDungeons] = useState<DungeonSummary[]>([])
-  const [selected, setSelected] = useState<{ ns: string; name: string } | null>(null)
   const [detail, setDetail] = useState<DungeonCR | null>(null)
   const [events, setEvents] = useState<WSEvent[]>([])
   const [loading, setLoading] = useState(false)
@@ -34,8 +38,21 @@ export default function App() {
     refresh()
   }}, [lastEvent, refresh])
 
-  // Initial load
-  useEffect(() => { refresh() }, [refresh])
+  // Initial load + load dungeon detail when URL changes
+  useEffect(() => {
+    if (selected) {
+      setLoading(true)
+      setEvents([])
+      getDungeon(selected.ns, selected.name)
+        .then(d => setDetail(d))
+        .catch(e => setError(e.message))
+        .finally(() => setLoading(false))
+    } else {
+      setDetail(null)
+      setShowLoot(false)
+    }
+    refresh()
+  }, [ns, name, refresh])
 
   const handleCreate = async (name: string, monsters: number, difficulty: string) => {
     setError('')
@@ -54,14 +71,8 @@ export default function App() {
     } catch (e: any) { setError(e.message) }
   }
 
-  const handleSelect = async (ns: string, name: string) => {
-    setSelected({ ns, name })
-    setLoading(true)
-    try {
-      setDetail(await getDungeon(ns, name))
-      setDungeons(await listDungeons())
-    } catch (e: any) { setError(e.message) }
-    setLoading(false)
+  const handleSelect = (ns: string, name: string) => {
+    navigate(`/dungeon/${ns}/${name}`)
   }
 
   return (
@@ -86,7 +97,7 @@ export default function App() {
       ) : detail ? (
         <DungeonView
           cr={detail}
-          onBack={() => { setSelected(null); setDetail(null); setShowLoot(false); refresh() }}
+          onBack={() => { navigate('/'); refresh() }}
           onAttack={handleAttack}
           events={events}
           showLoot={showLoot}
