@@ -121,17 +121,17 @@ async function runSmokeTests() {
           // Test 8: Attack monster
           console.log('Test 8: Attack monster...');
           const monsterTarget = `${dungeonName}-monster-0`;
-          const attackResponse = await page.evaluate(async (name, target) => {
-            const res = await fetch(`/api/v1/dungeons/default/${name}/attacks`, {
+          const attackResponse = await page.evaluate(async (params) => {
+            const res = await fetch(`/api/v1/dungeons/default/${params.name}/attacks`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
-                target: target,
+                target: params.target,
                 damage: 30
               })
             });
             return { status: res.status, ok: res.ok };
-          }, dungeonName, monsterTarget);
+          }, { name: dungeonName, target: monsterTarget });
           
           if (attackResponse.ok) {
             console.log('  ✓ Attack submitted successfully\n');
