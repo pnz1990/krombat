@@ -381,7 +381,7 @@ metadata:
 spec:
   dungeonName: $TAUNT_DUNGEON
   dungeonNamespace: default
-  target: taunt
+  target: activate-taunt
   damage: 0
 EOF
 

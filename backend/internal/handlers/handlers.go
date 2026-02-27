@@ -217,7 +217,7 @@ func (h *Handler) CreateAttack(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Allow damage=0 for taunt/items, negative for heal
-	isAbility := req.Target == "hero" || req.Target == "taunt" || strings.HasPrefix(req.Target, "use-") || strings.HasPrefix(req.Target, "equip-")
+	isAbility := req.Target == "hero" || req.Target == "activate-taunt" || strings.HasPrefix(req.Target, "use-") || strings.HasPrefix(req.Target, "equip-")
 	if !isAbility && req.Damage < 1 {
 		writeError(w, "damage (>0) required for attacks", http.StatusBadRequest)
 		return
