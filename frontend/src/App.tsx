@@ -80,9 +80,11 @@ export default function App() {
       <header className="header">
         <img src="/logo.png" alt="Kubernetes RPG" className="logo" />
         <p>Powered by kro ResourceGraphDefinitions on EKS</p>
-        <p style={{ fontSize: '7px', marginTop: 4, color: connected ? '#00ff41' : '#e94560' }}>
-          {connected ? '● CONNECTED' : '○ DISCONNECTED'}
-        </p>
+        {selected && (
+          <p style={{ fontSize: '7px', marginTop: 4, color: connected ? '#00ff41' : '#e94560' }}>
+            {connected ? '● CONNECTED' : '○ DISCONNECTED'}
+          </p>
+        )}
       </header>
 
       {error && <div className="card" style={{ borderColor: '#e94560', color: '#e94560', fontSize: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
