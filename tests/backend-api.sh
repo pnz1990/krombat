@@ -122,6 +122,12 @@ echo "$METRICS" | grep -q 'k8s_rpg_dungeons_created_total' \
   && pass "Dungeon counter present" || fail "Dungeon counter missing"
 echo "$METRICS" | grep -q 'k8s_rpg_attacks_submitted_total' \
   && pass "Attack counter present" || fail "Attack counter missing"
+echo "$METRICS" | grep -q 'k8s_rpg_active_dungeons' \
+  && pass "Active dungeons gauge present" || fail "Active dungeons gauge missing"
+echo "$METRICS" | grep -q 'k8s_rpg_monsters_alive' \
+  && pass "Monsters alive gauge present" || fail "Monsters alive gauge missing"
+echo "$METRICS" | grep -q 'k8s_rpg_victories' \
+  && pass "Victories gauge present" || fail "Victories gauge missing"
 
 # --- Summary ---
 echo ""

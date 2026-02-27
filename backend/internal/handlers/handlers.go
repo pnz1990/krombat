@@ -24,10 +24,58 @@ type Handler struct {
 }
 
 func New(client *k8s.Client, hub *ws.Hub) *Handler {
-	return &Handler{
+	h := &Handler{
 		client:      client,
 		hub:         hub,
 		attackLimit: newRateLimiter(300 * time.Millisecond),
+	}
+	go h.pollGameMetrics()
+	return h
+}
+
+func (h *Handler) pollGameMetrics() {
+	for {
+		list, err := h.client.Dynamic.Resource(k8s.DungeonGVR).Namespace("").List(
+			context.Background(), metav1.ListOptions{})
+		if err == nil {
+			var alive, dead, bPend, bReady, bDef, wins, losses float64
+			activeDungeons.Set(float64(len(list.Items)))
+			for _, d := range list.Items {
+				spec, _ := d.Object["spec"].(map[string]interface{})
+				status, _ := d.Object["status"].(map[string]interface{})
+				if hps, ok := spec["monsterHP"].([]interface{}); ok {
+					for _, hp := range hps {
+						if v, _ := hp.(float64); v > 0 {
+							alive++
+						} else {
+							dead++
+						}
+					}
+				}
+				switch bs, _ := status["bossState"].(string); bs {
+				case "ready":
+					bReady++
+				case "defeated":
+					bDef++
+				default:
+					bPend++
+				}
+				if v, _ := status["victory"].(bool); v {
+					wins++
+				}
+				if v, _ := status["defeat"].(bool); v {
+					losses++
+				}
+			}
+			monstersAlive.Set(alive)
+			monstersDead.Set(dead)
+			bossesPending.Set(bPend)
+			bossesReady.Set(bReady)
+			bossesDefeated.Set(bDef)
+			gameVictories.Set(wins)
+			gameDefeats.Set(losses)
+		}
+		time.Sleep(30 * time.Second)
 	}
 }
 
