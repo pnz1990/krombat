@@ -7,7 +7,7 @@ const SPRITE_CONFIG: Record<string, { frames: number; sheetW: number; sheetH: nu
   rogue:    { frames: 7, sheetW: 5472, sheetH: 768, file: '/sprites/rogue.png' },
   goblin:   { frames: 6, sheetW: 5088, sheetH: 832, file: '/sprites/goblin.png' },
   skeleton: { frames: 6, sheetW: 5088, sheetH: 832, file: '/sprites/skeleton.png' },
-  dragon:   { frames: 7, sheetW: 5472, sheetH: 768, file: '/sprites/dragon.png' },
+  dragon:   { frames: 7, sheetW: 5536, sheetH: 768, file: '/sprites/dragon.png' },
 }
 
 // Frame indices: 0=idle, 1=walk1, 2=walk2, 3=attack1, 4=attack2, 5=hurt, 6=victory/dead (heroes/boss have 7, monsters have 6)
