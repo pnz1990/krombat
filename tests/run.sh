@@ -28,7 +28,7 @@ cleanup() {
   log "Cleanup"
   kubectl delete attack -l test-dungeon="$DUNGEON_NAME" --ignore-not-found --wait=false 2>/dev/null || true
   kubectl delete dungeon "$DUNGEON_NAME" --ignore-not-found --wait=false 2>/dev/null || true
-  wait_for "namespace deletion" "! kubectl get ns $DUNGEON_NAME 2>/dev/null" 120 || true
+  # Namespace deletion is async — don't block on it
 }
 trap cleanup EXIT
 
