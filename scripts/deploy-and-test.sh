@@ -1,13 +1,8 @@
 #!/bin/bash
-# Deploy changes and run automated tests
-# Usage: ./scripts/deploy-and-test.sh [--skip-push]
+# Test currently deployed application
+# Usage: ./scripts/deploy-and-test.sh
 
 set -e
-
-SKIP_PUSH=false
-if [[ "$1" == "--skip-push" ]]; then
-  SKIP_PUSH=true
-fi
 
 # Colors
 RED='\033[0;31m'
@@ -17,52 +12,26 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${BLUE}  Kubernetes RPG - Deploy & Test${NC}"
+echo -e "${BLUE}  Kubernetes RPG - Smoke Tests${NC}"
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
 
-# Step 1: Push changes (unless skipped)
-if [ "$SKIP_PUSH" = false ]; then
-  echo -e "${YELLOW}🚀 Pushing changes to Git...${NC}"
-  git push
-  echo -e "${GREEN}✓ Pushed${NC}\n"
+# Step 1: Check if deployments are running
+echo -e "${YELLOW}🔍 Checking deployments...${NC}"
+if kubectl get deployment rpg-frontend -n rpg-system &>/dev/null; then
+  echo -e "${GREEN}✓ Frontend deployment exists${NC}"
 else
-  echo -e "${YELLOW}⏭️  Skipping git push${NC}\n"
-fi
-
-# Step 2: Wait for Argo CD sync
-echo -e "${YELLOW}⏳ Waiting for Argo CD to sync...${NC}"
-if kubectl wait --for=condition=Synced application/krombat -n argocd --timeout=300s 2>/dev/null; then
-  echo -e "${GREEN}✓ Argo CD synced${NC}\n"
-else
-  echo -e "${RED}✗ Argo CD sync timeout or failed${NC}"
-  echo -e "${YELLOW}Checking Argo CD status:${NC}"
-  kubectl get application krombat -n argocd -o jsonpath='{.status.sync.status}' 2>/dev/null || echo "Could not get status"
+  echo -e "${RED}✗ Frontend deployment not found${NC}"
   exit 1
 fi
 
-# Step 3: Wait for frontend deployment
-echo -e "${YELLOW}⏳ Waiting for frontend deployment to be ready...${NC}"
-if kubectl rollout status deployment/rpg-frontend -n rpg-system --timeout=300s 2>/dev/null; then
-  echo -e "${GREEN}✓ Frontend deployed${NC}\n"
+if kubectl get deployment rpg-backend -n rpg-system &>/dev/null; then
+  echo -e "${GREEN}✓ Backend deployment exists${NC}\n"
 else
-  echo -e "${RED}✗ Frontend deployment timeout${NC}"
-  echo -e "${YELLOW}Recent frontend logs:${NC}"
-  kubectl logs -n rpg-system deployment/rpg-frontend --tail=20 2>/dev/null || echo "Could not get logs"
+  echo -e "${RED}✗ Backend deployment not found${NC}"
   exit 1
 fi
 
-# Step 4: Wait for backend deployment
-echo -e "${YELLOW}⏳ Waiting for backend deployment to be ready...${NC}"
-if kubectl rollout status deployment/rpg-backend -n rpg-system --timeout=300s 2>/dev/null; then
-  echo -e "${GREEN}✓ Backend deployed${NC}\n"
-else
-  echo -e "${RED}✗ Backend deployment timeout${NC}"
-  echo -e "${YELLOW}Recent backend logs:${NC}"
-  kubectl logs -n rpg-system deployment/rpg-backend --tail=20 2>/dev/null || echo "Could not get logs"
-  exit 1
-fi
-
-# Step 5: Port-forward frontend
+# Step 2: Port-forward frontend
 echo -e "${YELLOW}🔌 Setting up port-forward...${NC}"
 kubectl port-forward svc/rpg-frontend -n rpg-system 3000:3000 > /dev/null 2>&1 &
 PF_PID=$!
@@ -78,7 +47,7 @@ trap cleanup EXIT
 # Wait for port-forward to be ready
 sleep 3
 
-# Step 6: Quick curl test
+# Step 3: Quick curl test
 echo -e "${YELLOW}🌐 Testing UI availability...${NC}"
 MAX_RETRIES=5
 RETRY=0
@@ -99,7 +68,7 @@ while [ $RETRY -lt $MAX_RETRIES ]; do
   fi
 done
 
-# Step 7: Run Playwright smoke tests
+# Step 4: Run Playwright smoke tests
 echo -e "${YELLOW}🧪 Running smoke tests...${NC}\n"
 
 # Check if node_modules exists
