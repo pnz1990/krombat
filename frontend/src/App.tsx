@@ -20,7 +20,7 @@ export default function App() {
   const [error, setError] = useState('')
   const [showLoot, setShowLoot] = useState(false)
 
-  const { connected, lastEvent } = useWebSocket()
+  const { connected, lastEvent } = useWebSocket(selected?.ns, selected?.name)
   const selectedRef = useRef(selected)
   selectedRef.current = selected
 

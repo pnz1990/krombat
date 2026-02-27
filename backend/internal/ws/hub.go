@@ -20,20 +20,25 @@ var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool { return true },
 }
 
+type connFilter struct {
+	namespace string
+	name      string
+}
+
 type Hub struct {
 	mu      sync.RWMutex
-	clients map[*websocket.Conn]bool
+	clients map[*websocket.Conn]connFilter
 }
 
 func NewHub() *Hub {
-	return &Hub{clients: make(map[*websocket.Conn]bool)}
+	return &Hub{clients: make(map[*websocket.Conn]connFilter)}
 }
 
 func (h *Hub) Run() {}
 
-func (h *Hub) Add(conn *websocket.Conn) {
+func (h *Hub) Add(conn *websocket.Conn, namespace, name string) {
 	h.mu.Lock()
-	h.clients[conn] = true
+	h.clients[conn] = connFilter{namespace: namespace, name: name}
 	h.mu.Unlock()
 }
 
@@ -44,10 +49,16 @@ func (h *Hub) Remove(conn *websocket.Conn) {
 	conn.Close()
 }
 
-func (h *Hub) Broadcast(msg []byte) {
+func (h *Hub) Broadcast(msg []byte, eventNS, eventName string) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
-	for conn := range h.clients {
+	for conn, f := range h.clients {
+		if f.namespace != "" && f.namespace != eventNS {
+			continue
+		}
+		if f.name != "" && f.name != eventName {
+			continue
+		}
 		if err := conn.WriteMessage(websocket.TextMessage, msg); err != nil {
 			log.Printf("ws write error: %v", err)
 			go h.Remove(conn)

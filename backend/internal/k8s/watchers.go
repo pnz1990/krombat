@@ -44,8 +44,20 @@ func watchResource(client *Client, hub *ws.Hub, gvr schema.GroupVersionResource,
 				Namespace: obj.GetNamespace(),
 				Payload:   obj.Object,
 			}
+			// For attacks, use the dungeon namespace/name from spec
+			eventNS := obj.GetNamespace()
+			eventName := obj.GetName()
+			if eventType == "ATTACK_EVENT" {
+				spec, _ := obj.Object["spec"].(map[string]interface{})
+				if ns, ok := spec["dungeonNamespace"].(string); ok {
+					eventNS = ns
+				}
+				if n, ok := spec["dungeonName"].(string); ok {
+					eventName = n
+				}
+			}
 			data, _ := json.Marshal(msg)
-			hub.Broadcast(data)
+			hub.Broadcast(data, eventNS, eventName)
 		}
 	}
 }

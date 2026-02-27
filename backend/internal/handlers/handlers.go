@@ -190,7 +190,9 @@ func (h *Handler) Events(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
-	h.hub.Add(conn)
+	ns := r.URL.Query().Get("namespace")
+	name := r.URL.Query().Get("name")
+	h.hub.Add(conn, ns, name)
 	defer h.hub.Remove(conn)
 	for {
 		if _, _, err := conn.ReadMessage(); err != nil {
