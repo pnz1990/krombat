@@ -262,6 +262,31 @@ body {
 /* Turn Bar */
 
 /* Help */
+
+/* Tooltips */
+.tooltip-wrap { position: relative; }
+.tooltip-box {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #000;
+  color: var(--text);
+  border: 2px solid var(--gold);
+  padding: 8px 10px;
+  font-size: 7px;
+  line-height: 1.6;
+  white-space: pre-line;
+  z-index: 50;
+  pointer-events: none;
+  min-width: 180px;
+  max-width: 260px;
+  text-align: left;
+  box-shadow: 0 0 8px rgba(245, 197, 24, 0.3);
+  animation: fadeIn 0.15s;
+}
+
+/* Help */
 .help-btn {
   font-family: 'Press Start 2P', monospace;
   font-size: 10px;

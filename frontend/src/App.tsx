@@ -5,6 +5,16 @@ import { useWebSocket, WSEvent } from './useWebSocket'
 
 import { Sprite, getMonsterSprite, SpriteAction, ItemSprite } from './Sprite'
 
+function Tooltip({ text, children }: { text: string; children: React.ReactNode }) {
+  const [show, setShow] = useState(false)
+  return (
+    <div className="tooltip-wrap" onMouseEnter={() => setShow(true)} onMouseLeave={() => setShow(false)}>
+      {children}
+      {show && <div className="tooltip-box">{text}</div>}
+    </div>
+  )
+}
+
 export default function App() {
   const { ns, name } = useParams<{ ns: string; name: string }>()
   const navigate = useNavigate()
@@ -386,11 +396,12 @@ function DungeonView({ cr, onBack, onAttack, onDelete, events, showLoot, onOpenL
         )}
       </div>
 
-      <div className="hero-bar" style={{ position: 'relative' }} title={
-        spec.heroClass === 'mage' ? 'Mage · 80 HP · 1.5x boss damage · 5 mana (1/attack, half dmg at 0)' :
-        spec.heroClass === 'rogue' ? 'Rogue · 100 HP · 1.2x damage · 30% dodge on counter-attacks' :
-        'Warrior · 150 HP · 20% damage reduction on counter-attacks'
+      <Tooltip text={
+        spec.heroClass === 'mage' ? '🔮 Mage · 80 HP · 1.5x boss damage · 5 mana (1/attack, half dmg at 0) · 💚 Heal: costs 2 mana, restores 30 HP' :
+        spec.heroClass === 'rogue' ? '🗡️ Rogue · 100 HP · 1.2x damage · 30% dodge on counter-attacks · 🗡️ Backstab: 3x damage, 3-turn cooldown' :
+        '⚔️ Warrior · 150 HP · 20% damage reduction on counter-attacks · 🛡️ Taunt: 60% reduction for 1 round, skips attack'
       }>
+      <div className="hero-bar" style={{ position: 'relative' }}>
         {floatingDmg?.target === 'hero' && <div className="floating-dmg" style={{ color: floatingDmg.color }}>{floatingDmg.amount}</div>}
         <Sprite spriteType={spec.heroClass || 'warrior'} size={64}
           action={isDefeated ? 'dead' : status?.victory ? 'victory' : animPhase === 'hero-attack' ? 'attack' : animPhase === 'enemy-attack' ? 'hurt' : 'idle'} />
@@ -402,12 +413,13 @@ function DungeonView({ cr, onBack, onAttack, onDelete, events, showLoot, onOpenL
         <span className="hero-hp-text">HP: {heroHP} / {maxHeroHP}</span>
         {(spec.heroClass === 'mage') && <span className="mana-text">🔮 Mana: {spec.heroMana ?? 0}</span>}
       </div>
+      </Tooltip>
 
       {((spec.poisonTurns ?? 0) > 0 || (spec.burnTurns ?? 0) > 0 || (spec.stunTurns ?? 0) > 0) && (
         <div className="effect-badges">
-          {(spec.poisonTurns ?? 0) > 0 && <span className="effect-badge poison" title="Poison: -5 HP/turn">🟢 Poison ({spec.poisonTurns})</span>}
-          {(spec.burnTurns ?? 0) > 0 && <span className="effect-badge burn" title="Burn: -8 HP/turn">🔴 Burn ({spec.burnTurns})</span>}
-          {(spec.stunTurns ?? 0) > 0 && <span className="effect-badge stun" title="Stun: skip next attack">🟡 Stun ({spec.stunTurns})</span>}
+          {(spec.poisonTurns ?? 0) > 0 && <Tooltip text="Poison: -5 HP per turn. Applied by monsters on counter-attack."><span className="effect-badge poison">🟢 Poison ({spec.poisonTurns})</span></Tooltip>}
+          {(spec.burnTurns ?? 0) > 0 && <Tooltip text="Burn: -8 HP per turn. Applied by boss on counter-attack."><span className="effect-badge burn">🔴 Burn ({spec.burnTurns})</span></Tooltip>}
+          {(spec.stunTurns ?? 0) > 0 && <Tooltip text="Stun: your next attack is skipped."><span className="effect-badge stun">🟡 Stun ({spec.stunTurns})</span></Tooltip>}
         </div>
       )}
 
@@ -596,7 +608,8 @@ function EntityCard({ name, entity, state, hp, maxHP, difficulty, onAttack, disa
   }
 
   return (
-    <div className={`entity-card ${state}`} title={tooltip} style={{ position: 'relative' }}>
+    <Tooltip text={tooltip || ''}>
+    <div className={`entity-card ${state}`} style={{ position: 'relative' }}>
       {floatingDmg && <div className="floating-dmg" style={{ color: '#e94560' }}>{floatingDmg}</div>}
       {(rolling || total !== null) && (
         <div className="dice-roll-overlay">
@@ -639,5 +652,6 @@ function EntityCard({ name, entity, state, hp, maxHP, difficulty, onAttack, disa
         </div>
       )}
     </div>
+    </Tooltip>
   )
 }
