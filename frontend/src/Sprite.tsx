@@ -1,13 +1,13 @@
 import { useState, useEffect, useRef } from 'react'
 
-// Sprite sheets: heroes 7 frames (5472x768 = 768px/frame), monsters 6 frames (5088x832 = 848px/frame), boss 7 frames (5472x768)
-const SPRITE_CONFIG: Record<string, { frames: number; frameW: number; frameH: number; file: string }> = {
-  warrior:  { frames: 7, frameW: 781, frameH: 768, file: '/sprites/warrior.png' },
-  mage:     { frames: 7, frameW: 781, frameH: 768, file: '/sprites/mage.png' },
-  rogue:    { frames: 7, frameW: 781, frameH: 768, file: '/sprites/rogue.png' },
-  goblin:   { frames: 6, frameW: 848, frameH: 832, file: '/sprites/goblin.png' },
-  skeleton: { frames: 6, frameW: 848, frameH: 832, file: '/sprites/skeleton.png' },
-  dragon:   { frames: 7, frameW: 781, frameH: 768, file: '/sprites/dragon.png' },
+// Sprite sheets: heroes 7 frames (5472x768), monsters 6 frames (5088x832), boss 7 frames (5472x768)
+const SPRITE_CONFIG: Record<string, { frames: number; sheetW: number; sheetH: number; file: string }> = {
+  warrior:  { frames: 7, sheetW: 5472, sheetH: 768, file: '/sprites/warrior.png' },
+  mage:     { frames: 7, sheetW: 5472, sheetH: 768, file: '/sprites/mage.png' },
+  rogue:    { frames: 7, sheetW: 5472, sheetH: 768, file: '/sprites/rogue.png' },
+  goblin:   { frames: 6, sheetW: 5088, sheetH: 832, file: '/sprites/goblin.png' },
+  skeleton: { frames: 6, sheetW: 5088, sheetH: 832, file: '/sprites/skeleton.png' },
+  dragon:   { frames: 7, sheetW: 5472, sheetH: 768, file: '/sprites/dragon.png' },
 }
 
 // Frame indices: 0=idle, 1=walk1, 2=walk2, 3=attack1, 4=attack2, 5=hurt, 6=victory/dead (heroes/boss have 7, monsters have 6)
@@ -60,7 +60,8 @@ export function Sprite({ spriteType, action, size = 64, flip = false }: SpritePr
   }, [action, spriteType])
 
   const frame = frames[frameIdx] ?? frames[0]
-  const scale = size / config.frameH
+  const frameW = config.sheetW / config.frames
+  const scale = size / config.sheetH
 
   return (
     <div style={{
@@ -71,11 +72,11 @@ export function Sprite({ spriteType, action, size = 64, flip = false }: SpritePr
       transform: flip ? 'scaleX(-1)' : undefined,
     }}>
       <div style={{
-        width: config.frameW * scale,
-        height: config.frameH * scale,
+        width: frameW * scale,
+        height: config.sheetH * scale,
         backgroundImage: `url(${config.file})`,
-        backgroundSize: `${config.frames * config.frameW * scale}px ${config.frameH * scale}px`,
-        backgroundPosition: `-${frame * config.frameW * scale}px 0`,
+        backgroundSize: `${config.sheetW * scale}px ${config.sheetH * scale}px`,
+        backgroundPosition: `-${frame * frameW * scale}px 0`,
       }} />
     </div>
   )
