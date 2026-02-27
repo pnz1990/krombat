@@ -164,6 +164,42 @@ async function runSmokeTests() {
       failed += 2; // Skip view and attack tests
     }
     
+    // Test 9: Client-side routing - dungeon URL loads
+    console.log('Test 9: Dungeon URL route loads...');
+    try {
+      await page.goto(`${BASE_URL}/dungeon/default/nonexistent`, { timeout: TIMEOUT });
+      await page.waitForLoadState('domcontentloaded');
+      const hasRoot = await page.evaluate(() => document.querySelector('#root') !== null);
+      if (hasRoot) {
+        console.log('  ✓ Dungeon route loads React app\n');
+        passed++;
+      } else {
+        console.log('  ✗ Dungeon route did not load React app\n');
+        failed++;
+      }
+    } catch (error) {
+      console.log('  ✗ Dungeon route failed:', error.message, '\n');
+      failed++;
+    }
+    
+    // Test 10: Navigate back to root
+    console.log('Test 10: Navigate back to root...');
+    try {
+      await page.goto(BASE_URL, { timeout: TIMEOUT });
+      await page.waitForLoadState('domcontentloaded');
+      const url = page.url();
+      if (url === `${BASE_URL}/`) {
+        console.log('  ✓ Root URL loads correctly\n');
+        passed++;
+      } else {
+        console.log(`  ✗ Unexpected URL: ${url}\n`);
+        failed++;
+      }
+    } catch (error) {
+      console.log('  ✗ Root navigation failed:', error.message, '\n');
+      failed++;
+    }
+    
     // Summary
     console.log('━'.repeat(50));
     console.log(`Results: ${passed} passed, ${failed} failed`);
