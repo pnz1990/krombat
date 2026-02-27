@@ -28,14 +28,14 @@ Each dungeon instance gets its own Namespace for isolation and clean teardown.
 
 ## How It Works
 
-1. **Create a Dungeon** — specify monster count and difficulty (easy/normal/hard)
-2. **kro reconciles** — creates a namespace, monster pods (with HP from difficulty), a pending boss, and a treasure Secret
-3. **Attack monsters** — submit Attack CRs; kro's attack-graph RGD spawns a Job that patches the Dungeon CR's `monsterHP` array
-4. **kro re-reconciles** — derives pod labels from HP values: monsters with HP=0 become `state=dead`
+1. **Create a Dungeon** — specify monster count, difficulty (easy/normal/hard), and hero class (warrior/mage/rogue)
+2. **kro reconciles** — creates a namespace, hero ConfigMap, monster pods, a pending boss, a treasure Secret, and a modifier ConfigMap (curse or blessing)
+3. **Attack monsters** — submit Attack CRs; kro's attack-graph RGD spawns a Job that patches the Dungeon CR's `monsterHP` array. Monsters may drop loot and inflict status effects
+4. **Use abilities** — Mage heals, Warrior taunts, Rogue backstabs — all via the same Attack CR pipeline
 5. **Boss unlocks** — when all monster HP=0, kro transitions the boss to `state=ready`
 6. **Defeat the boss** — attack the boss to reduce `bossHP` to 0; kro sets `state=defeated` and victory=true
 
-The backend and frontend only interact with kro-generated CRs (Dungeon and Attack). All game logic — HP calculations, state transitions, resource creation — lives in kro's CEL expressions and resource graph definitions. **kro is the game engine.**
+The backend and frontend only interact with kro-generated CRs (Dungeon and Attack). All game logic — HP calculations, class abilities, loot drops, status effects, modifiers — lives in kro's CEL expressions and Attack Job scripts. **kro is the game engine.**
 
 ## Architecture
 
@@ -58,7 +58,7 @@ The backend and frontend only interact with kro-generated CRs (Dungeon and Attac
 
 - **Frontend** — 8-bit D&D-inspired React SPA with pixel art styling. Nginx reverse-proxies `/api/` to the backend. All game state derived from the Dungeon CR
 - **Backend** — Stateless Go service. Only touches Dungeon and Attack CRs — never reads Pods, Secrets, or Jobs. Includes rate limiting (1 attack/s per dungeon) and Prometheus metrics on `/metrics`
-- **Kubernetes + kro** — Sole source of truth. Six RGDs orchestrate the game via CR chaining: `dungeon-graph` (parent) spawns child CRs managed by `hero-graph`, `monster-graph`, `boss-graph`, `treasure-graph`, and `attack-graph` (combat). kro runs as an [EKS Managed Capability](https://docs.aws.amazon.com/eks/latest/userguide/kro.html)
+- **Kubernetes + kro** — Sole source of truth. Seven RGDs orchestrate the game via CR chaining: `dungeon-graph` (parent) spawns child CRs managed by `hero-graph`, `monster-graph`, `boss-graph`, `treasure-graph`, `modifier-graph`, and `attack-graph` (combat). kro runs as an [EKS Managed Capability](https://docs.aws.amazon.com/eks/latest/userguide/kro.html)
 - **Argo CD** — Runs as an [EKS Managed Capability](https://docs.aws.amazon.com/eks/latest/userguide/argocd.html). Continuously syncs all cluster manifests from this Git repo. GitHub webhook for ~6s sync latency
 - **Observability** — CloudWatch Container Insights for cluster/pod metrics, CloudWatch Logs for centralized log aggregation (JSON structured logs from backend, attack Job logs, kro controller logs), CloudWatch dashboard and alarms for operational monitoring
 
@@ -81,18 +81,22 @@ The backend and frontend only interact with kro-generated CRs (Dungeon and Attac
 │   ├── internal/            # Handlers, K8s client, WebSocket hub
 │   └── Dockerfile           # Multi-stage build (distroless)
 ├── frontend/                # React SPA
-│   ├── src/                 # App, API client, WebSocket hook, CSS
+│   ├── src/                 # App, Sprite, API client, WebSocket hook, CSS
+│   ├── public/sprites/      # Pixel art sprite sheets (heroes, monsters, items, icons)
 │   ├── nginx.conf           # Reverse proxy to backend
 │   └── Dockerfile           # Node build + nginx runtime
 ├── manifests/               # Argo CD syncs this directory
 │   ├── apps/                # Argo CD Application
 │   ├── rbac/                # ServiceAccounts, Roles, Bindings
-│   ├── rgds/                # kro ResourceGraphDefinitions
+│   ├── rgds/                # 7 kro ResourceGraphDefinitions
 │   └── system/              # Backend/frontend deployments, dungeon reaper
 ├── infra/                   # Terraform (EKS, capabilities, ECR, CI)
 ├── tests/                   # Integration test suites
-│   ├── run.sh               # Game engine tests (27 tests)
-│   └── backend-api.sh       # Backend API tests (14 tests)
+│   ├── run.sh               # Game engine tests (~47 tests)
+│   ├── backend-api.sh       # Backend API tests (15 tests)
+│   ├── guardrails.sh        # Architecture guardrails (17 tests)
+│   └── e2e/smoke-test.js    # Playwright UI tests (~40 tests)
+├── assets/                  # Source sprite sheets (generated via AI)
 ├── scripts/                 # Utility scripts
 │   └── watch-dungeon.sh     # tmux dashboard for watching game state
 ├── docs/                    # Design documents and runbook
@@ -127,7 +131,7 @@ kubectl port-forward svc/rpg-backend -n rpg-system 8080:8080
 # Create a dungeon
 curl -X POST http://localhost:8080/api/v1/dungeons \
   -H "Content-Type: application/json" \
-  -d '{"name":"my-dungeon","monsters":3,"difficulty":"normal"}'
+  -d '{"name":"my-dungeon","monsters":3,"difficulty":"normal","heroClass":"warrior"}'
 
 # List dungeons
 curl http://localhost:8080/api/v1/dungeons
@@ -161,6 +165,8 @@ spec:
   difficulty: normal
   monsterHP: [50, 50, 50]
   bossHP: 400
+  heroHP: 150
+  heroClass: warrior
 EOF
 
 # Wait for kro (~10s), then check state

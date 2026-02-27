@@ -39,6 +39,7 @@ A turn-based dungeon RPG where the entire game state lives in Kubernetes, orches
 - **HP state lives on Dungeon CR spec** — kro owns pods and would revert external mutations
 - **Attack Jobs are the game engine** — all combat math, abilities, loot, effects in bash scripts
 - **Backend is dumb** — only creates Dungeon/Attack CRs, validates input, no game logic
+- **Frontend is a pure view** — reads ALL game values from Dungeon CR spec/status, zero hardcoded game values
 - **No ingress/LB** — access via `kubectl port-forward` only
 
 ## Dungeon CR Spec Fields
@@ -50,6 +51,12 @@ A turn-based dungeon RPG where the entire game state lives in Kubernetes, orches
 - `poisonTurns`, `burnTurns`, `stunTurns`
 - `lastHeroAction`, `lastEnemyAction`
 
+## Dungeon CR Status Fields (all derived via CEL, never set by backend/frontend)
+- `livingMonsters`, `bossState`, `victory`, `defeat`, `loot`
+- `modifier`, `modifierType`
+- `maxMonsterHP`, `maxBossHP`, `maxHeroHP` (from gameConfig ConfigMap + Hero CR)
+- `diceFormula`, `monsterCounter`, `bossCounter` (from gameConfig ConfigMap)
+
 ## Development Rules
 - **NEVER run applications locally** — all builds via Docker, pushed to ECR through GitHub Actions CI
 - **Deployments happen via Argo CD** — push manifests to Git, Argo CD syncs to cluster
@@ -59,11 +66,11 @@ A turn-based dungeon RPG where the entire game state lives in Kubernetes, orches
 - **Avoid `${BASH_VAR}` in attack-graph YAML** — kro parses `${}` as CEL. Use `$VAR` or `"$VAR""text"`
 
 ## Testing
-- `tests/run.sh` — ~45 game engine tests (lifecycle, abilities, modifiers, effects, loot, drift)
+- `tests/run.sh` — ~47 game engine tests (lifecycle, abilities, modifiers, effects, loot, drift, RGD health)
 - `tests/backend-api.sh` — 15 backend API tests (CRUD, validation, rate limiting, metrics)
-- `tests/guardrails.sh` — 14 guardrail tests (no Clientset, RBAC locked, API shape)
-- `tests/e2e/smoke-test.js` — ~40 Playwright UI tests (all classes, abilities, modals, routing)
-- CI runs game engine + backend API + guardrails on every push
+- `tests/guardrails.sh` — 17 guardrail tests (no Clientset, RBAC locked, API shape, no game logic in frontend)
+- `tests/e2e/smoke-test.js` — ~40 Playwright UI tests (all classes, abilities, items, modals, routing)
+- CI runs game engine + guardrails + backend API on every push
 
 ## Important Paths
 - `manifests/rgds/` — All 7 RGD YAML files
