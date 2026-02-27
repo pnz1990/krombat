@@ -166,11 +166,11 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
   const dungeonName = cr.metadata.name
   const maxMonsterHP = status?.maxMonsterHP || 50
   const maxBossHP = status?.maxBossHP || 400
-  const heroHP = spec.heroHP
+  const heroHP = spec.heroHP ?? 100
   const maxHeroHP = 100
   const isDefeated = status?.defeated || heroHP <= 0
   const bossState = status?.bossState || 'pending'
-  const isHeroTurn = currentTurn === 'hero'
+  const isHeroTurn = !currentTurn || currentTurn === 'hero'
   const gameOver = isDefeated || status?.victory
 
   // Build turn order for display
