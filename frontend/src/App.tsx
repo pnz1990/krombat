@@ -69,21 +69,22 @@ export default function App() {
   const handleAttack = async (target: string, damage: number) => {
     if (!selected || attackPhase) return
     setError('')
-    const shortTarget = target.split('-').slice(-2).join('-')
+    const isAbility = target === 'hero' || target === 'taunt'
+    const shortTarget = isAbility ? target : target.replace(/-backstab$/, '').split('-').slice(-2).join('-')
     try {
-      // Phase 1: Hero attacks
-      setAttackTarget(target)
+      setAttackTarget(target.replace(/-backstab$/, ''))
       setAnimPhase('hero-attack')
-      setAttackPhase(`⚔️ Attacking ${shortTarget}...`)
-      setFloatingDmg({ target, amount: `-${damage}`, color: '#e94560' })
+      setAttackPhase(isAbility ? (target === 'hero' ? '💚 Healing...' : '🛡️ Taunting...') : `⚔️ Attacking ${shortTarget}...`)
+      if (!isAbility) setFloatingDmg({ target: target.replace(/-backstab$/, ''), amount: `-${damage}`, color: '#e94560' })
       await submitAttack(selected.ns, selected.name, target, damage)
       await new Promise(r => setTimeout(r, 1500))
       setFloatingDmg(null)
 
-      // Phase 2: Enemy counter-attack
-      setAnimPhase('enemy-attack')
-      setAttackPhase('💀 Enemies counter-attack!')
-      await new Promise(r => setTimeout(r, 1500))
+      if (!isAbility) {
+        setAnimPhase('enemy-attack')
+        setAttackPhase('💀 Enemies counter-attack!')
+        await new Promise(r => setTimeout(r, 1500))
+      }
 
       // Phase 3: Resolve — poll for updated state with timeout
       setAttackPhase('⏳ Resolving...')
@@ -365,6 +366,28 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
         {(spec.heroClass === 'mage') && <span className="mana-text">🔮 Mana: {spec.heroMana ?? 0}</span>}
       </div>
 
+      {!gameOver && !attackPhase && (
+        <div className="ability-bar">
+          {spec.heroClass === 'mage' && (
+            <button className="btn btn-ability" disabled={(spec.heroMana ?? 0) < 2 || heroHP >= 80}
+              onClick={() => onAttack('hero', 0)}>
+              💚 Heal (2 mana)
+            </button>
+          )}
+          {spec.heroClass === 'warrior' && (
+            <button className="btn btn-ability" disabled={false}
+              onClick={() => onAttack('taunt', 0)}>
+              🛡️ Taunt
+            </button>
+          )}
+          {spec.heroClass === 'rogue' && (
+            <span className="cooldown-text">
+              🗡️ Backstab: {(spec.backstabCooldown ?? 0) > 0 ? `${spec.backstabCooldown} turns CD` : 'Ready!'}
+            </span>
+          )}
+        </div>
+      )}
+
       <h3 style={{ fontSize: '10px', marginBottom: 8, color: '#888' }}>MONSTERS</h3>
       <div className="monster-grid">
         {(spec.monsterHP || []).map((hp, idx) => {
@@ -379,6 +402,7 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
               state={state} hp={hp} maxHP={maxMonsterHP} difficulty={spec.difficulty} onAttack={onAttack} disabled={isDefeated || !!attackPhase}
               spriteType={mSprite} spriteAction={mAction}
               floatingDmg={floatingDmg?.target === mName ? floatingDmg.amount : null}
+              heroClass={spec.heroClass} backstabCooldown={spec.backstabCooldown}
               tooltip={`${mSprite} · HP: ${hp}/${maxMonsterHP} · Counter: ${({easy:5,normal:8,hard:12})[spec.difficulty] || 8} dmg/monster`} />
           )
         })}
@@ -395,6 +419,7 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
           state={bossState} hp={spec.bossHP} maxHP={maxBossHP} difficulty={spec.difficulty} onAttack={onAttack} disabled={isDefeated || !!attackPhase}
           spriteType="dragon" spriteAction={bAction}
           floatingDmg={floatingDmg?.target?.includes('boss') ? floatingDmg.amount : null}
+          heroClass={spec.heroClass} backstabCooldown={spec.backstabCooldown}
           tooltip={`Dragon · HP: ${spec.bossHP}/${maxBossHP} · ${bossState === 'pending' ? 'Kill all monsters to unlock' : bossState === 'ready' ? 'Ready to fight!' : 'Defeated'} · Counter: ${({easy:15,normal:25,hard:40})[spec.difficulty] || 25} dmg`} />
       })()}
       </div>
@@ -458,10 +483,11 @@ function diceLabel(d: { count: number; sides: number; mod: number }) {
   return `${d.count}d${d.sides}+${d.mod}`
 }
 
-function EntityCard({ name, entity, state, hp, maxHP, difficulty, onAttack, disabled, spriteType, spriteAction, tooltip, floatingDmg }: {
+function EntityCard({ name, entity, state, hp, maxHP, difficulty, onAttack, disabled, spriteType, spriteAction, tooltip, floatingDmg, heroClass, backstabCooldown }: {
   name: string; entity: string; state: string; hp: number; maxHP: number
   difficulty: string; onAttack: (target: string, damage: number) => void; disabled?: boolean
   spriteType: string; spriteAction: SpriteAction; tooltip?: string; floatingDmg?: string | null
+  heroClass?: string; backstabCooldown?: number
 }) {
   const [rolling, setRolling] = useState(false)
   const [displayDice, setDisplayDice] = useState<number[]>([])
@@ -530,6 +556,14 @@ function EntityCard({ name, entity, state, hp, maxHP, difficulty, onAttack, disa
         <div className="attack-controls">
           <button className="btn btn-primary" style={{ fontSize: '7px', padding: '4px 8px' }}
             onClick={handleRoll}>🎲 {diceLabel(d)}</button>
+          {heroClass === 'rogue' && (backstabCooldown ?? 0) === 0 && (
+            <button className="btn btn-ability" style={{ fontSize: '7px', padding: '4px 8px' }}
+              onClick={() => {
+                const r = rollDice(d.count, d.sides)
+                const dmg = r.reduce((a, b) => a + b, 0) + d.mod
+                onAttack(name + '-backstab', dmg)
+              }}>🗡️ Backstab</button>
+          )}
         </div>
       )}
     </div>

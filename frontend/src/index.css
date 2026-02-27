@@ -421,3 +421,21 @@ body {
   0% { opacity: 1; transform: translateX(-50%) translateY(0); }
   100% { opacity: 0; transform: translateX(-50%) translateY(-40px); }
 }
+
+/* Ability bar */
+.ability-bar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 4px 0 8px;
+}
+.btn-ability {
+  font-size: 7px !important;
+  padding: 4px 8px !important;
+  background: #2a1a3e;
+  border: 1px solid #9b59b6;
+  color: #d4a0ff;
+}
+.btn-ability:hover:not(:disabled) { background: #3a2a5e; }
+.btn-ability:disabled { opacity: 0.4; cursor: not-allowed; }
+.cooldown-text { font-size: 7px; color: #888; }

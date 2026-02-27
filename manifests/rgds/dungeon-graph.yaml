@@ -17,6 +17,8 @@ spec:
       heroHP: integer | default=100
       heroClass: string | default="warrior" enum=warrior,mage,rogue
       heroMana: integer | default=0
+      tauntActive: integer | default=0
+      backstabCooldown: integer | default=0
       lastHeroAction: string | default=""
       lastEnemyAction: string | default=""
     status:

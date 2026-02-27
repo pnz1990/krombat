@@ -13,6 +13,7 @@ export interface DungeonCR {
     monsterHP: number[]; bossHP: number; heroHP: number
     currentTurn: string; turnRound: number
     heroClass?: string; heroMana?: number
+    tauntActive?: number; backstabCooldown?: number
     lastHeroAction?: string; lastEnemyAction?: string
   }
   status?: {

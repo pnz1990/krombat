@@ -180,8 +180,13 @@ func (h *Handler) CreateAttack(w http.ResponseWriter, r *http.Request) {
 		writeError(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
-	if req.Target == "" || req.Damage < 1 {
-		writeError(w, "target and damage (>0) required", http.StatusBadRequest)
+	if req.Target == "" {
+		writeError(w, "target required", http.StatusBadRequest)
+		return
+	}
+	// Allow damage=0 for taunt, negative for heal
+	if req.Target != "hero" && req.Target != "taunt" && req.Damage < 1 {
+		writeError(w, "damage (>0) required for attacks", http.StatusBadRequest)
 		return
 	}
 
