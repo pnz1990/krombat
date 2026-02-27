@@ -32,15 +32,17 @@ export default function App() {
     } catch {}
   }, [])
 
-  // Refresh on WebSocket events — deduplicate consecutive identical messages
+  // Refresh on WebSocket events — deduplicate by formatted message
   const lastMsgRef = useRef('')
   useEffect(() => { if (lastEvent) {
-    const displayMsg = formatEventMsg(lastEvent)
-    if (displayMsg !== lastMsgRef.current) {
-      if (!(lastEvent.type === 'ATTACK_EVENT' && lastEvent.action === 'MODIFIED')) {
+    // Skip all ATTACK_EVENT MODIFIED (noisy intermediate states)
+    const isNoise = lastEvent.type === 'ATTACK_EVENT' && lastEvent.action === 'MODIFIED'
+    if (!isNoise) {
+      const displayMsg = formatEventMsg(lastEvent)
+      if (displayMsg !== lastMsgRef.current) {
+        lastMsgRef.current = displayMsg
         setEvents(prev => [lastEvent, ...prev].slice(0, 30))
       }
-      lastMsgRef.current = displayMsg
     }
     refresh()
   }}, [lastEvent, refresh])
@@ -74,11 +76,14 @@ export default function App() {
   const handleAttack = async (target: string, damage: number) => {
     if (!selected) return
     setError('')
+    const shortTarget = target.split('-').slice(-2).join('-')
     try {
-      setAttackPhase(`⚔️ Attacking ${target.split('-').slice(-2).join('-')}...`)
+      setAttackPhase(`⚔️ Attacking ${shortTarget}...`)
+      setEvents(prev => [{ type: 'COMBAT', action: 'HERO', name: '', namespace: '', payload: { status: { bossState: `Hero deals ${damage} damage to ${shortTarget}` } } }, ...prev].slice(0, 30))
       await submitAttack(selected.ns, selected.name, target, damage)
       setTimeout(() => {
         setAttackPhase('💀 Monsters counter-attack!')
+        setEvents(prev => [{ type: 'COMBAT', action: 'MONSTER', name: '', namespace: '', payload: { status: { bossState: 'Monsters strike back!' } } }, ...prev].slice(0, 30))
         setTimeout(() => {
           setAttackPhase(null)
           refresh()
@@ -287,7 +292,9 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
 }
 
 function formatEventIcon(e: WSEvent): string {
-  if (e.type === 'ATTACK_EVENT') return '⚔️'
+  if (e.type === 'COMBAT' && e.action === 'HERO') return '⚔️'
+  if (e.type === 'COMBAT' && e.action === 'MONSTER') return '💀'
+  if (e.type === 'ATTACK_EVENT') return '📡'
   if (e.type === 'DUNGEON_UPDATE') {
     const s = e.payload?.status
     if (s?.victory) return '🏆'
@@ -299,9 +306,10 @@ function formatEventIcon(e: WSEvent): string {
 }
 
 function formatEventMsg(e: WSEvent): string {
+  if (e.type === 'COMBAT') return e.payload?.status?.bossState || 'Combat'
   if (e.type === 'ATTACK_EVENT' && e.action === 'ADDED') return 'Attack submitted'
-  if (e.type === 'ATTACK_EVENT' && e.action === 'MODIFIED') return 'Attack processing'
   if (e.type === 'ATTACK_EVENT' && e.action === 'DELETED') return 'Attack completed'
+  if (e.type === 'ATTACK_EVENT') return 'Attack processing'
   if (e.type === 'DUNGEON_UPDATE') {
     const s = e.payload?.status
     if (s?.victory) return 'VICTORY! Boss defeated!'
