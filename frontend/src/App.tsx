@@ -67,10 +67,24 @@ export default function App() {
     if (selected) {
       setLoading(true)
       setEvents([])
-      getDungeon(selected.ns, selected.name)
-        .then(d => setDetail(d))
-        .catch(e => setError(e.message))
-        .finally(() => setLoading(false))
+      setError('')
+      // Poll until dungeon is available (kro may still be reconciling)
+      let cancelled = false
+      const poll = async () => {
+        for (let i = 0; i < 15; i++) {
+          if (cancelled) return
+          try {
+            const d = await getDungeon(selected.ns, selected.name)
+            if (!cancelled) { setDetail(d); setLoading(false); prevInventoryRef.current = d.spec.inventory || '' }
+            return
+          } catch {
+            await new Promise(r => setTimeout(r, 2000))
+          }
+        }
+        if (!cancelled) { setError('Dungeon not found — it may still be initializing'); setLoading(false) }
+      }
+      poll()
+      return () => { cancelled = true }
     } else {
       setDetail(null)
       setShowLoot(false)
@@ -82,7 +96,7 @@ export default function App() {
     setError('')
     try {
       await createDungeon(name, monsters, difficulty, heroClass, activeNs)
-      setTimeout(refresh, 2000)
+      navigate(`/dungeon/${activeNs}/${name}`)
     } catch (e: any) { setError(e.message) }
   }
 
@@ -235,7 +249,7 @@ export default function App() {
           <DungeonList dungeons={dungeons.filter(d => d.namespace === activeNs)} onSelect={handleSelect} onDelete={handleDelete} deleting={deleting} />
         </>
       ) : loading ? (
-        <div className="loading">Loading dungeon</div>
+        <div className="loading">Initializing dungeon</div>
       ) : detail ? (
         <DungeonView
           cr={detail}
