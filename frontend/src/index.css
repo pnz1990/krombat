@@ -359,3 +359,10 @@ body {
 }
 .hero-label { font-size: 10px; color: var(--blue); white-space: nowrap; }
 .hero-hp-text { font-size: 8px; color: var(--text-dim); white-space: nowrap; }
+
+/* Attack phase animation */
+.turn-bar.attacking {
+  border-color: var(--accent);
+  animation: attackPulse 0.5s infinite;
+}
+@keyframes attackPulse { 0%,100% { background: var(--bg-card); } 50% { background: #2a1a1a; } }

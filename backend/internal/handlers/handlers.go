@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
@@ -96,6 +97,7 @@ func (h *Handler) CreateDungeon(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	dungeonsCreated.Inc()
+	slog.Info("dungeon created", "component", "api", "dungeon", req.Name, "monsters", req.Monsters, "difficulty", req.Difficulty)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(result.Object)
@@ -190,6 +192,7 @@ func (h *Handler) CreateAttack(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	attacksSubmitted.WithLabelValues(name).Inc()
+	slog.Info("attack submitted", "component", "api", "dungeon", name, "namespace", ns, "target", req.Target, "damage", req.Damage)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
 	json.NewEncoder(w).Encode(result.Object)
@@ -203,7 +206,11 @@ func (h *Handler) Events(w http.ResponseWriter, r *http.Request) {
 	ns := r.URL.Query().Get("namespace")
 	name := r.URL.Query().Get("name")
 	h.hub.Add(conn, ns, name)
-	defer h.hub.Remove(conn)
+	slog.Info("websocket connected", "component", "ws", "namespace", ns, "dungeon", name)
+	defer func() {
+		h.hub.Remove(conn)
+		slog.Info("websocket disconnected", "component", "ws", "namespace", ns, "dungeon", name)
+	}()
 	for {
 		if _, _, err := conn.ReadMessage(); err != nil {
 			break
@@ -213,5 +220,6 @@ func (h *Handler) Events(w http.ResponseWriter, r *http.Request) {
 
 func writeError(w http.ResponseWriter, msg string, code int) {
 	httpRequests.WithLabelValues("", "", strconv.Itoa(code)).Inc()
+	slog.Warn("request error", "component", "api", "status", code, "error", msg)
 	http.Error(w, msg, code)
 }

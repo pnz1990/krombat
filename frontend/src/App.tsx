@@ -32,11 +32,15 @@ export default function App() {
     } catch {}
   }, [])
 
-  // Refresh on WebSocket events
+  // Refresh on WebSocket events — deduplicate consecutive identical messages
+  const lastMsgRef = useRef('')
   useEffect(() => { if (lastEvent) {
-    // Only log meaningful events (skip MODIFIED noise from attack processing)
-    if (!(lastEvent.type === 'ATTACK_EVENT' && lastEvent.action === 'MODIFIED')) {
-      setEvents(prev => [lastEvent, ...prev].slice(0, 50))
+    const msg = `${lastEvent.type}:${lastEvent.action}:${lastEvent.payload?.status?.livingMonsters}:${lastEvent.payload?.status?.bossState}`
+    if (msg !== lastMsgRef.current) {
+      if (!(lastEvent.type === 'ATTACK_EVENT' && lastEvent.action === 'MODIFIED')) {
+        setEvents(prev => [lastEvent, ...prev].slice(0, 30))
+      }
+      lastMsgRef.current = msg
     }
     refresh()
   }}, [lastEvent, refresh])
@@ -65,13 +69,22 @@ export default function App() {
     } catch (e: any) { setError(e.message) }
   }
 
+  const [attackPhase, setAttackPhase] = useState<string | null>(null)
+
   const handleAttack = async (target: string, damage: number) => {
     if (!selected) return
     setError('')
     try {
+      setAttackPhase(`⚔️ Attacking ${target.split('-').slice(-2).join('-')}...`)
       await submitAttack(selected.ns, selected.name, target, damage)
-      setTimeout(refresh, 3000)
-    } catch (e: any) { setError(e.message) }
+      setTimeout(() => {
+        setAttackPhase('💀 Monsters counter-attack!')
+        setTimeout(() => {
+          setAttackPhase(null)
+          refresh()
+        }, 1500)
+      }, 1500)
+    } catch (e: any) { setError(e.message); setAttackPhase(null) }
   }
 
   const handleSelect = (ns: string, name: string) => {
@@ -107,6 +120,7 @@ export default function App() {
           cr={detail}
           onBack={() => { navigate('/'); refresh() }}
           onAttack={handleAttack}
+          attackPhase={attackPhase}
           events={events}
           showLoot={showLoot}
           onOpenLoot={() => setShowLoot(true)}
@@ -158,10 +172,10 @@ function DungeonList({ dungeons, onSelect }: { dungeons: DungeonSummary[]; onSel
   )
 }
 
-function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onCloseLoot, currentTurn, turnRound }: {
+function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onCloseLoot, currentTurn, turnRound, attackPhase }: {
   cr: DungeonCR; onBack: () => void; onAttack: (t: string, d: number) => void; events: WSEvent[]
   showLoot: boolean; onOpenLoot: () => void; onCloseLoot: () => void
-  currentTurn: string; turnRound: number
+  currentTurn: string; turnRound: number; attackPhase: string | null
 }) {
   if (!cr?.metadata?.name) return <div className="loading">Loading dungeon</div>
   const spec = cr.spec || { monsters: 0, difficulty: 'normal', monsterHP: [], bossHP: 0, heroHP: 100, currentTurn: 'hero', turnRound: 1 }
@@ -193,8 +207,8 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
       </div>
 
       {!gameOver && (
-        <div className="turn-bar">
-          <span className="turn-indicator">⚔️ Ready to attack!</span>
+        <div className={`turn-bar ${attackPhase ? 'attacking' : ''}`}>
+          <span className="turn-indicator">{attackPhase || '⚔️ Ready to attack!'}</span>
         </div>
       )}
 
@@ -248,14 +262,14 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
           const mName = `${dungeonName}-monster-${idx}`
           return (
             <EntityCard key={mName} name={mName} entity="monster"
-              state={state} hp={hp} maxHP={maxMonsterHP} difficulty={spec.difficulty} onAttack={onAttack} disabled={isDefeated} />
+              state={state} hp={hp} maxHP={maxMonsterHP} difficulty={spec.difficulty} onAttack={onAttack} disabled={isDefeated || !!attackPhase} />
           )
         })}
       </div>
 
       <h3 style={{ fontSize: '10px', marginBottom: 8, color: '#888' }}>BOSS</h3>
       <EntityCard name={`${dungeonName}-boss`} entity="boss"
-        state={bossState} hp={spec.bossHP} maxHP={maxBossHP} difficulty={spec.difficulty} onAttack={onAttack} disabled={isDefeated} />
+        state={bossState} hp={spec.bossHP} maxHP={maxBossHP} difficulty={spec.difficulty} onAttack={onAttack} disabled={isDefeated || !!attackPhase} />
 
       <h3 style={{ fontSize: '10px', margin: '16px 0 8px', color: '#888' }}>EVENT LOG</h3>
       <div className="event-log">

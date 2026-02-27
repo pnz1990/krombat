@@ -14,6 +14,9 @@ This guide walks through provisioning the EKS Auto Mode cluster and enabling the
 - EKS Auto Mode cluster (K8s 1.34, compute managed by AWS)
 - kro managed capability with IAM role
 - Argo CD managed capability with IAM role + Identity Center integration
+- CloudWatch Container Insights addon (cluster/pod/container metrics)
+- CloudWatch Log Groups for centralized log aggregation
+- CloudWatch dashboard and alarms for operational monitoring
 - ECR repository (`krombat/backend`) with lifecycle policy
 - GitHub Actions OIDC federation for CI (IAM role + EKS access entry)
 

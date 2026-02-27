@@ -3,7 +3,7 @@ package k8s
 import (
 	"context"
 	"encoding/json"
-	"log"
+	"log/slog"
 
 	"github.com/pnz1990/krombat/backend/internal/ws"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -26,7 +26,7 @@ func watchResource(client *Client, hub *ws.Hub, gvr schema.GroupVersionResource,
 	for {
 		watcher, err := client.Dynamic.Resource(gvr).Namespace("").Watch(context.Background(), metav1.ListOptions{})
 		if err != nil {
-			log.Printf("Watch error for %s: %v, retrying...", gvr.Resource, err)
+			slog.Error("watch error, retrying", "resource", gvr.Resource, "error", err)
 			continue
 		}
 		for event := range watcher.ResultChan() {

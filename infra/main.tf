@@ -67,6 +67,13 @@ module "eks" {
     node_pools = ["general-purpose", "system"]
   }
 
+  # Observability
+  cluster_addons = {
+    amazon-cloudwatch-observability = {
+      most_recent = true
+    }
+  }
+
   vpc_id     = module.vpc.vpc_id
   subnet_ids = module.vpc.private_subnets
 }

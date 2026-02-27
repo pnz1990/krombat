@@ -105,3 +105,66 @@ kubectl annotate application krombat -n argocd argocd.argoproj.io/refresh=hard -
 ```bash
 kubectl get application krombat -n argocd -o jsonpath='Sync: {.status.sync.status} Rev: {.status.sync.revision}'
 ```
+
+## CloudWatch Observability
+
+### Log Groups
+| Log Group | Contents | Retention |
+|-----------|----------|-----------|
+| `/eks/krombat/rpg-system` | Backend + frontend container logs | 7 days |
+| `/eks/krombat/game` | Attack Job logs, dungeon namespace pods | 7 days |
+| `/eks/krombat/kro` | kro controller logs | 30 days |
+| `/eks/krombat/argocd` | Argo CD logs | 30 days |
+
+### Find logs for a specific dungeon
+```
+# CloudWatch Logs Insights query
+fields @timestamp, @message
+| filter @message like /my-dungeon/
+| sort @timestamp desc
+| limit 50
+```
+
+### Trace an attack
+```
+fields @timestamp, @message
+| filter @message like /attack/ and @message like /my-dungeon/
+| sort @timestamp desc
+| limit 20
+```
+
+### Check kro reconciliation errors
+```
+# Query the kro log group
+fields @timestamp, @message
+| filter @message like /error|Error|ERROR/
+| sort @timestamp desc
+| limit 30
+```
+
+### Check backend API errors
+```
+# Query rpg-system log group (JSON structured logs)
+fields @timestamp, msg, status, error, dungeon
+| filter component = 'api' and level = 'WARN'
+| sort @timestamp desc
+| limit 20
+```
+
+### View attack Job combat math
+```
+# Query game log group
+fields @timestamp, @message
+| filter @message like /Hero attacks/ or @message like /counter-attack/ or @message like /Turn:/
+| sort @timestamp desc
+| limit 30
+```
+
+### Dashboard
+Access the CloudWatch dashboard at:
+```bash
+terraform -chdir=infra output cloudwatch_dashboard_url
+```
+
+### Alarms
+- `krombat-backend-restarts` — fires when backend pod restarts > 3 times in 5 minutes

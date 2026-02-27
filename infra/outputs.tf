@@ -25,3 +25,11 @@ output "github_actions_role_arn" {
 output "ecr_backend_url" {
   value = var.enable_ecr ? aws_ecr_repository.backend[0].repository_url : ""
 }
+
+output "cloudwatch_log_group_rpg" {
+  value = aws_cloudwatch_log_group.rpg_system.name
+}
+
+output "cloudwatch_dashboard_url" {
+  value = "https://${var.region}.console.aws.amazon.com/cloudwatch/home?region=${var.region}#dashboards:name=${var.cluster_name}-game"
+}

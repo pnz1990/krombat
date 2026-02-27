@@ -1,7 +1,7 @@
 package main
 
 import (
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 
@@ -12,9 +12,12 @@ import (
 )
 
 func main() {
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
+
 	client, err := k8s.NewClient()
 	if err != nil {
-		log.Fatalf("Failed to create k8s client: %v", err)
+		slog.Error("failed to create k8s client", "error", err)
+		os.Exit(1)
 	}
 
 	hub := ws.NewHub()
@@ -36,7 +39,9 @@ func main() {
 	if p := os.Getenv("PORT"); p != "" {
 		addr = ":" + p
 	}
-	log.Printf("Backend listening on %s", addr)
-	log.Fatal(http.ListenAndServe(addr, mux))
+	slog.Info("backend starting", "addr", addr)
+	if err := http.ListenAndServe(addr, mux); err != nil {
+		slog.Error("server failed", "error", err)
+		os.Exit(1)
+	}
 }
-// rebuild

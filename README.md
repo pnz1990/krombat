@@ -58,6 +58,7 @@ The backend and frontend only interact with kro-generated CRs (Dungeon and Attac
 - **Backend** — Stateless Go service. Only touches Dungeon and Attack CRs — never reads Pods, Secrets, or Jobs. Includes rate limiting (1 attack/s per dungeon) and Prometheus metrics on `/metrics`
 - **Kubernetes + kro** — Sole source of truth. Two RGDs orchestrate the game: `dungeon-graph` (state management) and `attack-graph` (combat). kro runs as an [EKS Managed Capability](https://docs.aws.amazon.com/eks/latest/userguide/kro.html)
 - **Argo CD** — Runs as an [EKS Managed Capability](https://docs.aws.amazon.com/eks/latest/userguide/argocd.html). Continuously syncs all cluster manifests from this Git repo. GitHub webhook for ~6s sync latency
+- **Observability** — CloudWatch Container Insights for cluster/pod metrics, CloudWatch Logs for centralized log aggregation (JSON structured logs from backend, attack Job logs, kro controller logs), CloudWatch dashboard and alarms for operational monitoring
 
 ## Key Demonstrations
 

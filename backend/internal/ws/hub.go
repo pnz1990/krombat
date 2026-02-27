@@ -1,7 +1,7 @@
 package ws
 
 import (
-	"log"
+	"log/slog"
 	"net/http"
 	"sync"
 
@@ -60,7 +60,7 @@ func (h *Hub) Broadcast(msg []byte, eventNS, eventName string) {
 			continue
 		}
 		if err := conn.WriteMessage(websocket.TextMessage, msg); err != nil {
-			log.Printf("ws write error: %v", err)
+			slog.Warn("ws write error", "error", err)
 			go h.Remove(conn)
 		}
 	}
