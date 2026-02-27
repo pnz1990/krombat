@@ -60,8 +60,12 @@ export function Sprite({ spriteType, action, size = 64, flip = false }: SpritePr
   }, [action, spriteType])
 
   const frame = frames[frameIdx] ?? frames[0]
-  const frameW = config.sheetW / config.frames
-  const scale = size / config.sheetH
+
+  // Use percentage-based positioning to avoid sub-pixel rounding issues
+  // background-size: (N * 100)% 100% makes each frame exactly the container width
+  // background-position-x: frame / (N-1) * 100% selects the frame
+  const n = config.frames
+  const posX = n > 1 ? (frame / (n - 1)) * 100 : 0
 
   return (
     <div style={{
@@ -70,15 +74,11 @@ export function Sprite({ spriteType, action, size = 64, flip = false }: SpritePr
       overflow: 'hidden',
       imageRendering: 'pixelated' as any,
       transform: flip ? 'scaleX(-1)' : undefined,
-    }}>
-      <div style={{
-        width: frameW * scale,
-        height: config.sheetH * scale,
-        backgroundImage: `url(${config.file})`,
-        backgroundSize: `${config.sheetW * scale}px ${config.sheetH * scale}px`,
-        backgroundPosition: `-${frame * frameW * scale}px 0`,
-      }} />
-    </div>
+      backgroundImage: `url(${config.file})`,
+      backgroundSize: `${n * 100}% 100%`,
+      backgroundPosition: `${posX}% 0%`,
+      backgroundRepeat: 'no-repeat',
+    }} />
   )
 }
 

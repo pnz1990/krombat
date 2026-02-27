@@ -5,6 +5,14 @@ import { useWebSocket, WSEvent } from './useWebSocket'
 
 import { Sprite, getMonsterSprite, SpriteAction, ItemSprite } from './Sprite'
 
+// 8-bit styled text icons (consistent cross-platform, matches pixel font)
+const ICO = {
+  attack: '⚔', dice: '⊞', damage: '✦', shield: '◆', heal: '+', dagger: '†',
+  skull: '☠', crown: '♛', lock: '▣', trophy: '★', gift: '◈', delete: '✕',
+  help: '?', scroll: '▤', mana: '◇', poison: '●', burn: '▲', stun: '■',
+  heart: '♥', gem: '♦', sword: '/', armor: '□', potion: '○',
+} as const
+
 function Tooltip({ text, children }: { text: string; children: React.ReactNode }) {
   const [show, setShow] = useState(false)
   return (
@@ -289,7 +297,7 @@ function DungeonList({ dungeons, onSelect, onDelete, deleting }: {
             {deleting === d.name ? (
               <span style={{ fontSize: '7px', color: 'var(--accent)' }}>Deleting...</span>
             ) : (
-              <button className="tile-delete-btn" onClick={e => { e.stopPropagation(); onDelete(d.namespace, d.name) }}>🗑️</button>
+              <button className="tile-delete-btn" onClick={e => { e.stopPropagation(); onDelete(d.namespace, d.name) }}>✕</button>
             )}
           </div>
           <div className="stats">
@@ -356,7 +364,7 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
               <p>Kill all monsters to unlock the boss. Defeat the boss to win!</p>
             </div>
             <div className="help-section">
-              <h3>🎲 Dice by Difficulty</h3>
+              <h3>⊞ Dice by Difficulty</h3>
               <table className="help-table">
                 <thead><tr><th>Diff</th><th>Monster HP</th><th>Boss HP</th><th>Dice</th></tr></thead>
                 <tbody>
@@ -469,18 +477,18 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
         <span className="hero-label">{(spec.heroClass || 'warrior').toUpperCase()}</span>
         <div className="hp-bar-bg" style={{ flex: 1 }}>
           <div className={`hp-bar-fill ${heroHP > 60 ? 'high' : heroHP > 30 ? 'mid' : 'low'}`}
-            style={{ width: `${(heroHP / maxHeroHP) * 100}%` }} />
+            style={{ width: `${Math.min((heroHP / maxHeroHP) * 100, 100)}%` }} />
         </div>
         <span className="hero-hp-text">HP: {heroHP} / {maxHeroHP}</span>
-        {(spec.heroClass === 'mage') && <span className="mana-text">🔮 Mana: {spec.heroMana ?? 0}</span>}
+        {(spec.heroClass === 'mage') && <span className="mana-text">◇ Mana: {spec.heroMana ?? 0}</span>}
       </div>
       </Tooltip>
 
       {((spec.poisonTurns ?? 0) > 0 || (spec.burnTurns ?? 0) > 0 || (spec.stunTurns ?? 0) > 0) && (
         <div className="effect-badges">
-          {(spec.poisonTurns ?? 0) > 0 && <Tooltip text="Poison: -5 HP per turn. Applied by monsters on counter-attack."><span className="effect-badge poison">🟢 Poison ({spec.poisonTurns})</span></Tooltip>}
-          {(spec.burnTurns ?? 0) > 0 && <Tooltip text="Burn: -8 HP per turn. Applied by boss on counter-attack."><span className="effect-badge burn">🔴 Burn ({spec.burnTurns})</span></Tooltip>}
-          {(spec.stunTurns ?? 0) > 0 && <Tooltip text="Stun: your next attack is skipped."><span className="effect-badge stun">🟡 Stun ({spec.stunTurns})</span></Tooltip>}
+          {(spec.poisonTurns ?? 0) > 0 && <Tooltip text="Poison: -5 HP per turn. Applied by monsters on counter-attack."><span className="effect-badge poison">● Poison ({spec.poisonTurns})</span></Tooltip>}
+          {(spec.burnTurns ?? 0) > 0 && <Tooltip text="Burn: -8 HP per turn. Applied by boss on counter-attack."><span className="effect-badge burn">▲ Burn ({spec.burnTurns})</span></Tooltip>}
+          {(spec.stunTurns ?? 0) > 0 && <Tooltip text="Stun: your next attack is skipped."><span className="effect-badge stun">■ Stun ({spec.stunTurns})</span></Tooltip>}
         </div>
       )}
 
@@ -685,7 +693,7 @@ function EntityCard({ name, entity, state, hp, maxHP, diceFormula, onAttack, dis
       {canAttack && (
         <div className="attack-controls">
           <button className="btn btn-primary" style={{ fontSize: '7px', padding: '4px 8px' }}
-            onClick={handleRoll}>🎲 {diceLabel(d)}</button>
+            onClick={handleRoll}>⊞ {diceLabel(d)}</button>
           {heroClass === 'rogue' && (backstabCooldown ?? 0) === 0 && (
             <button className="btn btn-ability" style={{ fontSize: '7px', padding: '4px 8px' }}
               onClick={() => {
