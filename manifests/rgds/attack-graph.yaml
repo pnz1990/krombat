@@ -135,12 +135,26 @@ spec:
                           fi
                         fi
 
-                        PATCH="{\"spec\":{$HP_PATCH,\"heroHP\":$HERO_HP,\"currentTurn\":\"$NEXT_TURN\",\"turnRound\":$NEXT_ROUND}}"
+                        HERO_ACTION="Hero deals $DAMAGE damage to $TARGET (HP: $OLD_HP -> $NEW_HP)"
 
-                        echo "Hero attacks $TARGET: HP $OLD_HP -> $NEW_HP (damage: $DAMAGE)"
-                        [ "$TOTAL_COUNTER" -gt 0 ] 2>/dev/null && echo "Monsters counter-attack: hero takes $TOTAL_COUNTER damage (hero HP: $HERO_HP)" || true
-                        [ "$COUNTER" -gt 0 ] 2>/dev/null && echo "$TARGET" | grep -q "boss" && echo "Boss counter-attacks: hero takes $COUNTER damage (hero HP: $HERO_HP)" || true
-                        echo "Turn: $CURRENT_TURN -> $NEXT_TURN (round $NEXT_ROUND)"
+                        if echo "$TARGET" | grep -q "boss"; then
+                          if [ "$NEW_HP" -gt 0 ]; then
+                            ENEMY_ACTION="Boss strikes back for $COUNTER damage! (Hero HP: $HERO_HP)"
+                          else
+                            ENEMY_ACTION="Boss defeated!"
+                          fi
+                        else
+                          if [ "$TOTAL_COUNTER" -gt 0 ] 2>/dev/null; then
+                            ENEMY_ACTION="$ALIVE monsters counter-attack for $TOTAL_COUNTER total damage! (Hero HP: $HERO_HP)"
+                          else
+                            ENEMY_ACTION="No monsters left to counter-attack"
+                          fi
+                        fi
+
+                        PATCH="{\"spec\":{$HP_PATCH,\"heroHP\":$HERO_HP,\"currentTurn\":\"$NEXT_TURN\",\"turnRound\":$NEXT_ROUND,\"lastHeroAction\":\"$HERO_ACTION\",\"lastEnemyAction\":\"$ENEMY_ACTION\"}}"
+
+                        echo "$HERO_ACTION"
+                        echo "$ENEMY_ACTION"
 
                         if kubectl patch dungeon "$DUNGEON" -n "$DUNGEON_NS" --type=merge -p "$PATCH" 2>&1; then
                           echo "Turn complete!"

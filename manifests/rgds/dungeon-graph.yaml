@@ -15,6 +15,8 @@ spec:
       monsterHP: "[]integer"
       bossHP: integer | default=0
       heroHP: integer | default=100
+      lastHeroAction: string | default=""
+      lastEnemyAction: string | default=""
     status:
       livingMonsters: "${size(monsterCRs.filter(m, m.status.?entityState.orValue('alive') == 'alive'))}"
       bossState: "${bossCR.status.?entityState.orValue('pending')}"

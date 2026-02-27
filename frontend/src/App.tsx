@@ -73,17 +73,20 @@ export default function App() {
       addEvent('⚔️', `Hero deals ${damage} damage to ${shortTarget}`)
       await submitAttack(selected.ns, selected.name, target, damage)
       await new Promise(r => setTimeout(r, 1500))
-      setAttackPhase('💀 Monsters counter-attack!')
-      addEvent('💀', 'Monsters strike back!')
+      setAttackPhase('💀 Enemies counter-attack!')
       await new Promise(r => setTimeout(r, 1500))
       setAttackPhase(null)
       const updated = await getDungeon(selected.ns, selected.name)
       setDetail(updated)
+      // Read action log from Dungeon CR (written by attack Job)
+      const heroAction = updated.spec.lastHeroAction
+      const enemyAction = updated.spec.lastEnemyAction
+      if (heroAction) addEvent('⚔️', heroAction)
+      if (enemyAction) addEvent('💀', enemyAction)
       const s = updated.status
       if (s?.victory) addEvent('🏆', 'VICTORY! Boss defeated!')
       else if (s?.bossState === 'ready') addEvent('🐉', 'Boss unlocked! All monsters slain!')
       else if ((updated.spec.heroHP ?? 100) <= 0) addEvent('💀', 'Hero has fallen...')
-      else addEvent('📜', `${s?.livingMonsters ?? '?'} monsters remaining`)
     } catch (e: any) { setError(e.message); setAttackPhase(null) }
   }
 
