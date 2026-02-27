@@ -1,0 +1,11 @@
+{
+  "name": "krombat-tests",
+  "version": "1.0.0",
+  "description": "E2E tests for Kubernetes RPG",
+  "scripts": {
+    "test:e2e": "node tests/e2e/smoke-test.js"
+  },
+  "devDependencies": {
+    "playwright": "^1.40.0"
+  }
+}

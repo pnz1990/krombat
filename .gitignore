@@ -47,3 +47,8 @@ vendor/
 dist/
 build/
 *.out
+
+# Test artifacts
+test-failure.png
+playwright-report/
+test-results/
