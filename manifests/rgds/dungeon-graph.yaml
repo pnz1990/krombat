@@ -2,6 +2,8 @@ apiVersion: kro.run/v1alpha1
 kind: ResourceGraphDefinition
 metadata:
   name: dungeon-graph
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
 spec:
   schema:
     apiVersion: v1alpha1
@@ -13,16 +15,12 @@ spec:
       monsterHP: "[]integer"
       bossHP: integer | default=0
       heroHP: integer | default=100
-      currentTurn: string | default="hero"
-      turnRound: integer | default=1
     status:
-      livingMonsters: "${size(monsterPods.filter(m, m.metadata.labels['game.k8s.example/state'] == 'alive'))}"
-      bossState: "${bossPod.metadata.labels['game.k8s.example/state']}"
-      victory: "${bossPod.metadata.labels['game.k8s.example/state'] == 'defeated'}"
-      defeated: "${schema.spec.heroHP <= 0}"
-      loot: "${'Treasure code: ' + ns.metadata.name + '-LOOT'}"
-      maxMonsterHP: "${schema.spec.difficulty == 'easy' ? 30 : (schema.spec.difficulty == 'hard' ? 80 : 50)}"
-      maxBossHP: "${schema.spec.difficulty == 'easy' ? 200 : (schema.spec.difficulty == 'hard' ? 800 : 400)}"
+      livingMonsters: "${size(monsterCRs.filter(m, m.status.?state.orValue('alive') == 'alive'))}"
+      bossState: "${bossCR.status.?state.orValue('pending')}"
+      victory: "${bossCR.status.?state.orValue('pending') == 'defeated'}"
+      defeat: "${heroCR.status.?state.orValue('alive') == 'defeated'}"
+      loot: "${treasureCR.status.?loot.orValue('')}"
 
   resources:
     # --- Namespace per dungeon ---
@@ -35,67 +33,59 @@ spec:
           labels:
             game.k8s.example/dungeon: ${schema.metadata.name}
 
-    # --- Monster pods (dynamic count from monsterHP array) ---
-    - id: monsterPods
+    # --- Hero CR ---
+    - id: heroCR
+      template:
+        apiVersion: game.k8s.example/v1alpha1
+        kind: Hero
+        metadata:
+          name: "${schema.metadata.name + '-hero'}"
+          namespace: ${schema.metadata.name}
+        spec:
+          dungeonName: ${schema.metadata.name}
+          hp: ${schema.spec.heroHP}
+          difficulty: ${schema.spec.difficulty}
+
+    # --- Monster CRs (dynamic count) ---
+    - id: monsterCRs
       forEach:
         - idx: ${lists.range(size(schema.spec.monsterHP))}
       template:
-        apiVersion: v1
-        kind: Pod
+        apiVersion: game.k8s.example/v1alpha1
+        kind: Monster
         metadata:
           name: "${schema.metadata.name + '-monster-' + string(idx)}"
           namespace: ${schema.metadata.name}
-          labels:
-            game.k8s.example/dungeon: ${schema.metadata.name}
-            game.k8s.example/entity: monster
-            game.k8s.example/state: "${schema.spec.monsterHP[idx] > 0 ? 'alive' : 'dead'}"
-          annotations:
-            game.k8s.example/hp: "${string(schema.spec.monsterHP[idx])}"
         spec:
-          containers:
-            - name: monster
-              image: registry.k8s.io/pause:3.10
-              resources:
-                requests:
-                  cpu: "10m"
-                  memory: "16Mi"
+          dungeonName: ${schema.metadata.name}
+          index: ${idx}
+          hp: ${schema.spec.monsterHP[idx]}
+          difficulty: ${schema.spec.difficulty}
 
-    # --- Boss pod ---
-    - id: bossPod
+    # --- Boss CR ---
+    - id: bossCR
       template:
-        apiVersion: v1
-        kind: Pod
+        apiVersion: game.k8s.example/v1alpha1
+        kind: Boss
         metadata:
           name: "${schema.metadata.name + '-boss'}"
           namespace: ${schema.metadata.name}
-          labels:
-            game.k8s.example/dungeon: ${schema.metadata.name}
-            game.k8s.example/entity: boss
-            game.k8s.example/state: "${schema.spec.bossHP > 0 ? (size(schema.spec.monsterHP.filter(hp, hp > 0)) == 0 ? 'ready' : 'pending') : 'defeated'}"
-          annotations:
-            game.k8s.example/hp: "${string(schema.spec.bossHP)}"
         spec:
-          containers:
-            - name: boss
-              image: registry.k8s.io/pause:3.10
-              resources:
-                requests:
-                  cpu: "10m"
-                  memory: "16Mi"
+          dungeonName: ${schema.metadata.name}
+          hp: ${schema.spec.bossHP}
+          difficulty: ${schema.spec.difficulty}
+          monstersAlive: "${size(schema.spec.monsterHP.filter(hp, hp > 0))}"
 
-    # --- Treasure ---
-    - id: treasure
+    # --- Treasure CR ---
+    - id: treasureCR
       template:
-        apiVersion: v1
-        kind: Secret
+        apiVersion: game.k8s.example/v1alpha1
+        kind: Treasure
         metadata:
           name: "${schema.metadata.name + '-treasure'}"
           namespace: ${schema.metadata.name}
-          labels:
-            game.k8s.example/dungeon: ${schema.metadata.name}
-            game.k8s.example/entity: treasure
-        stringData:
-          loot: "${'Treasure code: ' + schema.metadata.name + '-LOOT'}"
+        spec:
+          dungeonName: ${schema.metadata.name}
 
     # --- ResourceQuota ---
     - id: quota

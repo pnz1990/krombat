@@ -1,0 +1,33 @@
+apiVersion: kro.run/v1alpha1
+kind: ResourceGraphDefinition
+metadata:
+  name: hero-graph
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  schema:
+    apiVersion: v1alpha1
+    kind: Hero
+    group: game.k8s.example
+    spec:
+      dungeonName: string | required=true
+      hp: integer | default=100
+      difficulty: string | default="normal"
+    status:
+      state: "${heroState.data.state}"
+      hp: "${heroState.data.hp}"
+
+  resources:
+    - id: heroState
+      template:
+        apiVersion: v1
+        kind: ConfigMap
+        metadata:
+          name: "${schema.spec.dungeonName + '-hero'}"
+          namespace: ${schema.metadata.namespace}
+          labels:
+            game.k8s.example/dungeon: ${schema.spec.dungeonName}
+            game.k8s.example/entity: hero
+        data:
+          state: "${schema.spec.hp > 0 ? 'alive' : 'defeated'}"
+          hp: "${string(schema.spec.hp)}"

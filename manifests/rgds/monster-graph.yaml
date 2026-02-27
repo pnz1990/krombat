@@ -1,0 +1,42 @@
+apiVersion: kro.run/v1alpha1
+kind: ResourceGraphDefinition
+metadata:
+  name: monster-graph
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  schema:
+    apiVersion: v1alpha1
+    kind: Monster
+    group: game.k8s.example
+    spec:
+      dungeonName: string | required=true
+      index: integer | required=true
+      hp: integer | required=true
+      difficulty: string | default="normal"
+    status:
+      state: "${monsterPod.metadata.labels['game.k8s.example/state']}"
+      hp: "${monsterPod.metadata.annotations['game.k8s.example/hp']}"
+
+  resources:
+    - id: monsterPod
+      template:
+        apiVersion: v1
+        kind: Pod
+        metadata:
+          name: "${schema.spec.dungeonName + '-monster-' + string(schema.spec.index)}"
+          namespace: ${schema.metadata.namespace}
+          labels:
+            game.k8s.example/dungeon: ${schema.spec.dungeonName}
+            game.k8s.example/entity: monster
+            game.k8s.example/state: "${schema.spec.hp > 0 ? 'alive' : 'dead'}"
+          annotations:
+            game.k8s.example/hp: "${string(schema.spec.hp)}"
+        spec:
+          containers:
+            - name: monster
+              image: registry.k8s.io/pause:3.10
+              resources:
+                requests:
+                  cpu: "10m"
+                  memory: "16Mi"

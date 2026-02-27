@@ -1,0 +1,29 @@
+apiVersion: kro.run/v1alpha1
+kind: ResourceGraphDefinition
+metadata:
+  name: treasure-graph
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  schema:
+    apiVersion: v1alpha1
+    kind: Treasure
+    group: game.k8s.example
+    spec:
+      dungeonName: string | required=true
+    status:
+      loot: "${'Treasure code: ' + treasureSecret.metadata.name + '-LOOT'}"
+
+  resources:
+    - id: treasureSecret
+      template:
+        apiVersion: v1
+        kind: Secret
+        metadata:
+          name: "${schema.spec.dungeonName + '-treasure'}"
+          namespace: ${schema.metadata.namespace}
+          labels:
+            game.k8s.example/dungeon: ${schema.spec.dungeonName}
+            game.k8s.example/entity: treasure
+        stringData:
+          loot: "${'Treasure code: ' + schema.spec.dungeonName + '-LOOT'}"

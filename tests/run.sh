@@ -67,18 +67,38 @@ wait_for "namespace created" "kubectl get ns $DUNGEON_NAME" 60 \
   && pass "Namespace created" \
   || fail "Namespace not created"
 
+wait_for "monster CRs created" \
+  "[ \$(kubectl get monsters -n $DUNGEON_NAME --no-headers 2>/dev/null | wc -l) -eq 2 ]" 60 \
+  && pass "2 monster CRs created" \
+  || fail "Monster CRs not created"
+
 wait_for "monster pods running" \
   "[ \$(kubectl get pods -n $DUNGEON_NAME -l game.k8s.example/entity=monster --no-headers 2>/dev/null | wc -l) -eq 2 ]" 60 \
-  && pass "2 monster pods created" \
+  && pass "2 monster pods created (via monster-graph)" \
   || fail "Monster pods not created"
+
+wait_for "boss CR exists" \
+  "kubectl get boss ${DUNGEON_NAME}-boss -n $DUNGEON_NAME" 60 \
+  && pass "Boss CR created" \
+  || fail "Boss CR not created"
 
 wait_for "boss pod exists" \
   "kubectl get pod ${DUNGEON_NAME}-boss -n $DUNGEON_NAME" 60 \
-  && pass "Boss pod created" \
+  && pass "Boss pod created (via boss-graph)" \
   || fail "Boss pod not created"
 
+wait_for "hero CR exists" \
+  "kubectl get hero ${DUNGEON_NAME}-hero -n $DUNGEON_NAME" 60 \
+  && pass "Hero CR created" \
+  || fail "Hero CR not created"
+
+wait_for "treasure CR exists" \
+  "kubectl get treasure ${DUNGEON_NAME}-treasure -n $DUNGEON_NAME" 60 \
+  && pass "Treasure CR created" \
+  || fail "Treasure CR not created"
+
 kubectl get secret "${DUNGEON_NAME}-treasure" -n "$DUNGEON_NAME" &>/dev/null \
-  && pass "Treasure secret created" \
+  && pass "Treasure secret created (via treasure-graph)" \
   || fail "Treasure secret not created"
 
 kubectl get resourcequota dungeon-quota -n "$DUNGEON_NAME" &>/dev/null \
