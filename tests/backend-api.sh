@@ -107,12 +107,13 @@ CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeons/def
 
 # --- Test 10: Rate limiting ---
 log "Test 10: Rate limiting"
-# First attack should succeed (or 202)
+# Fire two attacks simultaneously — second should be rate limited
 curl -s -o /dev/null -X POST "$BASE/api/v1/dungeons/default/$DUNGEON/attacks" \
-  -H "Content-Type: application/json" -d "{\"target\":\"${DUNGEON}-monster-1\",\"damage\":10}"
-# Immediate second attack to same dungeon should be rate limited
+  -H "Content-Type: application/json" -d "{\"target\":\"${DUNGEON}-monster-1\",\"damage\":10}" &
+sleep 0.1
 CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeons/default/$DUNGEON/attacks" \
   -H "Content-Type: application/json" -d "{\"target\":\"${DUNGEON}-monster-1\",\"damage\":10}")
+wait
 [ "$CODE" = "429" ] && pass "Rate limited -> 429" || fail "Rate limit not enforced -> $CODE"
 
 # --- Test 11: Metrics after operations ---
