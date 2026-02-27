@@ -366,3 +366,18 @@ body {
   animation: attackPulse 0.5s infinite;
 }
 @keyframes attackPulse { 0%,100% { background: var(--bg-card); } 50% { background: #2a1a1a; } }
+
+/* Hero Sprites */
+.hero-sprite {
+  width: 64px;
+  height: 64px;
+  background-size: auto 64px;
+  background-position: 0 0;
+  image-rendering: pixelated;
+  flex-shrink: 0;
+}
+.hero-sprite.warrior { background-image: url('/sprites/warrior.png'); }
+.hero-sprite.mage { background-image: url('/sprites/mage.png'); }
+.hero-sprite.rogue { background-image: url('/sprites/rogue.png'); }
+
+.mana-text { font-size: 8px; color: #9b59b6; white-space: nowrap; }

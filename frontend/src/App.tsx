@@ -52,10 +52,10 @@ export default function App() {
     refresh()
   }, [ns, name, refresh])
 
-  const handleCreate = async (name: string, monsters: number, difficulty: string) => {
+  const handleCreate = async (name: string, monsters: number, difficulty: string, heroClass: string) => {
     setError('')
     try {
-      await createDungeon(name, monsters, difficulty)
+      await createDungeon(name, monsters, difficulty, heroClass)
       setTimeout(refresh, 2000)
     } catch (e: any) { setError(e.message) }
   }
@@ -136,10 +136,11 @@ export default function App() {
   )
 }
 
-function CreateForm({ onCreate }: { onCreate: (n: string, m: number, d: string) => void }) {
+function CreateForm({ onCreate }: { onCreate: (n: string, m: number, d: string, c: string) => void }) {
   const [name, setName] = useState('')
   const [monsters, setMonsters] = useState(3)
   const [difficulty, setDifficulty] = useState('normal')
+  const [heroClass, setHeroClass] = useState('warrior')
   return (
     <div className="create-form">
       <div><label>Dungeon Name</label><input value={name} onChange={e => setName(e.target.value)} placeholder="my-dungeon" /></div>
@@ -149,7 +150,12 @@ function CreateForm({ onCreate }: { onCreate: (n: string, m: number, d: string) 
           <option value="easy">Easy</option><option value="normal">Normal</option><option value="hard">Hard</option>
         </select>
       </div>
-      <button className="btn btn-gold" onClick={() => { if (name) { onCreate(name, monsters, difficulty); setName('') } }}>
+      <div><label>Hero Class</label>
+        <select value={heroClass} onChange={e => setHeroClass(e.target.value)}>
+          <option value="warrior">⚔️ Warrior</option><option value="mage">🔮 Mage</option><option value="rogue">🗡️ Rogue</option>
+        </select>
+      </div>
+      <button className="btn btn-gold" onClick={() => { if (name) { onCreate(name, monsters, difficulty, heroClass); setName('') } }}>
         Create Dungeon
       </button>
     </div>
@@ -187,7 +193,7 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
   const maxMonsterHP = status?.maxMonsterHP || 50
   const maxBossHP = status?.maxBossHP || 400
   const heroHP = spec.heroHP ?? 100
-  const maxHeroHP = 100
+  const maxHeroHP = { warrior: 150, mage: 80, rogue: 100 }[spec.heroClass || 'warrior'] || 100
   const isDefeated = status?.defeated || heroHP <= 0
   const bossState = status?.bossState || 'pending'
   const isHeroTurn = !currentTurn || currentTurn === 'hero'
@@ -250,12 +256,14 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
       </div>
 
       <div className="hero-bar">
-        <span className="hero-label">🛡️ HERO</span>
+        <div className={`hero-sprite ${spec.heroClass || 'warrior'}`} />
+        <span className="hero-label">{(spec.heroClass || 'warrior').toUpperCase()}</span>
         <div className="hp-bar-bg" style={{ flex: 1 }}>
           <div className={`hp-bar-fill ${heroHP > 60 ? 'high' : heroHP > 30 ? 'mid' : 'low'}`}
             style={{ width: `${(heroHP / maxHeroHP) * 100}%` }} />
         </div>
         <span className="hero-hp-text">HP: {heroHP} / {maxHeroHP}</span>
+        {(spec.heroClass === 'mage') && <span className="mana-text">🔮 Mana: {spec.heroMana ?? 0}</span>}
       </div>
 
       <h3 style={{ fontSize: '10px', marginBottom: 8, color: '#888' }}>MONSTERS</h3>

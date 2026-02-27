@@ -49,6 +49,8 @@ spec:
                       for i in 1 2 3 4 5; do
                         DUNGEON_JSON=$(kubectl get dungeon "$DUNGEON" -n "$DUNGEON_NS" -o json)
                         HERO_HP=$(echo "$DUNGEON_JSON" | jq -r '.spec.heroHP // 100')
+                        HERO_CLASS=$(echo "$DUNGEON_JSON" | jq -r '.spec.heroClass // "warrior"')
+                        HERO_MANA=$(echo "$DUNGEON_JSON" | jq -r '.spec.heroMana // 0')
                         DIFFICULTY=$(echo "$DUNGEON_JSON" | jq -r '.spec.difficulty // "normal"')
                         CURRENT_TURN=$(echo "$DUNGEON_JSON" | jq -r '.spec.currentTurn // "hero"')
                         TURN_ROUND=$(echo "$DUNGEON_JSON" | jq -r '.spec.turnRound // 1')
@@ -59,24 +61,59 @@ spec:
                           exit 0
                         fi
 
+                        # Apply class damage modifier
+                        EFFECTIVE_DAMAGE=$DAMAGE
+                        MANA_PATCH=""
+                        CLASS_NOTE=""
+                        if [ "$HERO_CLASS" = "mage" ]; then
+                          if [ "$HERO_MANA" -gt 0 ]; then
+                            # Mage: 1.5x damage to boss, costs 1 mana
+                            if echo "$TARGET" | grep -q "boss"; then
+                              EFFECTIVE_DAMAGE=$((DAMAGE * 3 / 2))
+                              CLASS_NOTE=" (Mage critical!)"
+                            fi
+                            HERO_MANA=$((HERO_MANA - 1))
+                            MANA_PATCH=",\"heroMana\":$HERO_MANA"
+                          else
+                            CLASS_NOTE=" (No mana!)"
+                            EFFECTIVE_DAMAGE=$((DAMAGE / 2))
+                          fi
+                        elif [ "$HERO_CLASS" = "rogue" ]; then
+                          EFFECTIVE_DAMAGE=$((DAMAGE * 6 / 5))
+                          CLASS_NOTE=" (Rogue precision!)"
+                        fi
+
                         # Calculate hero's attack on target
                         if echo "$TARGET" | grep -q "boss"; then
                           OLD_HP=$(echo "$DUNGEON_JSON" | jq -r '.spec.bossHP')
-                          NEW_HP=$((OLD_HP - DAMAGE))
+                          NEW_HP=$((OLD_HP - EFFECTIVE_DAMAGE))
                           [ "$NEW_HP" -lt 0 ] && NEW_HP=0
-                          # Boss counter-attack (hits harder)
+                          # Boss counter-attack
                           case "$DIFFICULTY" in
                             easy)   COUNTER=15 ;;
                             normal) COUNTER=25 ;;
                             hard)   COUNTER=40 ;;
                           esac
-                          [ "$NEW_HP" -gt 0 ] && HERO_HP=$((HERO_HP - COUNTER))
+                          if [ "$NEW_HP" -gt 0 ]; then
+                            # Apply class defense
+                            if [ "$HERO_CLASS" = "warrior" ]; then
+                              COUNTER=$((COUNTER * 4 / 5))
+                            elif [ "$HERO_CLASS" = "rogue" ]; then
+                              # 30% dodge chance
+                              DODGE_ROLL=$((RANDOM % 100))
+                              if [ "$DODGE_ROLL" -lt 30 ]; then
+                                COUNTER=0
+                                CLASS_NOTE="$CLASS_NOTE Rogue dodged!"
+                              fi
+                            fi
+                            HERO_HP=$((HERO_HP - COUNTER))
+                          fi
                           [ "$HERO_HP" -lt 0 ] && HERO_HP=0
                           HP_PATCH="\"bossHP\":$NEW_HP"
                         else
                           IDX=$(echo "$TARGET" | grep -oE '[0-9]+$')
                           OLD_HP=$(echo "$DUNGEON_JSON" | jq -r ".spec.monsterHP[$IDX]")
-                          NEW_HP=$((OLD_HP - DAMAGE))
+                          NEW_HP=$((OLD_HP - EFFECTIVE_DAMAGE))
                           [ "$NEW_HP" -lt 0 ] && NEW_HP=0
                           HP_ARRAY=$(echo "$DUNGEON_JSON" | jq ".spec.monsterHP[$IDX] = $NEW_HP | .spec.monsterHP")
                           # All alive monsters counter-attack
@@ -88,7 +125,19 @@ spec:
                           ALIVE=$(echo "$DUNGEON_JSON" | jq '[.spec.monsterHP[] | select(. > 0)] | length')
                           [ "$NEW_HP" -eq 0 ] && [ "$ALIVE" -gt 0 ] && ALIVE=$((ALIVE - 1))
                           TOTAL_COUNTER=$((ALIVE * COUNTER))
-                          [ "$TOTAL_COUNTER" -gt 0 ] && HERO_HP=$((HERO_HP - TOTAL_COUNTER))
+                          # Apply class defense to monster counter-attacks
+                          if [ "$TOTAL_COUNTER" -gt 0 ]; then
+                            if [ "$HERO_CLASS" = "warrior" ]; then
+                              TOTAL_COUNTER=$((TOTAL_COUNTER * 4 / 5))
+                            elif [ "$HERO_CLASS" = "rogue" ]; then
+                              DODGE_ROLL=$((RANDOM % 100))
+                              if [ "$DODGE_ROLL" -lt 30 ]; then
+                                TOTAL_COUNTER=0
+                                CLASS_NOTE="$CLASS_NOTE Rogue dodged!"
+                              fi
+                            fi
+                            HERO_HP=$((HERO_HP - TOTAL_COUNTER))
+                          fi
                           [ "$HERO_HP" -lt 0 ] && HERO_HP=0
                           HP_PATCH="\"monsterHP\":$HP_ARRAY"
                         fi
@@ -135,7 +184,7 @@ spec:
                           fi
                         fi
 
-                        HERO_ACTION="Hero deals $DAMAGE damage to $TARGET (HP: $OLD_HP -> $NEW_HP)"
+                        HERO_ACTION="Hero ($HERO_CLASS) deals $EFFECTIVE_DAMAGE damage to $TARGET (HP: $OLD_HP -> $NEW_HP)$CLASS_NOTE"
 
                         if echo "$TARGET" | grep -q "boss"; then
                           if [ "$NEW_HP" -gt 0 ]; then
@@ -151,7 +200,7 @@ spec:
                           fi
                         fi
 
-                        PATCH="{\"spec\":{$HP_PATCH,\"heroHP\":$HERO_HP,\"currentTurn\":\"$NEXT_TURN\",\"turnRound\":$NEXT_ROUND,\"lastHeroAction\":\"$HERO_ACTION\",\"lastEnemyAction\":\"$ENEMY_ACTION\"}}"
+                        PATCH="{\"spec\":{$HP_PATCH,\"heroHP\":$HERO_HP,\"currentTurn\":\"$NEXT_TURN\",\"turnRound\":$NEXT_ROUND,\"lastHeroAction\":\"$HERO_ACTION\",\"lastEnemyAction\":\"$ENEMY_ACTION\"$MANA_PATCH}}"
 
                         echo "$HERO_ACTION"
                         echo "$ENEMY_ACTION"

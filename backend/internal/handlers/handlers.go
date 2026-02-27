@@ -42,11 +42,10 @@ var hpByDifficulty = map[string]struct{ monster, boss int64 }{
 }
 
 type CreateDungeonReq struct {
-	Name       string        `json:"name"`
-	Monsters   int64         `json:"monsters"`
-	Difficulty string        `json:"difficulty"`
-	MonsterHP  []interface{} `json:"monsterHP,omitempty"`
-	BossHP     *int64        `json:"bossHP,omitempty"`
+	Name       string `json:"name"`
+	Monsters   int64  `json:"monsters"`
+	Difficulty string `json:"difficulty"`
+	HeroClass  string `json:"heroClass"`
 }
 
 func (h *Handler) CreateDungeon(w http.ResponseWriter, r *http.Request) {
@@ -66,16 +65,28 @@ func (h *Handler) CreateDungeon(w http.ResponseWriter, r *http.Request) {
 
 	// Use client-provided HP values, or derive from difficulty
 	hp, _ := hpByDifficulty[req.Difficulty]
-	monsterHP := req.MonsterHP
-	if len(monsterHP) == 0 {
-		monsterHP = make([]interface{}, req.Monsters)
-		for i := range monsterHP {
-			monsterHP[i] = hp.monster
-		}
+	monsterHP := make([]interface{}, req.Monsters)
+	for i := range monsterHP {
+		monsterHP[i] = hp.monster
 	}
-	bossHP := hp.boss
-	if req.BossHP != nil {
-		bossHP = *req.BossHP
+
+	heroClass := req.HeroClass
+	if heroClass == "" {
+		heroClass = "warrior"
+	}
+	heroHP := int64(100)
+	heroMana := int64(0)
+	switch heroClass {
+	case "warrior":
+		heroHP = 150
+	case "mage":
+		heroHP = 80
+		heroMana = 5
+	case "rogue":
+		heroHP = 100
+	default:
+		writeError(w, "heroClass must be warrior, mage, or rogue", http.StatusBadRequest)
+		return
 	}
 
 	dungeon := &unstructured.Unstructured{Object: map[string]interface{}{
@@ -86,7 +97,10 @@ func (h *Handler) CreateDungeon(w http.ResponseWriter, r *http.Request) {
 			"monsters":   req.Monsters,
 			"difficulty": req.Difficulty,
 			"monsterHP":  monsterHP,
-			"bossHP":     bossHP,
+			"bossHP":     hp.boss,
+			"heroHP":     heroHP,
+			"heroClass":  heroClass,
+			"heroMana":   heroMana,
 		},
 	}}
 

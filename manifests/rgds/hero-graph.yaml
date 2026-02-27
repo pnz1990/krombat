@@ -13,9 +13,17 @@ spec:
       dungeonName: string | required=true
       hp: integer | default=100
       difficulty: string | default="normal"
+      heroClass: string | default="warrior" enum=warrior,mage,rogue
+      mana: integer | default=0
     status:
-      entityState: "${heroState.data.state}"
+      entityState: "${heroState.data.entityState}"
       hp: "${heroState.data.hp}"
+      heroClass: "${heroState.data.heroClass}"
+      maxHP: "${heroState.data.maxHP}"
+      damageModifier: "${heroState.data.damageModifier}"
+      defense: "${heroState.data.defense}"
+      dodgeChance: "${heroState.data.dodgeChance}"
+      mana: "${heroState.data.mana}"
 
   resources:
     - id: heroState
@@ -28,6 +36,13 @@ spec:
           labels:
             game.k8s.example/dungeon: ${schema.spec.dungeonName}
             game.k8s.example/entity: hero
+            game.k8s.example/class: ${schema.spec.heroClass}
         data:
-          state: "${schema.spec.hp > 0 ? 'alive' : 'defeated'}"
+          entityState: "${schema.spec.hp > 0 ? 'alive' : 'defeated'}"
           hp: "${string(schema.spec.hp)}"
+          heroClass: ${schema.spec.heroClass}
+          maxHP: "${schema.spec.heroClass == 'warrior' ? '150' : schema.spec.heroClass == 'mage' ? '80' : '100'}"
+          damageModifier: "${schema.spec.heroClass == 'mage' ? '1.5' : schema.spec.heroClass == 'rogue' ? '1.2' : '1.0'}"
+          defense: "${schema.spec.heroClass == 'warrior' ? '0.2' : '0.0'}"
+          dodgeChance: "${schema.spec.heroClass == 'rogue' ? '0.3' : '0.0'}"
+          mana: "${string(schema.spec.mana)}"

@@ -15,6 +15,8 @@ spec:
       monsterHP: "[]integer"
       bossHP: integer | default=0
       heroHP: integer | default=100
+      heroClass: string | default="warrior" enum=warrior,mage,rogue
+      heroMana: integer | default=0
       lastHeroAction: string | default=""
       lastEnemyAction: string | default=""
     status:
@@ -47,6 +49,8 @@ spec:
           dungeonName: ${schema.metadata.name}
           hp: ${schema.spec.heroHP}
           difficulty: ${schema.spec.difficulty}
+          heroClass: ${schema.spec.heroClass}
+          mana: ${schema.spec.heroMana}
 
     # --- Monster CRs (depends on ns via namespace reference) ---
     - id: monsterCRs
