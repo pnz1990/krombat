@@ -62,6 +62,9 @@ async function runTests() {
     // === SECTION 4: Create Dungeon (Warrior) ===
     console.log('\n=== Create Dungeon (Warrior) ===');
     const dName = `ui-test-${Date.now()}`;
+    // Switch to tests namespace before creating
+    const testsBtn = page.locator('button:has-text("tests")');
+    if (await testsBtn.isVisible()) await testsBtn.click();
     await nameInput.fill(dName);
     await diffSelect.selectOption('easy');
     await classSelect.selectOption('warrior');
@@ -72,7 +75,7 @@ async function runTests() {
       const r = await fetch('/api/v1/dungeons');
       return r.json();
     });
-    listRes.some(d => d.name === dName) ? ok(`Dungeon "${dName}" created`) : fail('Dungeon not in list');
+    listRes.some(d => d.name === dName && d.namespace === 'tests') ? ok(`Dungeon "${dName}" created in tests ns`) : fail('Dungeon not in list');
 
     // Navigate to dungeon
     await page.waitForTimeout(5000); // kro reconciliation
