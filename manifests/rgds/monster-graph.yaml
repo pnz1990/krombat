@@ -20,6 +20,8 @@ spec:
 
   resources:
     - id: monsterPod
+      readyWhen:
+        - ${monsterPod.status.phase == "Running"}
       template:
         apiVersion: v1
         kind: Pod
