@@ -20,8 +20,6 @@ spec:
 
   resources:
     - id: bossPod
-      readyWhen:
-        - ${schema.spec.monstersAlive == 0}
       template:
         apiVersion: v1
         kind: Pod

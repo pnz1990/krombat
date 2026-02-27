@@ -11,14 +11,11 @@ spec:
     group: game.k8s.example
     spec:
       dungeonName: string | required=true
-      bossDefeated: integer | default=0
     status:
-      loot: "${schema.spec.bossDefeated == 1 ? 'Treasure code: ' + treasureSecret.metadata.name + '-LOOT' : 'Locked'}"
+      loot: "${'Treasure code: ' + treasureSecret.metadata.name + '-LOOT'}"
 
   resources:
     - id: treasureSecret
-      readyWhen:
-        - ${schema.spec.bossDefeated == 1}
       template:
         apiVersion: v1
         kind: Secret
