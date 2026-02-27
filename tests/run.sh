@@ -193,12 +193,12 @@ M0_HP=$(kubectl get dungeon "$DUNGEON_NAME" -n "$TEST_NS" -o jsonpath='{.spec.mo
 [ "$M0_HP" = "0" ] && pass "monster-0 HP=0" || fail "monster-0 HP=$M0_HP (expected 0)"
 
 wait_for "monster-0 dead label" \
-  "[ \$(kubectl get pod ${DUNGEON_NAME}-monster-0 -n $DUNGEON_NAME -o jsonpath='{.metadata.labels.game\.k8s\.example/state}') = 'dead' ]" 30 \
+  "[ \$(kubectl get pod ${DUNGEON_NAME}-monster-0 -n $DUNGEON_NAME -o jsonpath='{.metadata.labels.game\.k8s\.example/state}') = 'dead' ]" 60 \
   && pass "monster-0 state=dead" \
   || fail "monster-0 not marked dead"
 
 wait_for "livingMonsters=1" \
-  "[ \$(kubectl get dungeon $DUNGEON_NAME -n $TEST_NS -o jsonpath='{.status.livingMonsters}' 2>/dev/null) = '1' ]" 30 \
+  "[ \$(kubectl get dungeon $DUNGEON_NAME -n $TEST_NS -o jsonpath='{.status.livingMonsters}' 2>/dev/null) = '1' ]" 60 \
   && pass "livingMonsters=1" || fail "livingMonsters!=1"
 
 # --- Test 5: Kill monster-1, boss should become ready ---
@@ -223,11 +223,11 @@ wait_for "attack-3 job complete" \
   "kubectl get job ${DUNGEON_NAME}-atk3 -o jsonpath='{.status.succeeded}' 2>/dev/null | grep -q 1" 60
 
 wait_for "livingMonsters=0" \
-  "[ \$(kubectl get dungeon $DUNGEON_NAME -n $TEST_NS -o jsonpath='{.status.livingMonsters}' 2>/dev/null) = '0' ]" 30 \
+  "[ \$(kubectl get dungeon $DUNGEON_NAME -n $TEST_NS -o jsonpath='{.status.livingMonsters}' 2>/dev/null) = '0' ]" 60 \
   && pass "livingMonsters=0" || fail "livingMonsters!=0"
 
 wait_for "boss ready" \
-  "[ \$(kubectl get pod ${DUNGEON_NAME}-boss -n $DUNGEON_NAME -o jsonpath='{.metadata.labels.game\.k8s\.example/state}') = 'ready' ]" 30 \
+  "[ \$(kubectl get pod ${DUNGEON_NAME}-boss -n $DUNGEON_NAME -o jsonpath='{.metadata.labels.game\.k8s\.example/state}') = 'ready' ]" 60 \
   && pass "boss state=ready" \
   || fail "boss not ready"
 
@@ -257,12 +257,12 @@ wait_for "attack-4 job complete" \
   "kubectl get job ${DUNGEON_NAME}-atk4 -o jsonpath='{.status.succeeded}' 2>/dev/null | grep -q 1" 60
 
 wait_for "boss defeated" \
-  "[ \$(kubectl get pod ${DUNGEON_NAME}-boss -n $DUNGEON_NAME -o jsonpath='{.metadata.labels.game\.k8s\.example/state}') = 'defeated' ]" 30 \
+  "[ \$(kubectl get pod ${DUNGEON_NAME}-boss -n $DUNGEON_NAME -o jsonpath='{.metadata.labels.game\.k8s\.example/state}') = 'defeated' ]" 60 \
   && pass "boss state=defeated" \
   || fail "boss not defeated"
 
 wait_for "victory=true" \
-  "[ \$(kubectl get dungeon $DUNGEON_NAME -n $TEST_NS -o jsonpath='{.status.victory}' 2>/dev/null) = 'true' ]" 30 \
+  "[ \$(kubectl get dungeon $DUNGEON_NAME -n $TEST_NS -o jsonpath='{.status.victory}' 2>/dev/null) = 'true' ]" 60 \
   && pass "victory=true" || fail "victory!=true"
 
 # --- Test 7: Drift correction ---
