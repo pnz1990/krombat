@@ -36,11 +36,13 @@ trap cleanup EXIT
 
 log "Pre-flight checks"
 
-kubectl get rgd dungeon-graph -o jsonpath='{.status.state}' 2>/dev/null | grep -q "Active" \
+wait_for "dungeon-graph RGD Active" \
+  "kubectl get rgd dungeon-graph -o jsonpath='{.status.state}' 2>/dev/null | grep -q Active" 90 \
   && pass "dungeon-graph RGD is Active" \
   || fail "dungeon-graph RGD is not Active"
 
-kubectl get rgd attack-graph -o jsonpath='{.status.state}' 2>/dev/null | grep -q "Active" \
+wait_for "attack-graph RGD Active" \
+  "kubectl get rgd attack-graph -o jsonpath='{.status.state}' 2>/dev/null | grep -q Active" 90 \
   && pass "attack-graph RGD is Active" \
   || fail "attack-graph RGD is not Active"
 
