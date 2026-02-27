@@ -10,7 +10,7 @@
 2. **Commit changes** (but don't push yet if you want to batch)
 3. **Run deploy-and-test script:**
    ```bash
-   ./scripts/deploy-and-test.sh
+   ./scripts/ui-test.sh
    ```
 
 This script will:
@@ -34,7 +34,7 @@ This script will:
 
 If you already pushed and just want to re-test:
 ```bash
-./scripts/deploy-and-test.sh --skip-push
+./scripts/ui-test.sh --skip-push
 ```
 
 ### Manual Testing
@@ -73,6 +73,6 @@ kubectl port-forward svc/rpg-frontend -n rpg-system 3000:3000
 
 ## Rule for Agent
 
-**Never report "done" or "try it out" without running `./scripts/deploy-and-test.sh` first.**
+**Never report "done" or "try it out" without running `./scripts/ui-test.sh` first.**
 
 If tests fail, analyze the error, fix the code, and run again. Only report success after tests pass.
