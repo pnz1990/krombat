@@ -1,5 +1,12 @@
 # Kubernetes RPG — Project Context
 
+## Git Workflow
+**Multiple AI agents work in parallel. See `.kiro/agent-workflow.md` for the full workflow.**
+- Never commit directly to main — use feature branches + PRs
+- Branch naming: `issue-<number>-<short-description>`
+- Rebase on main before pushing
+- CI validates builds and runs tests on PRs
+
 ## What This Is
 A turn-based dungeon RPG where the entire game state lives in Kubernetes, orchestrated by kro ResourceGraphDefinitions on Amazon EKS. Demonstrates Kubernetes as a general-purpose state machine.
 

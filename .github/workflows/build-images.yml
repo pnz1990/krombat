@@ -3,6 +3,8 @@ name: Build & Push Images
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
 
 permissions:
   id-token: write
@@ -17,13 +19,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: aws-actions/configure-aws-credentials@v4
+      - run: docker build -t krombat/backend:test backend/
+      - if: github.event_name == 'push'
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
-      - uses: aws-actions/amazon-ecr-login@v2
-      - run: |
-          docker build -t $REGISTRY/krombat/backend:${{ github.sha }} -t $REGISTRY/krombat/backend:latest backend/
+      - if: github.event_name == 'push'
+        uses: aws-actions/amazon-ecr-login@v2
+      - if: github.event_name == 'push'
+        run: |
+          docker tag krombat/backend:test $REGISTRY/krombat/backend:${{ github.sha }}
+          docker tag krombat/backend:test $REGISTRY/krombat/backend:latest
           docker push $REGISTRY/krombat/backend:${{ github.sha }}
           docker push $REGISTRY/krombat/backend:latest
 
@@ -31,12 +38,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: aws-actions/configure-aws-credentials@v4
+      - run: docker build -t krombat/frontend:test frontend/
+      - if: github.event_name == 'push'
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
-      - uses: aws-actions/amazon-ecr-login@v2
-      - run: |
-          docker build -t $REGISTRY/krombat/frontend:${{ github.sha }} -t $REGISTRY/krombat/frontend:latest frontend/
+      - if: github.event_name == 'push'
+        uses: aws-actions/amazon-ecr-login@v2
+      - if: github.event_name == 'push'
+        run: |
+          docker tag krombat/frontend:test $REGISTRY/krombat/frontend:${{ github.sha }}
+          docker tag krombat/frontend:test $REGISTRY/krombat/frontend:latest
           docker push $REGISTRY/krombat/frontend:${{ github.sha }}
           docker push $REGISTRY/krombat/frontend:latest
