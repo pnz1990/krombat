@@ -436,8 +436,10 @@ spec:
                         else
                           if [ "$TOTAL_COUNTER" -gt 0 ] 2>/dev/null; then
                             ENEMY_ACTION="$ALIVE monsters counter-attack for $TOTAL_COUNTER total damage! (Hero HP: $HERO_HP)"
+                          elif [ "$NEW_HP" -eq 0 ]; then
+                            ENEMY_ACTION="Monster slain! No remaining counter-attack."
                           else
-                            ENEMY_ACTION="No monsters left to counter-attack"
+                            ENEMY_ACTION="Monsters counter-attack absorbed!"
                           fi
                         fi
 
