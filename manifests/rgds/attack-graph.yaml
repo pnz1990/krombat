@@ -189,42 +189,14 @@ spec:
                           echo "Conflict, retrying ($i/5)..."; sleep $i; continue
                         fi
 
-                        # === WARRIOR TAUNT ===
-                        if [ "$TARGET" = "taunt" ]; then
+                        # === WARRIOR TAUNT (activate buff for next attack) ===
+                        if [ "$TARGET" = "activate-taunt" ]; then
                           if [ "$HERO_CLASS" != "warrior" ]; then
                             echo "Only warrior can taunt"; exit 1
                           fi
-                          TAUNT_ACTIVE=1
-                          # Enemies still counter-attack but at reduced damage
-                          MONSTER_HPS=$(echo "$DUNGEON_JSON" | jq -c '.spec.monsterHP')
-                          ALIVE=$(echo "$MONSTER_HPS" | jq '[.[] | select(. > 0)] | length')
-                          BOSS_HP=$(echo "$DUNGEON_JSON" | jq -r '.spec.bossHP')
-                          BOSS_STATE="pending"
-                          [ "$ALIVE" -eq 0 ] && [ "$BOSS_HP" -gt 0 ] && BOSS_STATE="ready"
-                          TOTAL_COUNTER=0
-                          if [ "$ALIVE" -gt 0 ]; then
-                            case "$DIFFICULTY" in
-                              easy)   MC=2 ;; normal) MC=4 ;; hard) MC=6 ;;
-                            esac
-                            TOTAL_COUNTER=$((ALIVE * MC))
-                          fi
-                          if [ "$BOSS_STATE" = "ready" ]; then
-                            case "$DIFFICULTY" in
-                              easy)   BC=2 ;; normal) BC=10 ;; hard) BC=15 ;;
-                            esac
-                            TOTAL_COUNTER=$((TOTAL_COUNTER + BC))
-                          fi
-                          # Taunt: 50% reduction + warrior passive 20% = 60% total reduction
-                          TOTAL_COUNTER=$((TOTAL_COUNTER * 2 / 5))
-                          HERO_HP=$((HERO_HP - TOTAL_COUNTER))
-                          [ "$HERO_HP" -lt 0 ] && HERO_HP=0
-                          HERO_ACTION="Warrior taunts! Damage reduced by 60% this round!"
-                          ENEMY_ACTION="Enemies counter for $TOTAL_COUNTER reduced damage (Hero HP: $HERO_HP)"
-                          PATCH="{\"spec\":{\"heroHP\":$HERO_HP,\"tauntActive\":$TAUNT_ACTIVE,\"backstabCooldown\":$BACKSTAB_CD,\"lastHeroAction\":\"$HERO_ACTION\",\"lastEnemyAction\":\"$ENEMY_ACTION\"}}"
-                          echo "$HERO_ACTION"
-                          echo "$ENEMY_ACTION"
+                          PATCH="{\"spec\":{\"tauntActive\":1,\"lastHeroAction\":\"Warrior activates Taunt! Next attack has 60% counter-attack reduction.\",\"lastEnemyAction\":\"\"}}"
                           if kubectl patch dungeon "$DUNGEON" -n "$DUNGEON_NS" --type=merge -p "$PATCH" 2>&1; then
-                            echo "Taunt complete!"; exit 0
+                            echo "Taunt activated!"; exit 0
                           fi
                           echo "Conflict, retrying ($i/5)..."; sleep $i; continue
                         fi
@@ -267,8 +239,14 @@ spec:
                           CLASS_NOTE=" (Rogue precision!)"
                         fi
 
-                        # Clear taunt after a normal attack turn
-                        TAUNT_ACTIVE=0
+                        # Taunt: if active, will reduce counter-attack damage by 60% this turn
+                        TAUNT_NOTE=""
+                        if [ "$TAUNT_ACTIVE" -eq 1 ]; then
+                          TAUNT_NOTE=" [🛡️ Taunt active: -60% counter dmg]"
+                          TAUNT_ACTIVE=2  # Set to cooldown (2 = cooling down, decremented each turn)
+                        elif [ "$TAUNT_ACTIVE" -gt 1 ]; then
+                          TAUNT_ACTIVE=$((TAUNT_ACTIVE - 1))  # Decrement cooldown
+                        fi
 
                         # Apply modifier to hero damage
                         if [ "$MODIFIER" = "curse-darkness" ]; then
@@ -332,6 +310,10 @@ spec:
                                 CLASS_NOTE="$CLASS_NOTE Rogue dodged!"
                               fi
                             fi
+                            # Taunt reduction
+                            if [ "$TAUNT_ACTIVE" -eq 2 ] && [ "$COUNTER" -gt 0 ]; then
+                              COUNTER=$((COUNTER * 2 / 5))
+                            fi
                             HERO_HP=$((HERO_HP - COUNTER))
                           fi
                           [ "$HERO_HP" -lt 0 ] && HERO_HP=0
@@ -360,8 +342,8 @@ spec:
                           fi
                           # Loot drop on monster kill
                           if [ "$NEW_HP" -eq 0 ]; then
-                            DROP_CHANCE=30
-                            case "$DIFFICULTY" in easy) DROP_CHANCE=40 ;; normal) DROP_CHANCE=30 ;; hard) DROP_CHANCE=25 ;; esac
+                            DROP_CHANCE=45
+                            case "$DIFFICULTY" in easy) DROP_CHANCE=60 ;; normal) DROP_CHANCE=45 ;; hard) DROP_CHANCE=35 ;; esac
                             DROP_ROLL=$((RANDOM % 100))
                             if [ "$DROP_ROLL" -lt "$DROP_CHANCE" ]; then
                               RARITY_ROLL=$((RANDOM % 100))
@@ -404,6 +386,10 @@ spec:
                                 TOTAL_COUNTER=0
                                 CLASS_NOTE="$CLASS_NOTE Rogue dodged!"
                               fi
+                            fi
+                            # Taunt reduction
+                            if [ "$TAUNT_ACTIVE" -eq 2 ] && [ "$TOTAL_COUNTER" -gt 0 ]; then
+                              TOTAL_COUNTER=$((TOTAL_COUNTER * 2 / 5))
                             fi
                             HERO_HP=$((HERO_HP - TOTAL_COUNTER))
                           fi

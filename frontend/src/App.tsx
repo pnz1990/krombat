@@ -80,7 +80,7 @@ export default function App() {
   const handleAttack = async (target: string, damage: number) => {
     if (!selected || attackPhase) return
     setError('')
-    const isAbility = target === 'hero' || target === 'taunt'
+    const isAbility = target === 'hero' || target === 'activate-taunt'
     const shortTarget = isAbility ? target : target.replace(/-backstab$/, '').split('-').slice(-2).join('-')
     try {
       setAttackTarget(target.replace(/-backstab$/, ''))
@@ -399,7 +399,7 @@ function DungeonView({ cr, onBack, onAttack, onDelete, events, showLoot, onOpenL
       <Tooltip text={
         spec.heroClass === 'mage' ? '🔮 Mage · 80 HP · 1.5x boss damage · 5 mana (1/attack, half dmg at 0) · 💚 Heal: costs 2 mana, restores 30 HP' :
         spec.heroClass === 'rogue' ? '🗡️ Rogue · 100 HP · 1.2x damage · 30% dodge on counter-attacks · 🗡️ Backstab: 3x damage, 3-turn cooldown' :
-        '⚔️ Warrior · 150 HP · 20% damage reduction on counter-attacks · 🛡️ Taunt: 60% reduction for 1 round, skips attack'
+        '⚔️ Warrior · 150 HP · 20% damage reduction on counter-attacks · 🛡️ Taunt: activate before attacking for 60% counter-attack reduction (1 turn cooldown)'
       }>
       <div className="hero-bar" style={{ position: 'relative' }}>
         {floatingDmg?.target === 'hero' && <div className="floating-dmg" style={{ color: floatingDmg.color }}>{floatingDmg.amount}</div>}
@@ -432,9 +432,10 @@ function DungeonView({ cr, onBack, onAttack, onDelete, events, showLoot, onOpenL
             </button>
           )}
           {spec.heroClass === 'warrior' && (
-            <button className="btn btn-ability" disabled={false}
-              onClick={() => onAttack('taunt', 0)}>
-              🛡️ Taunt
+            <button className={`btn btn-ability${(spec.tauntActive ?? 0) === 1 ? ' active' : ''}`}
+              disabled={(spec.tauntActive ?? 0) >= 1}
+              onClick={() => onAttack('activate-taunt', 0)}>
+              🛡️ Taunt {(spec.tauntActive ?? 0) > 1 ? `(${(spec.tauntActive ?? 0) - 1} CD)` : (spec.tauntActive ?? 0) === 1 ? '(Active!)' : ''}
             </button>
           )}
           {spec.heroClass === 'rogue' && (
