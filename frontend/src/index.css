@@ -78,6 +78,12 @@ body {
 .dungeon-tile .stats { font-size: 8px; color: var(--text-dim); }
 .dungeon-tile .stats span { margin-right: 12px; }
 .dungeon-tile .victory { color: var(--green); }
+.dungeon-tile.deleting { opacity: 0.4; pointer-events: none; }
+.tile-delete-btn {
+  font-size: 10px; background: none; border: none; cursor: pointer;
+  opacity: 0.3; transition: opacity 0.15s; padding: 4px;
+}
+.tile-delete-btn:hover { opacity: 1; }
 .dungeon-tile .tag { display: inline-block; padding: 2px 6px; font-size: 7px; border: 2px solid; margin-right: 4px; }
 .tag-easy { color: var(--green); border-color: var(--green); }
 .tag-normal { color: var(--gold); border-color: var(--gold); }

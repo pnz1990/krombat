@@ -18,6 +18,7 @@ export default function App() {
   const [showLoot, setShowLoot] = useState(false)
   const [attackPhase, setAttackPhase] = useState<string | null>(null)
   const [showHelp, setShowHelp] = useState(false)
+  const [deleting, setDeleting] = useState<string | null>(null)
   const [attackTarget, setAttackTarget] = useState<string | null>(null)
   const [animPhase, setAnimPhase] = useState<'idle' | 'hero-attack' | 'enemy-attack' | 'done'>('idle')
 
@@ -134,14 +135,17 @@ export default function App() {
     navigate(`/dungeon/${ns}/${name}`)
   }
 
-  const handleDelete = async () => {
-    if (!selected) return
-    if (!confirm(`Delete dungeon "${selected.name}"? This cannot be undone.`)) return
+  const handleDelete = async (ns?: string, name?: string) => {
+    const delNs = ns || selected?.ns
+    const delName = name || selected?.name
+    if (!delNs || !delName) return
+    if (!confirm(`Delete dungeon "${delName}"? This cannot be undone.`)) return
+    setDeleting(delName)
     try {
-      await deleteDungeon(selected.ns, selected.name)
-      navigate('/')
-      refresh()
-    } catch (e: any) { setError(e.message) }
+      await deleteDungeon(delNs, delName)
+      if (selected?.name === delName) navigate('/')
+      setTimeout(() => { setDeleting(null); refresh() }, 2000)
+    } catch (e: any) { setError(e.message); setDeleting(null) }
   }
 
   return (
@@ -164,7 +168,7 @@ export default function App() {
       {!selected ? (
         <>
           <CreateForm onCreate={handleCreate} />
-          <DungeonList dungeons={dungeons} onSelect={handleSelect} />
+          <DungeonList dungeons={dungeons} onSelect={handleSelect} onDelete={handleDelete} deleting={deleting} />
         </>
       ) : loading ? (
         <div className="loading">Loading dungeon</div>
@@ -218,13 +222,23 @@ function CreateForm({ onCreate }: { onCreate: (n: string, m: number, d: string, 
   )
 }
 
-function DungeonList({ dungeons, onSelect }: { dungeons: DungeonSummary[]; onSelect: (ns: string, name: string) => void }) {
+function DungeonList({ dungeons, onSelect, onDelete, deleting }: {
+  dungeons: DungeonSummary[]; onSelect: (ns: string, name: string) => void
+  onDelete: (ns: string, name: string) => void; deleting: string | null
+}) {
   if (!dungeons.length) return <div className="loading">No dungeons yet — create one above</div>
   return (
     <div className="dungeon-list">
       {dungeons.map(d => (
-        <div key={d.name} className="dungeon-tile" onClick={() => onSelect(d.namespace, d.name)}>
-          <h3>{d.victory ? '👑 ' : '⚔️ '}{d.name}</h3>
+        <div key={d.name} className={`dungeon-tile${deleting === d.name ? ' deleting' : ''}`} onClick={() => onSelect(d.namespace, d.name)}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h3>{d.victory ? '👑 ' : '⚔️ '}{d.name}</h3>
+            {deleting === d.name ? (
+              <span style={{ fontSize: '7px', color: 'var(--accent)' }}>Deleting...</span>
+            ) : (
+              <button className="tile-delete-btn" onClick={e => { e.stopPropagation(); onDelete(d.namespace, d.name) }}>🗑️</button>
+            )}
+          </div>
           <div className="stats">
             <span className={`tag tag-${d.difficulty}`}>{d.difficulty}</span>
             <span>Monsters: {d.livingMonsters ?? '?'}</span>
