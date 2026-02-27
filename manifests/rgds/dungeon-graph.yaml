@@ -24,6 +24,9 @@ spec:
       weaponBonus: integer | default=0
       weaponUses: integer | default=0
       armorBonus: integer | default=0
+      poisonTurns: integer | default=0
+      burnTurns: integer | default=0
+      stunTurns: integer | default=0
       lastHeroAction: string | default=""
       lastEnemyAction: string | default=""
     status:

@@ -59,6 +59,33 @@ spec:
                         WEAPON_BONUS=$(echo "$DUNGEON_JSON" | jq -r '.spec.weaponBonus // 0')
                         WEAPON_USES=$(echo "$DUNGEON_JSON" | jq -r '.spec.weaponUses // 0')
                         ARMOR_BONUS=$(echo "$DUNGEON_JSON" | jq -r '.spec.armorBonus // 0')
+                        POISON_TURNS=$(echo "$DUNGEON_JSON" | jq -r '.spec.poisonTurns // 0')
+                        BURN_TURNS=$(echo "$DUNGEON_JSON" | jq -r '.spec.burnTurns // 0')
+                        STUN_TURNS=$(echo "$DUNGEON_JSON" | jq -r '.spec.stunTurns // 0')
+
+                        # Apply DoT at start of turn
+                        DOT_NOTE=""
+                        if [ "$POISON_TURNS" -gt 0 ]; then
+                          HERO_HP=$((HERO_HP - 5))
+                          POISON_TURNS=$((POISON_TURNS - 1))
+                          DOT_NOTE="Poison -5 HP. "
+                        fi
+                        if [ "$BURN_TURNS" -gt 0 ]; then
+                          HERO_HP=$((HERO_HP - 8))
+                          BURN_TURNS=$((BURN_TURNS - 1))
+                          DOT_NOTE="$DOT_NOTE""Burn -8 HP. "
+                        fi
+                        [ "$HERO_HP" -lt 0 ] && HERO_HP=0
+                        EFFECT_PATCH=",\"poisonTurns\":$POISON_TURNS,\"burnTurns\":$BURN_TURNS"
+
+                        # Check stun
+                        IS_STUNNED=false
+                        if [ "$STUN_TURNS" -gt 0 ]; then
+                          IS_STUNNED=true
+                          STUN_TURNS=$((STUN_TURNS - 1))
+                          DOT_NOTE="$DOT_NOTE""STUNNED! "
+                        fi
+                        EFFECT_PATCH="$EFFECT_PATCH,\"stunTurns\":$STUN_TURNS"
 
                         # Decrement backstab cooldown each turn
                         [ "$BACKSTAB_CD" -gt 0 ] && BACKSTAB_CD=$((BACKSTAB_CD - 1))
@@ -270,6 +297,12 @@ spec:
                         fi
                         WEAPON_PATCH=",\"weaponBonus\":$WEAPON_BONUS,\"weaponUses\":$WEAPON_USES"
 
+                        # If stunned, skip hero damage
+                        if [ "$IS_STUNNED" = "true" ]; then
+                          EFFECTIVE_DAMAGE=0
+                          CLASS_NOTE=" STUNNED!"
+                        fi
+
                         # Calculate hero's attack on target
                         if echo "$REAL_TARGET" | grep -q "boss"; then
                           OLD_HP=$(echo "$DUNGEON_JSON" | jq -r '.spec.bossHP')
@@ -378,7 +411,33 @@ spec:
                           HP_PATCH="\"monsterHP\":$HP_ARRAY"
                         fi
 
-                        HERO_ACTION="Hero ($HERO_CLASS) deals $EFFECTIVE_DAMAGE damage to $REAL_TARGET (HP: $OLD_HP -> $NEW_HP)$CLASS_NOTE"
+                        # Roll for status effects from counter-attacks
+                        EFFECT_NOTE=""
+                        if echo "$REAL_TARGET" | grep -q "boss"; then
+                          if [ "$NEW_HP" -gt 0 ]; then
+                            # Boss can inflict stun (15%) or burn (25%)
+                            EFFECT_ROLL=$((RANDOM % 100))
+                            if [ "$EFFECT_ROLL" -lt 15 ]; then
+                              STUN_TURNS=1
+                              EFFECT_NOTE=" Boss inflicts STUN! (1 turn)"
+                            elif [ "$EFFECT_ROLL" -lt 40 ]; then
+                              BURN_TURNS=2
+                              EFFECT_NOTE=" Boss inflicts BURN! (2 turns, -8 HP/turn)"
+                            fi
+                          fi
+                        else
+                          if [ "$ALIVE" -gt 0 ] 2>/dev/null; then
+                            # Monsters can inflict poison (20%)
+                            EFFECT_ROLL=$((RANDOM % 100))
+                            if [ "$EFFECT_ROLL" -lt 20 ]; then
+                              POISON_TURNS=3
+                              EFFECT_NOTE=" Monsters inflict POISON! (3 turns, -5 HP/turn)"
+                            fi
+                          fi
+                        fi
+                        EFFECT_PATCH=",\"poisonTurns\":$POISON_TURNS,\"burnTurns\":$BURN_TURNS,\"stunTurns\":$STUN_TURNS"
+
+                        HERO_ACTION="$DOT_NOTE""Hero ($HERO_CLASS) deals $EFFECTIVE_DAMAGE damage to $REAL_TARGET (HP: $OLD_HP -> $NEW_HP)$CLASS_NOTE"
 
                         if echo "$REAL_TARGET" | grep -q "boss"; then
                           if [ "$NEW_HP" -gt 0 ]; then
@@ -394,7 +453,7 @@ spec:
                           fi
                         fi
 
-                        PATCH="{\"spec\":{$HP_PATCH,\"heroHP\":$HERO_HP,\"tauntActive\":$TAUNT_ACTIVE,\"backstabCooldown\":$BACKSTAB_CD,\"lastHeroAction\":\"$HERO_ACTION\",\"lastEnemyAction\":\"$ENEMY_ACTION\"$MANA_PATCH$WEAPON_PATCH$INVENTORY_PATCH}}"
+                        PATCH="{\"spec\":{$HP_PATCH,\"heroHP\":$HERO_HP,\"tauntActive\":$TAUNT_ACTIVE,\"backstabCooldown\":$BACKSTAB_CD,\"lastHeroAction\":\"$HERO_ACTION\",\"lastEnemyAction\":\"$ENEMY_ACTION$EFFECT_NOTE\"$MANA_PATCH$WEAPON_PATCH$INVENTORY_PATCH$EFFECT_PATCH}}"
 
                         echo "$HERO_ACTION"
                         echo "$ENEMY_ACTION"

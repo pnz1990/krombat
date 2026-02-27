@@ -446,3 +446,10 @@ body {
 .item-btn { font-size: 14px; padding: 2px 4px; background: #1a1a2a; border: 1px solid; border-radius: 4px; cursor: pointer; }
 .item-btn:hover:not(:disabled) { background: #2a2a4a; }
 .item-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Status effects */
+.effect-badges { display: flex; gap: 6px; margin: 4px 0; }
+.effect-badge { font-size: 7px; padding: 2px 6px; border-radius: 4px; border: 1px solid; }
+.effect-badge.poison { border-color: #2ecc71; color: #2ecc71; background: #0a1a0a; }
+.effect-badge.burn { border-color: #e74c3c; color: #e74c3c; background: #1a0a0a; }
+.effect-badge.stun { border-color: #f1c40f; color: #f1c40f; background: #1a1a0a; }

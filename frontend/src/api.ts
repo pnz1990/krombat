@@ -16,6 +16,7 @@ export interface DungeonCR {
     tauntActive?: number; backstabCooldown?: number
     modifier?: string; inventory?: string
     weaponBonus?: number; weaponUses?: number; armorBonus?: number
+    poisonTurns?: number; burnTurns?: number; stunTurns?: number
     lastHeroAction?: string; lastEnemyAction?: string
   }
   status?: {

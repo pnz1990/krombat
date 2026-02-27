@@ -372,6 +372,14 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
         {(spec.heroClass === 'mage') && <span className="mana-text">🔮 Mana: {spec.heroMana ?? 0}</span>}
       </div>
 
+      {((spec.poisonTurns ?? 0) > 0 || (spec.burnTurns ?? 0) > 0 || (spec.stunTurns ?? 0) > 0) && (
+        <div className="effect-badges">
+          {(spec.poisonTurns ?? 0) > 0 && <span className="effect-badge poison" title="Poison: -5 HP/turn">🟢 Poison ({spec.poisonTurns})</span>}
+          {(spec.burnTurns ?? 0) > 0 && <span className="effect-badge burn" title="Burn: -8 HP/turn">🔴 Burn ({spec.burnTurns})</span>}
+          {(spec.stunTurns ?? 0) > 0 && <span className="effect-badge stun" title="Stun: skip next attack">🟡 Stun ({spec.stunTurns})</span>}
+        </div>
+      )}
+
       {!gameOver && !attackPhase && (
         <div className="ability-bar">
           {spec.heroClass === 'mage' && (
