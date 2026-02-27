@@ -43,8 +43,6 @@ export default function App() {
     if (selected) {
       setLoading(true)
       setEvents([])
-      setCurrentTurn('hero')
-      setTurnRound(1)
       getDungeon(selected.ns, selected.name)
         .then(d => setDetail(d))
         .catch(e => setError(e.message))
@@ -65,38 +63,10 @@ export default function App() {
   }
 
   const handleAttack = async (target: string, damage: number) => {
-    if (!selected || currentTurn !== 'hero') return
+    if (!selected) return
     setError('')
     try {
       await submitAttack(selected.ns, selected.name, target, damage)
-      // Animate enemy turns while backend processes counter-attacks
-      if (!animatingRef.current) {
-        animatingRef.current = true
-        const spec = detail?.spec
-        const monsterHP = spec?.monsterHP || []
-        const bossState = detail?.status?.bossState
-        // Build enemy turn order: alive monsters then boss if ready
-        const enemies: string[] = []
-        monsterHP.forEach((hp, i) => {
-          // If we just attacked this monster with enough damage to kill it, skip
-          const justKilled = target.endsWith(`monster-${i}`) && hp - damage <= 0
-          if (hp > 0 && !justKilled) enemies.push(`monster-${i}`)
-        })
-        if (bossState === 'ready' || (bossState === 'pending' && monsterHP.every((hp, i) => {
-          const justKilled = target.endsWith(`monster-${i}`) && hp - damage <= 0
-          return hp <= 0 || justKilled
-        }))) {
-          // Boss becomes ready if we just killed the last monster
-          if (spec && spec.bossHP > 0) enemies.push('boss')
-        }
-        for (const enemy of enemies) {
-          setCurrentTurn(enemy)
-          await new Promise(r => setTimeout(r, 600))
-        }
-        setCurrentTurn('hero')
-        setTurnRound(r => r + 1)
-        animatingRef.current = false
-      }
       setTimeout(refresh, 3000)
     } catch (e: any) { setError(e.message) }
   }
@@ -136,8 +106,8 @@ export default function App() {
           showLoot={showLoot}
           onOpenLoot={() => setShowLoot(true)}
           onCloseLoot={() => setShowLoot(false)}
-          currentTurn={currentTurn}
-          turnRound={turnRound}
+          currentTurn={detail.spec.currentTurn}
+          turnRound={detail.spec.turnRound}
         />
       ) : null}
     </div>
@@ -189,15 +159,15 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
   currentTurn: string; turnRound: number
 }) {
   if (!cr?.metadata?.name) return <div className="loading">Loading dungeon</div>
-  const spec = cr.spec || { monsters: 0, difficulty: 'normal', monsterHP: [], bossHP: 0 }
+  const spec = cr.spec || { monsters: 0, difficulty: 'normal', monsterHP: [], bossHP: 0, heroHP: 100, currentTurn: 'hero', turnRound: 1 }
   const status = cr.status
   const dungeonName = cr.metadata.name
-  const maxMonsterHP = { easy: 30, normal: 50, hard: 80 }[spec.difficulty] || 50
-  const maxBossHP = { easy: 200, normal: 400, hard: 800 }[spec.difficulty] || 400
-  const heroHP = (spec as any).heroHP ?? 100
+  const maxMonsterHP = status?.maxMonsterHP || 50
+  const maxBossHP = status?.maxBossHP || 400
+  const heroHP = spec.heroHP
   const maxHeroHP = 100
-  const isDefeated = heroHP <= 0
-  const bossState = status?.bossState || (spec.bossHP > 0 ? ((spec.monsterHP || []).every(hp => hp === 0) ? 'ready' : 'pending') : 'defeated')
+  const isDefeated = status?.defeated || heroHP <= 0
+  const bossState = status?.bossState || 'pending'
   const isHeroTurn = currentTurn === 'hero'
   const gameOver = isDefeated || status?.victory
 

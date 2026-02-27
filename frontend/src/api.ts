@@ -32,11 +32,9 @@ export async function getDungeon(ns: string, name: string): Promise<DungeonCR> {
 }
 
 export async function createDungeon(name: string, monsters: number, difficulty: string) {
-  const hp = { easy: 30, normal: 50, hard: 80 }[difficulty] || 50
-  const bossHp = { easy: 200, normal: 400, hard: 800 }[difficulty] || 400
   const r = await fetch(`${BASE}/dungeons`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, monsters, difficulty, monsterHP: Array(monsters).fill(hp), bossHP: bossHp }),
+    body: JSON.stringify({ name, monsters, difficulty }),
   })
   if (!r.ok) throw new Error(await r.text())
   return r.json()
