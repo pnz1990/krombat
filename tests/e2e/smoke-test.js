@@ -76,7 +76,7 @@ async function runTests() {
 
     // Navigate to dungeon
     await page.waitForTimeout(5000); // kro reconciliation
-    await page.goto(`${BASE_URL}/dungeon/tests/${dName}`, { timeout: TIMEOUT });
+    await page.goto(`${BASE_URL}/dungeon/default/${dName}`, { timeout: TIMEOUT });
     await page.waitForTimeout(3000);
 
     // === SECTION 5: Dungeon View ===
@@ -185,14 +185,14 @@ async function runTests() {
     const mageRes = await page.evaluate(async (name) => {
       const r = await fetch('/api/v1/dungeons', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, monsters: 1, difficulty: 'easy', heroClass: 'mage', namespace: 'tests' }),
+        body: JSON.stringify({ name, monsters: 1, difficulty: 'easy', heroClass: 'mage' }),
       });
       return { ok: r.ok };
     }, mName);
     mageRes.ok ? ok('Mage dungeon created via API') : fail('Mage dungeon creation failed');
 
     await page.waitForTimeout(6000);
-    await page.goto(`${BASE_URL}/dungeon/tests/${mName}`, { timeout: TIMEOUT });
+    await page.goto(`${BASE_URL}/dungeon/default/${mName}`, { timeout: TIMEOUT });
     await page.waitForTimeout(3000);
     const mageText = await page.textContent('body');
     mageText.includes('MAGE') ? ok('Mage class displayed') : fail('Mage class missing');
@@ -207,14 +207,14 @@ async function runTests() {
     const rogueRes = await page.evaluate(async (name) => {
       const r = await fetch('/api/v1/dungeons', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, monsters: 1, difficulty: 'easy', heroClass: 'rogue', namespace: 'tests' }),
+        body: JSON.stringify({ name, monsters: 1, difficulty: 'easy', heroClass: 'rogue' }),
       });
       return { ok: r.ok };
     }, rName);
     rogueRes.ok ? ok('Rogue dungeon created via API') : fail('Rogue dungeon creation failed');
 
     await page.waitForTimeout(6000);
-    await page.goto(`${BASE_URL}/dungeon/tests/${rName}`, { timeout: TIMEOUT });
+    await page.goto(`${BASE_URL}/dungeon/default/${rName}`, { timeout: TIMEOUT });
     await page.waitForTimeout(3000);
     const rogueText = await page.textContent('body');
     rogueText.includes('ROGUE') ? ok('Rogue class displayed') : fail('Rogue class missing');
@@ -226,7 +226,7 @@ async function runTests() {
 
     // === SECTION 11: Client-side Routing ===
     console.log('\n=== Routing ===');
-    await page.goto(`${BASE_URL}/dungeon/tests/nonexistent`, { timeout: TIMEOUT });
+    await page.goto(`${BASE_URL}/dungeon/default/nonexistent`, { timeout: TIMEOUT });
     await page.waitForLoadState('domcontentloaded');
     ok('Nonexistent dungeon route loads without crash');
 
@@ -242,7 +242,7 @@ async function runTests() {
     await page.evaluate(async (name) => {
       await fetch('/api/v1/dungeons', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, monsters: 1, difficulty: 'easy', heroClass: 'warrior', namespace: 'tests' }),
+        body: JSON.stringify({ name, monsters: 1, difficulty: 'easy', heroClass: 'warrior' }),
       });
     }, iName);
     await page.waitForTimeout(8000);
@@ -250,11 +250,11 @@ async function runTests() {
     // Patch dungeon to have known modifier and inventory
     await page.evaluate(async (name) => {
       // Use attack API to equip items (or just check what we get)
-      const r = await fetch(`/api/v1/dungeons/tests/${name}`);
+      const r = await fetch(`/api/v1/dungeons/default/${name}`);
       return r.json();
     }, iName);
 
-    await page.goto(`${BASE_URL}/dungeon/tests/${iName}`, { timeout: TIMEOUT });
+    await page.goto(`${BASE_URL}/dungeon/default/${iName}`, { timeout: TIMEOUT });
     await page.waitForTimeout(3000);
     const itemsText = await page.textContent('body');
 
@@ -287,7 +287,7 @@ async function runTests() {
     console.log('\n=== Cleanup ===');
     for (const name of [dName, mName, rName, iName]) {
       await page.evaluate(async (n) => {
-        try { await fetch(`/api/v1/dungeons/tests/${n}`, { method: 'DELETE' }); } catch {}
+        try { await fetch(`/api/v1/dungeons/default/${n}`, { method: 'DELETE' }); } catch {}
       }, name);
     }
     // Also delete via kubectl
