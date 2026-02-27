@@ -12,6 +12,8 @@ export interface DungeonCR {
     monsters: number; difficulty: string
     monsterHP: number[]; bossHP: number; heroHP: number
     currentTurn: string; turnRound: number
+    heroClass?: string; heroMana?: number
+    lastHeroAction?: string; lastEnemyAction?: string
   }
   status?: {
     livingMonsters: number; bossState: string; victory: boolean; defeated: boolean

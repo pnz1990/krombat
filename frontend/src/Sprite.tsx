@@ -39,7 +39,7 @@ interface SpriteProps {
 
 export function Sprite({ spriteType, action, size = 64, flip = false }: SpriteProps) {
   const [frameIdx, setFrameIdx] = useState(0)
-  const intervalRef = useRef<ReturnType<typeof setInterval>>()
+  const intervalRef = useRef<ReturnType<typeof setInterval>>(undefined)
   const config = SPRITE_CONFIG[spriteType]
 
   if (!config) return <div style={{ width: size, height: size, fontSize: size * 0.6, textAlign: 'center' }}>👹</div>
