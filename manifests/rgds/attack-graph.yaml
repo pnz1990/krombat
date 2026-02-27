@@ -217,25 +217,45 @@ spec:
                           BACKSTAB_CD=3
                         fi
 
+                        # Roll dice server-side based on difficulty
+                        if [ "$DAMAGE" -gt 0 ] 2>/dev/null; then
+                          BASE_DAMAGE=$DAMAGE
+                        else
+                          case "$DIFFICULTY" in
+                            easy)   DICE_COUNT=2; DICE_SIDES=8; DICE_MOD=5 ;;
+                            hard)   DICE_COUNT=3; DICE_SIDES=10; DICE_MOD=10 ;;
+                            *)      DICE_COUNT=2; DICE_SIDES=10; DICE_MOD=8 ;;
+                          esac
+                          if echo "$REAL_TARGET" | grep -q "boss"; then
+                            DICE_COUNT=$((DICE_COUNT + 1))
+                            DICE_SIDES=$((DICE_SIDES + 2))
+                            DICE_MOD=$((DICE_MOD + 2))
+                          fi
+                          BASE_DAMAGE=$DICE_MOD
+                          for dc in $(seq 1 $DICE_COUNT); do
+                            BASE_DAMAGE=$((BASE_DAMAGE + (RANDOM % DICE_SIDES) + 1))
+                          done
+                        fi
+
                         # Apply class damage modifier
-                        EFFECTIVE_DAMAGE=$DAMAGE
+                        EFFECTIVE_DAMAGE=$BASE_DAMAGE
                         if [ "$IS_BACKSTAB" = "true" ]; then
-                          EFFECTIVE_DAMAGE=$((DAMAGE * 3))
+                          EFFECTIVE_DAMAGE=$((BASE_DAMAGE * 3))
                           CLASS_NOTE=" (Backstab 3x!)"
                         elif [ "$HERO_CLASS" = "mage" ]; then
                           if [ "$HERO_MANA" -gt 0 ]; then
                             if echo "$REAL_TARGET" | grep -q "boss"; then
-                              EFFECTIVE_DAMAGE=$((DAMAGE * 3 / 2))
+                              EFFECTIVE_DAMAGE=$((BASE_DAMAGE * 3 / 2))
                               CLASS_NOTE=" (Mage critical!)"
                             fi
                             HERO_MANA=$((HERO_MANA - 1))
                             MANA_PATCH=",\"heroMana\":$HERO_MANA"
                           else
                             CLASS_NOTE=" (No mana!)"
-                            EFFECTIVE_DAMAGE=$((DAMAGE / 2))
+                            EFFECTIVE_DAMAGE=$((BASE_DAMAGE / 2))
                           fi
                         elif [ "$HERO_CLASS" = "rogue" ]; then
-                          EFFECTIVE_DAMAGE=$((DAMAGE * 6 / 5))
+                          EFFECTIVE_DAMAGE=$((BASE_DAMAGE * 6 / 5))
                           CLASS_NOTE=" (Rogue precision!)"
                         fi
 
