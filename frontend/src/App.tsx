@@ -51,7 +51,11 @@ export default function App() {
     try {
       setDungeons(await listDungeons())
       const sel = selectedRef.current
-      if (sel) setDetail(await getDungeon(sel.ns, sel.name))
+      if (sel) {
+        const d = await getDungeon(sel.ns, sel.name)
+        setDetail(d)
+        prevInventoryRef.current = d.spec.inventory || ''
+      }
     } catch {}
   }, [])
 
@@ -242,7 +246,7 @@ export default function App() {
           attackTarget={attackTarget}
           floatingDmg={floatingDmg}
           lootDrop={lootDrop}
-          onDismissLoot={() => setLootDrop(null)}
+          onDismissLoot={() => { setLootDrop(null); prevInventoryRef.current = detail?.spec.inventory || '' }}
           events={events}
           showLoot={showLoot}
           onOpenLoot={() => setShowLoot(true)}
