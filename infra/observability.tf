@@ -69,7 +69,7 @@ resource "aws_cloudwatch_dashboard" "krombat" {
         properties = {
           title   = "Recent Errors"
           region  = var.region
-          query   = "SOURCE '/aws/containerinsights/${var.cluster_name}/application' | fields @timestamp, @message | filter kubernetes.namespace_name = 'rpg-system' and @message like /error|Error|ERROR/ | sort @timestamp desc | limit 20"
+          query   = "SOURCE '/aws/containerinsights/${var.cluster_name}/application' | fields @timestamp, @message | filter @logStream like /rpg-/ and @message like /error|Error|ERROR/ | sort @timestamp desc | limit 20"
         }
       },
       {
@@ -93,7 +93,7 @@ resource "aws_cloudwatch_dashboard" "krombat" {
         properties = {
           title   = "Backend API Activity"
           region  = var.region
-          query   = "SOURCE '/aws/containerinsights/${var.cluster_name}/application' | fields @timestamp, @message | filter kubernetes.namespace_name = 'rpg-system' and kubernetes.container_name = 'rpg-backend' | sort @timestamp desc | limit 20"
+          query   = "SOURCE '/aws/containerinsights/${var.cluster_name}/application' | fields @timestamp, @message | filter @logStream like /rpg-backend/ | sort @timestamp desc | limit 20"
         }
       }
     ]
