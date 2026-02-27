@@ -305,8 +305,8 @@ function DungeonView({ cr, onBack, onAttack, onDelete, events, showLoot, onOpenL
   const spec = cr.spec || { monsters: 0, difficulty: 'normal', monsterHP: [], bossHP: 0, heroHP: 100, currentTurn: 'hero', turnRound: 1 }
   const status = cr.status
   const dungeonName = cr.metadata.name
-  const maxMonsterHP = status?.maxMonsterHP || 50
-  const maxBossHP = status?.maxBossHP || 400
+  const maxMonsterHP = ({ easy: 30, normal: 50, hard: 80 } as Record<string,number>)[spec.difficulty] || 50
+  const maxBossHP = ({ easy: 200, normal: 400, hard: 800 } as Record<string,number>)[spec.difficulty] || 400
   const heroHP = spec.heroHP ?? 100
   const maxHeroHP = { warrior: 150, mage: 80, rogue: 100 }[spec.heroClass || 'warrior'] || 100
   const isDefeated = status?.defeated || heroHP <= 0
