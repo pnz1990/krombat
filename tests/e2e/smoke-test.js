@@ -108,7 +108,7 @@ async function runSmokeTests() {
         
         // Test 7: View dungeon
         console.log('Test 7: View dungeon details...');
-        await page.waitForTimeout(2000); // Wait for reconciliation
+        await page.waitForTimeout(5000); // Wait for kro reconciliation
         const dungeonResponse = await page.evaluate(async (name) => {
           const res = await fetch(`/api/v1/dungeons/default/${name}`);
           return { status: res.status, ok: res.ok, data: await res.json() };
