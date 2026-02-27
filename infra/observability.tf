@@ -52,10 +52,11 @@ resource "aws_cloudwatch_dashboard" "krombat" {
         width  = 12
         height = 6
         properties = {
-          title   = "Pod Restarts"
+          title   = "Pod Restarts (rpg-system)"
           region  = var.region
           metrics = [
-            ["ContainerInsights", "pod_number_of_container_restarts", "ClusterName", var.cluster_name, "Namespace", "rpg-system", { stat = "Sum", period = 300 }]
+            ["ContainerInsights", "pod_number_of_container_restarts", "ClusterName", var.cluster_name, "Namespace", "rpg-system", "PodName", "rpg-backend", { stat = "Sum", period = 300 }],
+            ["ContainerInsights", "pod_number_of_container_restarts", "ClusterName", var.cluster_name, "Namespace", "rpg-system", "PodName", "rpg-frontend", { stat = "Sum", period = 300 }]
           ]
         }
       },
@@ -68,7 +69,7 @@ resource "aws_cloudwatch_dashboard" "krombat" {
         properties = {
           title   = "Recent Errors"
           region  = var.region
-          query   = "SOURCE '/eks/${var.cluster_name}/rpg-system' | fields @timestamp, @message | filter @message like /error|Error|ERROR/ | sort @timestamp desc | limit 20"
+          query   = "SOURCE '/aws/containerinsights/${var.cluster_name}/application' | fields @timestamp, @message | filter kubernetes.namespace_name = 'rpg-system' and @message like /error|Error|ERROR/ | sort @timestamp desc | limit 20"
         }
       },
       {
@@ -80,7 +81,7 @@ resource "aws_cloudwatch_dashboard" "krombat" {
         properties = {
           title   = "Attack Job Logs"
           region  = var.region
-          query   = "SOURCE '/eks/${var.cluster_name}/game' | fields @timestamp, @message | filter @message like /Hero attacks|Turn complete|Attack failed/ | sort @timestamp desc | limit 20"
+          query   = "SOURCE '/aws/containerinsights/${var.cluster_name}/application' | fields @timestamp, @message | filter @message like /Hero attacks|Turn complete|Attack failed|Backstab|Taunt|Heal/ | sort @timestamp desc | limit 20"
         }
       },
       {
@@ -92,7 +93,7 @@ resource "aws_cloudwatch_dashboard" "krombat" {
         properties = {
           title   = "Backend API Activity"
           region  = var.region
-          query   = "SOURCE '/eks/${var.cluster_name}/rpg-system' | fields @timestamp, msg, method, path, status, dungeon | filter component = 'api' | sort @timestamp desc | limit 20"
+          query   = "SOURCE '/aws/containerinsights/${var.cluster_name}/application' | fields @timestamp, @message | filter kubernetes.namespace_name = 'rpg-system' and kubernetes.container_name = 'rpg-backend' | sort @timestamp desc | limit 20"
         }
       }
     ]
