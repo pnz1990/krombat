@@ -291,6 +291,7 @@ function EntityCard({ name, entity, state, hp, maxHP, difficulty, onAttack, disa
   difficulty: string; onAttack: (target: string, damage: number) => void; disabled?: boolean
 }) {
   const [rolling, setRolling] = useState(false)
+  const [displayDice, setDisplayDice] = useState<number[]>([])
   const [rolls, setRolls] = useState<number[]>([])
   const [total, setTotal] = useState<number | null>(null)
   const pct = maxHP > 0 ? (hp / maxHP) * 100 : 0
@@ -306,10 +307,16 @@ function EntityCard({ name, entity, state, hp, maxHP, difficulty, onAttack, disa
     setRolling(true)
     setRolls([])
     setTotal(null)
+    // Cycle random numbers during roll
+    const interval = setInterval(() => {
+      setDisplayDice(rollDice(d.count, d.sides))
+    }, 80)
     setTimeout(() => {
+      clearInterval(interval)
       const r = rollDice(d.count, d.sides)
       const dmg = r.reduce((a, b) => a + b, 0) + d.mod
       setRolls(r)
+      setDisplayDice(r)
       setTotal(dmg)
       setTimeout(() => {
         onAttack(name, dmg)
@@ -327,10 +334,10 @@ function EntityCard({ name, entity, state, hp, maxHP, difficulty, onAttack, disa
           <div className="dice-formula">Rolling {diceLabel(d)}...</div>
           <div className="dice-container">
             {total === null
-              ? Array.from({ length: d.count }, (_, i) => (
-                  <div key={i} className="die rolling">{Math.ceil(Math.random() * d.sides)}</div>
+              ? displayDice.map((v, i) => (
+                  <div key={i} className="die rolling">{v}</div>
                 ))
-              : rolls.map((v, i) => <div key={i} className="die">{v}</div>)
+              : rolls.map((v, i) => <div key={i} className="die landed">{v}</div>)
             }
           </div>
           {total !== null && (
