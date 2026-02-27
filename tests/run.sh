@@ -208,7 +208,7 @@ EOF
 
 wait_for "attack-3 job complete" \
   "kubectl get job ${DUNGEON_NAME}-atk3 -o jsonpath='{.status.succeeded}' 2>/dev/null | grep -q 1" 60
-sleep 10
+sleep 15
 
 LIVING=$(kubectl get dungeon "$DUNGEON_NAME" -o jsonpath='{.status.livingMonsters}')
 [ "$LIVING" = "0" ] && pass "livingMonsters=0" || fail "livingMonsters=$LIVING (expected 0)"
@@ -470,7 +470,10 @@ EOF
 
 wait_for "fx attack complete" \
   "kubectl get job ${FX_DUNGEON}-atk1 -o jsonpath='{.status.succeeded}' 2>/dev/null | grep -q 1" 60
-sleep 5
+
+# Wait for the patch to propagate
+wait_for "fx dungeon patched" \
+  "[ \$(kubectl get dungeon $FX_DUNGEON -o jsonpath='{.spec.poisonTurns}') != '2' ]" 30
 
 FX_HP=$(kubectl get dungeon "$FX_DUNGEON" -o jsonpath='{.spec.heroHP}')
 FX_POISON=$(kubectl get dungeon "$FX_DUNGEON" -o jsonpath='{.spec.poisonTurns}')
