@@ -30,6 +30,7 @@ func main() {
 	mux.HandleFunc("POST /api/v1/dungeons", h.CreateDungeon)
 	mux.HandleFunc("GET /api/v1/dungeons", h.ListDungeons)
 	mux.HandleFunc("GET /api/v1/dungeons/{namespace}/{name}", h.GetDungeon)
+	mux.HandleFunc("DELETE /api/v1/dungeons/{namespace}/{name}", h.DeleteDungeon)
 	mux.HandleFunc("POST /api/v1/dungeons/{namespace}/{name}/attacks", h.AttackWithRateLimit())
 	mux.HandleFunc("GET /api/v1/events", h.Events)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })

@@ -22,6 +22,7 @@ Kubernetes RPG demonstrates how [kro](https://kro.run) transforms Kubernetes int
 | Boss        | Custom Resource → Pod (via boss-graph RGD) |
 | Attack      | Custom Resource → Job (via attack-graph RGD) |
 | Treasure    | Custom Resource → Secret (via treasure-graph RGD) |
+| Modifier    | Custom Resource → ConfigMap (via modifier-graph RGD) |
 
 Each dungeon instance gets its own Namespace for isolation and clean teardown.
 
@@ -63,13 +64,14 @@ The backend and frontend only interact with kro-generated CRs (Dungeon and Attac
 
 ## Key Demonstrations
 
-- **Two-RGD orchestration** — `dungeon-graph` manages game state, `attack-graph` handles combat
-- **RGD composition via CR chaining** — Parent RGD spawns child CRs (Hero, Monster, Boss, Treasure), each reconciled by its own RGD into native K8s resources
+- **Seven-RGD orchestration** — `dungeon-graph` manages game state, `attack-graph` handles combat, five child RGDs handle entities
+- **RGD composition via CR chaining** — Parent RGD spawns child CRs (Hero, Monster, Boss, Treasure, Modifier), each reconciled by its own RGD into native K8s resources
 - **Dynamic resource generation** — Monster pod count driven by CEL expressions
-- **Cross-resource state derivation** — Boss readiness depends on aggregated monster HP values via CEL
+- **Cross-resource state derivation** — Boss readiness depends on aggregated monster HP values via CEL; Dungeon status reads Modifier CR status
 - **Drift correction** — Delete an alive monster pod and kro recreates it with correct state from Dungeon CR
 - **Optimistic concurrency** — Attack Jobs use resourceVersion preconditions for safe concurrent Dungeon CR mutation
 - **CRs as the only interface** — Backend never touches native K8s objects; kro is the abstraction layer
+- **Complex game logic in bash + CEL** — Hero abilities, loot drops, status effects, modifiers all computed in Attack Job scripts
 
 ## Project Structure
 
@@ -208,6 +210,48 @@ Click a monster or boss to attack. Damage is rolled using dice (shown in the UI)
 - **Mage**: Glass cannon. Rush the boss with 1.5x damage before mana runs out
 - **Rogue**: High risk/reward. Dodge procs can save you, but bad luck kills you
 - Kill monsters first to reduce incoming counter-attack damage before engaging the boss
+
+### Hero Abilities
+Each class has a unique active ability:
+
+| Class | Ability | Cost | Effect |
+|-------|---------|------|--------|
+| ⚔️ Warrior | 🛡️ Taunt | 1 turn (no damage) | 60% damage reduction for 1 round (50% taunt + 20% passive) |
+| 🔮 Mage | 💚 Heal | 2 mana | Restore 30 HP (capped at 80). +1 mana regen on monster kill |
+| 🗡️ Rogue | 🗡️ Backstab | 3-turn cooldown | 3x damage multiplier. Cooldown decrements each turn |
+
+### Dungeon Modifiers
+Each dungeon may spawn with a random modifier (30% curse, 30% blessing, 40% none):
+
+| Modifier | Type | Effect |
+|----------|------|--------|
+| Curse of Fortitude | 🔴 Curse | Monsters +50% HP |
+| Curse of Fury | 🔴 Curse | Boss counter-attack 2x damage |
+| Curse of Darkness | 🔴 Curse | Hero damage -25% |
+| Blessing of Strength | 🟢 Blessing | Hero damage +50% |
+| Blessing of Resilience | 🟢 Blessing | Counter-attack damage halved |
+| Blessing of Fortune | 🟢 Blessing | 20% chance to crit (2x damage) |
+
+### Loot System
+Monsters drop items on death. Boss always drops rare/epic loot.
+
+| Item | Effect | Common | Rare | Epic |
+|------|--------|--------|------|------|
+| 🗡️ Weapon | +damage for 3 attacks | +5 | +10 | +20 |
+| 🛡️ Armor | +defense for dungeon | 10% | 20% | 30% |
+| ❤️ HP Potion | Instant heal | 20 HP | 40 HP | Full |
+| 💎 Mana Potion | Restore mana (Mage) | 2 | 3 | 5 |
+
+Drop chance: Easy 40%, Normal 30%, Hard 25%. Click items in inventory to use/equip.
+
+### Status Effects
+Enemies can inflict status effects during counter-attacks:
+
+| Effect | Source | Duration | Per-Turn |
+|--------|--------|----------|----------|
+| 🟢 Poison | Monsters (20%) | 3 turns | -5 HP |
+| 🔴 Burn | Boss (25%) | 2 turns | -8 HP |
+| 🟡 Stun | Boss (15%) | 1 turn | Skip hero attack |
 
 ## License
 

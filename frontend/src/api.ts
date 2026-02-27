@@ -46,6 +46,11 @@ export async function createDungeon(name: string, monsters: number, difficulty: 
   if (!r.ok) throw new Error(await r.text())
   return r.json()
 }
+export async function deleteDungeon(ns: string, name: string) {
+  const r = await fetch(`${BASE}/dungeons/${ns}/${name}`, { method: 'DELETE' })
+  if (!r.ok && r.status !== 204) throw new Error(await r.text())
+}
+
 
 export async function submitAttack(ns: string, dungeon: string, target: string, damage: number) {
   const r = await fetch(`${BASE}/dungeons/${ns}/${dungeon}/attacks`, {

@@ -180,6 +180,20 @@ func (h *Handler) GetDungeon(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(dungeon.Object)
 }
 
+func (h *Handler) DeleteDungeon(w http.ResponseWriter, r *http.Request) {
+	ns := r.PathValue("namespace")
+	name := r.PathValue("name")
+
+	err := h.client.Dynamic.Resource(k8s.DungeonGVR).Namespace(ns).Delete(
+		context.Background(), name, metav1.DeleteOptions{})
+	if err != nil {
+		writeError(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	slog.Info("dungeon deleted", "component", "api", "dungeon", name, "namespace", ns)
+	w.WriteHeader(http.StatusNoContent)
+}
+
 type CreateAttackReq struct {
 	Target string `json:"target"`
 	Damage int64  `json:"damage"`

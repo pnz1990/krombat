@@ -204,3 +204,75 @@ kubectl get dungeon <name> -o jsonpath='{.spec.monsterHP}'
 kubectl get monster <name>-monster-0 -n <name> -o jsonpath='{.spec.hp} {.status.entityState}'
 kubectl get dungeon <name> -o jsonpath='{.status.livingMonsters}'
 ```
+
+
+## Hero Abilities
+
+### Debug Mage heal
+```bash
+kubectl get dungeon <name> -o jsonpath='HP:{.spec.heroHP} Mana:{.spec.heroMana}'
+# Heal requires mana >= 2, HP < 80
+```
+
+### Debug Warrior taunt
+```bash
+kubectl get dungeon <name> -o jsonpath='Taunt:{.spec.tauntActive}'
+# tauntActive=1 means 60% damage reduction active
+```
+
+### Debug Rogue backstab
+```bash
+kubectl get dungeon <name> -o jsonpath='CD:{.spec.backstabCooldown}'
+# backstabCooldown > 0 means backstab unavailable
+```
+
+## Dungeon Modifiers
+
+### Check active modifier
+```bash
+kubectl get dungeon <name> -o jsonpath='Modifier:{.spec.modifier} Effect:{.status.modifier}'
+kubectl get modifier -n <dungeon-name>
+```
+
+### Modifier not showing in status
+```bash
+# Check modifier-graph RGD is Active
+kubectl get rgd modifier-graph
+# Check Modifier CR exists
+kubectl get modifier <name>-modifier -n <name> -o yaml
+```
+
+## Loot System
+
+### Check inventory
+```bash
+kubectl get dungeon <name> -o jsonpath='Inv:{.spec.inventory} Wpn:{.spec.weaponBonus}({.spec.weaponUses}) Armor:{.spec.armorBonus}'
+```
+
+### Use item via kubectl
+```bash
+# HP potion
+kubectl apply -f - <<EOF
+apiVersion: game.k8s.example/v1alpha1
+kind: Attack
+metadata:
+  name: use-potion-$(date +%s)
+spec:
+  dungeonName: <name>
+  dungeonNamespace: default
+  target: use-hppotion-rare
+  damage: 0
+EOF
+```
+
+## Status Effects
+
+### Check active effects
+```bash
+kubectl get dungeon <name> -o jsonpath='Poison:{.spec.poisonTurns} Burn:{.spec.burnTurns} Stun:{.spec.stunTurns}'
+```
+
+### Manually clear effects
+```bash
+kubectl patch dungeon <name> --type=merge -p '{"spec":{"poisonTurns":0,"burnTurns":0,"stunTurns":0}}'
+```
