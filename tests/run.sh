@@ -109,11 +109,13 @@ kubectl get resourcequota dungeon-quota -n "$DUNGEON_NAME" &>/dev/null \
 
 log "Test 2: Verify initial state"
 
-LIVING=$(kubectl get dungeon "$DUNGEON_NAME" -o jsonpath='{.status.livingMonsters}')
-[ "$LIVING" = "2" ] && pass "livingMonsters=2" || fail "livingMonsters=$LIVING (expected 2)"
+wait_for "livingMonsters=2" \
+  "[ \$(kubectl get dungeon $DUNGEON_NAME -o jsonpath='{.status.livingMonsters}' 2>/dev/null) = '2' ]" 30 \
+  && pass "livingMonsters=2" || fail "livingMonsters!=2"
 
-BOSS_STATE=$(kubectl get dungeon "$DUNGEON_NAME" -o jsonpath='{.status.bossState}')
-[ "$BOSS_STATE" = "pending" ] && pass "bossState=pending" || fail "bossState=$BOSS_STATE (expected pending)"
+wait_for "bossState=pending" \
+  "[ \$(kubectl get dungeon $DUNGEON_NAME -o jsonpath='{.status.bossState}' 2>/dev/null) = 'pending' ]" 30 \
+  && pass "bossState=pending" || fail "bossState!=pending"
 
 VICTORY=$(kubectl get dungeon "$DUNGEON_NAME" -o jsonpath='{.status.victory}')
 [ "$VICTORY" = "false" ] && pass "victory=false" || fail "victory=$VICTORY (expected false)"
@@ -147,7 +149,8 @@ wait_for "attack-1 job complete" \
   && pass "Attack job completed" \
   || fail "Attack job did not complete"
 
-sleep 10  # wait for kro reconciliation
+wait_for "monster-0 HP updated" \
+  "[ \$(kubectl get dungeon $DUNGEON_NAME -o jsonpath='{.spec.monsterHP[0]}' 2>/dev/null) = '15' ]" 30
 
 M0_HP=$(kubectl get dungeon "$DUNGEON_NAME" -o jsonpath='{.spec.monsterHP[0]}')
 [ "$M0_HP" = "15" ] && pass "monster-0 HP=15 after 15 damage" || fail "monster-0 HP=$M0_HP (expected 15)"
@@ -175,7 +178,9 @@ EOF
 
 wait_for "attack-2 job complete" \
   "kubectl get job ${DUNGEON_NAME}-atk2 -o jsonpath='{.status.succeeded}' 2>/dev/null | grep -q 1" 60
-sleep 10
+
+wait_for "monster-0 HP=0" \
+  "[ \$(kubectl get dungeon $DUNGEON_NAME -o jsonpath='{.spec.monsterHP[0]}' 2>/dev/null) = '0' ]" 30
 
 M0_HP=$(kubectl get dungeon "$DUNGEON_NAME" -o jsonpath='{.spec.monsterHP[0]}')
 [ "$M0_HP" = "0" ] && pass "monster-0 HP=0" || fail "monster-0 HP=$M0_HP (expected 0)"
@@ -185,8 +190,9 @@ wait_for "monster-0 dead label" \
   && pass "monster-0 state=dead" \
   || fail "monster-0 not marked dead"
 
-LIVING=$(kubectl get dungeon "$DUNGEON_NAME" -o jsonpath='{.status.livingMonsters}')
-[ "$LIVING" = "1" ] && pass "livingMonsters=1" || fail "livingMonsters=$LIVING (expected 1)"
+wait_for "livingMonsters=1" \
+  "[ \$(kubectl get dungeon $DUNGEON_NAME -o jsonpath='{.status.livingMonsters}' 2>/dev/null) = '1' ]" 30 \
+  && pass "livingMonsters=1" || fail "livingMonsters!=1"
 
 # --- Test 5: Kill monster-1, boss should become ready ---
 
@@ -208,18 +214,19 @@ EOF
 
 wait_for "attack-3 job complete" \
   "kubectl get job ${DUNGEON_NAME}-atk3 -o jsonpath='{.status.succeeded}' 2>/dev/null | grep -q 1" 60
-sleep 15
 
-LIVING=$(kubectl get dungeon "$DUNGEON_NAME" -o jsonpath='{.status.livingMonsters}')
-[ "$LIVING" = "0" ] && pass "livingMonsters=0" || fail "livingMonsters=$LIVING (expected 0)"
+wait_for "livingMonsters=0" \
+  "[ \$(kubectl get dungeon $DUNGEON_NAME -o jsonpath='{.status.livingMonsters}' 2>/dev/null) = '0' ]" 30 \
+  && pass "livingMonsters=0" || fail "livingMonsters!=0"
 
 wait_for "boss ready" \
   "[ \$(kubectl get pod ${DUNGEON_NAME}-boss -n $DUNGEON_NAME -o jsonpath='{.metadata.labels.game\.k8s\.example/state}') = 'ready' ]" 30 \
   && pass "boss state=ready" \
   || fail "boss not ready"
 
-BOSS_STATE=$(kubectl get dungeon "$DUNGEON_NAME" -o jsonpath='{.status.bossState}')
-[ "$BOSS_STATE" = "ready" ] && pass "dungeon bossState=ready" || fail "dungeon bossState=$BOSS_STATE"
+wait_for "dungeon bossState=ready" \
+  "[ \$(kubectl get dungeon $DUNGEON_NAME -o jsonpath='{.status.bossState}' 2>/dev/null) = 'ready' ]" 30 \
+  && pass "dungeon bossState=ready" || fail "dungeon bossState!=ready"
 
 # --- Test 6: Defeat boss, victory ---
 
@@ -241,15 +248,15 @@ EOF
 
 wait_for "attack-4 job complete" \
   "kubectl get job ${DUNGEON_NAME}-atk4 -o jsonpath='{.status.succeeded}' 2>/dev/null | grep -q 1" 60
-sleep 10
 
 wait_for "boss defeated" \
   "[ \$(kubectl get pod ${DUNGEON_NAME}-boss -n $DUNGEON_NAME -o jsonpath='{.metadata.labels.game\.k8s\.example/state}') = 'defeated' ]" 30 \
   && pass "boss state=defeated" \
   || fail "boss not defeated"
 
-VICTORY=$(kubectl get dungeon "$DUNGEON_NAME" -o jsonpath='{.status.victory}')
-[ "$VICTORY" = "true" ] && pass "victory=true" || fail "victory=$VICTORY (expected true)"
+wait_for "victory=true" \
+  "[ \$(kubectl get dungeon $DUNGEON_NAME -o jsonpath='{.status.victory}' 2>/dev/null) = 'true' ]" 30 \
+  && pass "victory=true" || fail "victory!=true"
 
 # --- Test 7: Drift correction ---
 
@@ -258,7 +265,7 @@ log "Test 7: Drift correction (delete alive pod, kro recreates)"
 # First reset: create a fresh dungeon for drift test
 kubectl delete attack -l test-dungeon="$DUNGEON_NAME" --ignore-not-found --wait=false 2>/dev/null || true
 kubectl delete dungeon "$DUNGEON_NAME" --ignore-not-found --wait=false 2>/dev/null || true
-wait_for "old namespace gone" "! kubectl get ns $DUNGEON_NAME 2>/dev/null" 120
+wait_for "old namespace gone" "! kubectl get ns $DUNGEON_NAME 2>/dev/null" 60
 
 DUNGEON_NAME="test-drift-$(date +%s)"
 
