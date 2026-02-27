@@ -19,9 +19,6 @@ export default function App() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [showLoot, setShowLoot] = useState(false)
-  const [currentTurn, setCurrentTurn] = useState('hero')
-  const [turnRound, setTurnRound] = useState(1)
-  const animatingRef = useRef(false)
 
   const { connected, lastEvent } = useWebSocket(selected?.ns, selected?.name)
   const selectedRef = useRef(selected)
@@ -118,7 +115,10 @@ export default function App() {
         </p>
       </header>
 
-      {error && <div className="card" style={{ borderColor: '#e94560', color: '#e94560', fontSize: '8px' }}>{error}</div>}
+      {error && <div className="card" style={{ borderColor: '#e94560', color: '#e94560', fontSize: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span>{error}</span>
+        <button onClick={() => setError('')} style={{ background: 'none', border: 'none', color: '#e94560', cursor: 'pointer', fontFamily: 'inherit', fontSize: '10px' }}>✕</button>
+      </div>}
 
       {!selected ? (
         <>

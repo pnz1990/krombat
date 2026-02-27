@@ -24,7 +24,7 @@ func New(client *k8s.Client, hub *ws.Hub) *Handler {
 	return &Handler{
 		client:      client,
 		hub:         hub,
-		attackLimit: newRateLimiter(1 * time.Second),
+		attackLimit: newRateLimiter(300 * time.Millisecond),
 	}
 }
 
@@ -41,9 +41,11 @@ var hpByDifficulty = map[string]struct{ monster, boss int64 }{
 }
 
 type CreateDungeonReq struct {
-	Name       string `json:"name"`
-	Monsters   int64  `json:"monsters"`
-	Difficulty string `json:"difficulty"`
+	Name       string        `json:"name"`
+	Monsters   int64         `json:"monsters"`
+	Difficulty string        `json:"difficulty"`
+	MonsterHP  []interface{} `json:"monsterHP,omitempty"`
+	BossHP     *int64        `json:"bossHP,omitempty"`
 }
 
 func (h *Handler) CreateDungeon(w http.ResponseWriter, r *http.Request) {
@@ -56,15 +58,23 @@ func (h *Handler) CreateDungeon(w http.ResponseWriter, r *http.Request) {
 		writeError(w, "invalid name or monsters (1-10)", http.StatusBadRequest)
 		return
 	}
-	hp, ok := hpByDifficulty[req.Difficulty]
-	if !ok {
+	if req.Difficulty != "easy" && req.Difficulty != "normal" && req.Difficulty != "hard" {
 		writeError(w, "difficulty must be easy, normal, or hard", http.StatusBadRequest)
 		return
 	}
 
-	monsterHP := make([]interface{}, req.Monsters)
-	for i := range monsterHP {
-		monsterHP[i] = hp.monster
+	// Use client-provided HP values, or derive from difficulty
+	hp, _ := hpByDifficulty[req.Difficulty]
+	monsterHP := req.MonsterHP
+	if len(monsterHP) == 0 {
+		monsterHP = make([]interface{}, req.Monsters)
+		for i := range monsterHP {
+			monsterHP[i] = hp.monster
+		}
+	}
+	bossHP := hp.boss
+	if req.BossHP != nil {
+		bossHP = *req.BossHP
 	}
 
 	dungeon := &unstructured.Unstructured{Object: map[string]interface{}{
@@ -75,8 +85,7 @@ func (h *Handler) CreateDungeon(w http.ResponseWriter, r *http.Request) {
 			"monsters":   req.Monsters,
 			"difficulty": req.Difficulty,
 			"monsterHP":  monsterHP,
-			"bossHP":     hp.boss,
-			"heroHP":     int64(100),
+			"bossHP":     bossHP,
 		},
 	}}
 

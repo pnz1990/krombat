@@ -10,12 +10,12 @@ export interface DungeonCR {
   metadata: { name: string; namespace: string }
   spec: {
     monsters: number; difficulty: string
-    monsterHP: number[]; bossHP: number; heroHP?: number
+    monsterHP: number[]; bossHP: number; heroHP: number
+    currentTurn: string; turnRound: number
   }
   status?: {
-    livingMonsters: number; bossState: string; victory: boolean
-    loot: string
-    state: string
+    livingMonsters: number; bossState: string; victory: boolean; defeated: boolean
+    loot: string; maxMonsterHP: number; maxBossHP: number
   }
 }
 

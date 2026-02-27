@@ -13,11 +13,16 @@ spec:
       monsterHP: "[]integer"
       bossHP: integer | default=0
       heroHP: integer | default=100
+      currentTurn: string | default="hero"
+      turnRound: integer | default=1
     status:
       livingMonsters: "${size(monsterPods.filter(m, m.metadata.labels['game.k8s.example/state'] == 'alive'))}"
       bossState: "${bossPod.metadata.labels['game.k8s.example/state']}"
       victory: "${bossPod.metadata.labels['game.k8s.example/state'] == 'defeated'}"
+      defeated: "${schema.spec.heroHP <= 0}"
       loot: "${'Treasure code: ' + ns.metadata.name + '-LOOT'}"
+      maxMonsterHP: "${schema.spec.difficulty == 'easy' ? 30 : (schema.spec.difficulty == 'hard' ? 80 : 50)}"
+      maxBossHP: "${schema.spec.difficulty == 'easy' ? 200 : (schema.spec.difficulty == 'hard' ? 800 : 400)}"
 
   resources:
     # --- Namespace per dungeon ---
