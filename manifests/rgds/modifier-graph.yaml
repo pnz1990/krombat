@@ -1,0 +1,35 @@
+apiVersion: kro.run/v1alpha1
+kind: ResourceGraphDefinition
+metadata:
+  name: modifier-graph
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  schema:
+    apiVersion: v1alpha1
+    kind: Modifier
+    group: game.k8s.example
+    spec:
+      dungeonName: string | required=true
+      modifierType: string | default="none"
+      multiplier: string | default="1.0"
+    status:
+      effect: "${modifierState.data.effect}"
+      modifierType: "${modifierState.data.modifierType}"
+      multiplier: "${modifierState.data.multiplier}"
+
+  resources:
+    - id: modifierState
+      template:
+        apiVersion: v1
+        kind: ConfigMap
+        metadata:
+          name: "${schema.spec.dungeonName + '-modifier'}"
+          namespace: ${schema.metadata.namespace}
+          labels:
+            game.k8s.example/dungeon: ${schema.spec.dungeonName}
+            game.k8s.example/entity: modifier
+        data:
+          modifierType: ${schema.spec.modifierType}
+          multiplier: ${schema.spec.multiplier}
+          effect: "${schema.spec.modifierType == 'curse-fortitude' ? 'Monsters +50% HP' : schema.spec.modifierType == 'curse-fury' ? 'Boss counter 2x' : schema.spec.modifierType == 'curse-darkness' ? 'Hero damage -25%' : schema.spec.modifierType == 'blessing-strength' ? 'Hero damage +50%' : schema.spec.modifierType == 'blessing-resilience' ? 'Counter damage halved' : schema.spec.modifierType == 'blessing-fortune' ? '20% crit chance' : 'No modifier'}"

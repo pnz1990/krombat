@@ -14,11 +14,13 @@ export interface DungeonCR {
     currentTurn: string; turnRound: number
     heroClass?: string; heroMana?: number
     tauntActive?: number; backstabCooldown?: number
+    modifier?: string
     lastHeroAction?: string; lastEnemyAction?: string
   }
   status?: {
     livingMonsters: number; bossState: string; victory: boolean; defeated: boolean
     loot: string; maxMonsterHP: number; maxBossHP: number
+    modifier?: string; modifierType?: string
   }
 }
 

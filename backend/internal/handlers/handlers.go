@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"math/rand"
 	"net/http"
 	"strconv"
 	"time"
@@ -89,6 +90,17 @@ func (h *Handler) CreateDungeon(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Pick a random modifier (40% none, 30% curse, 30% blessing)
+	modifiers := []string{"none", "none", "curse-fortitude", "curse-fury", "curse-darkness", "blessing-strength", "blessing-resilience", "blessing-fortune"}
+	modifier := modifiers[rand.Intn(len(modifiers))]
+
+	// Curse of Fortitude: apply +50% monster HP at creation
+	if modifier == "curse-fortitude" {
+		for i := range monsterHP {
+			monsterHP[i] = monsterHP[i].(int64) * 3 / 2
+		}
+	}
+
 	dungeon := &unstructured.Unstructured{Object: map[string]interface{}{
 		"apiVersion": "game.k8s.example/v1alpha1",
 		"kind":       "Dungeon",
@@ -101,6 +113,7 @@ func (h *Handler) CreateDungeon(w http.ResponseWriter, r *http.Request) {
 			"heroHP":     heroHP,
 			"heroClass":  heroClass,
 			"heroMana":   heroMana,
+			"modifier":   modifier,
 		},
 	}}
 

@@ -19,6 +19,7 @@ spec:
       heroMana: integer | default=0
       tauntActive: integer | default=0
       backstabCooldown: integer | default=0
+      modifier: string | default="none"
       lastHeroAction: string | default=""
       lastEnemyAction: string | default=""
     status:
@@ -27,6 +28,8 @@ spec:
       victory: "${bossCR.status.?entityState.orValue('pending') == 'defeated'}"
       defeat: "${heroCR.status.?entityState.orValue('alive') == 'defeated'}"
       loot: "${treasureCR.status.?loot.orValue('')}"
+      modifier: "${modifierCR.status.?effect.orValue('No modifier')}"
+      modifierType: "${modifierCR.status.?modifierType.orValue('none')}"
 
   resources:
     # --- Namespace per dungeon ---
@@ -94,6 +97,18 @@ spec:
           namespace: ${ns.metadata.name}
         spec:
           dungeonName: ${schema.metadata.name}
+
+    # --- Modifier CR (depends on ns via namespace reference) ---
+    - id: modifierCR
+      template:
+        apiVersion: game.k8s.example/v1alpha1
+        kind: Modifier
+        metadata:
+          name: "${schema.metadata.name + '-modifier'}"
+          namespace: ${ns.metadata.name}
+        spec:
+          dungeonName: ${schema.metadata.name}
+          modifierType: ${schema.spec.modifier}
 
     # --- ResourceQuota ---
     - id: quota

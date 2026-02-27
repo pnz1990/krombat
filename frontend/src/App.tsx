@@ -347,6 +347,12 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
         <div><span className="label">Monsters alive:</span><span className="value">{status?.livingMonsters ?? '?'}</span></div>
         <div><span className="label">Boss:</span><span className="value">{bossState}</span></div>
         <div><span className="label">Difficulty:</span><span className="value">{spec.difficulty}</span></div>
+        {spec.modifier && spec.modifier !== 'none' && (
+          <div title={status?.modifier || spec.modifier}>
+            <span className="label">{spec.modifier.startsWith('curse') ? '🔴' : '🟢'}</span>
+            <span className="value">{status?.modifier || spec.modifier}</span>
+          </div>
+        )}
       </div>
 
       <div className="hero-bar" style={{ position: 'relative' }} title={

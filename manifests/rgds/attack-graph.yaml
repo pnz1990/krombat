@@ -54,6 +54,7 @@ spec:
                         DIFFICULTY=$(echo "$DUNGEON_JSON" | jq -r '.spec.difficulty // "normal"')
                         TAUNT_ACTIVE=$(echo "$DUNGEON_JSON" | jq -r '.spec.tauntActive // 0')
                         BACKSTAB_CD=$(echo "$DUNGEON_JSON" | jq -r '.spec.backstabCooldown // 0')
+                        MODIFIER=$(echo "$DUNGEON_JSON" | jq -r '.spec.modifier // "none"')
 
                         # Decrement backstab cooldown each turn
                         [ "$BACKSTAB_CD" -gt 0 ] && BACKSTAB_CD=$((BACKSTAB_CD - 1))
@@ -168,6 +169,21 @@ spec:
                         # Clear taunt after a normal attack turn
                         TAUNT_ACTIVE=0
 
+                        # Apply modifier to hero damage
+                        if [ "$MODIFIER" = "curse-darkness" ]; then
+                          EFFECTIVE_DAMAGE=$((EFFECTIVE_DAMAGE * 3 / 4))
+                          CLASS_NOTE="$CLASS_NOTE [Curse: -25% dmg]"
+                        elif [ "$MODIFIER" = "blessing-strength" ]; then
+                          EFFECTIVE_DAMAGE=$((EFFECTIVE_DAMAGE * 3 / 2))
+                          CLASS_NOTE="$CLASS_NOTE [Blessing: +50% dmg]"
+                        elif [ "$MODIFIER" = "blessing-fortune" ]; then
+                          CRIT_ROLL=$((RANDOM % 100))
+                          if [ "$CRIT_ROLL" -lt 20 ]; then
+                            EFFECTIVE_DAMAGE=$((EFFECTIVE_DAMAGE * 2))
+                            CLASS_NOTE="$CLASS_NOTE [CRIT! 2x dmg]"
+                          fi
+                        fi
+
                         # Calculate hero's attack on target
                         if echo "$REAL_TARGET" | grep -q "boss"; then
                           OLD_HP=$(echo "$DUNGEON_JSON" | jq -r '.spec.bossHP')
@@ -178,6 +194,12 @@ spec:
                             easy)   COUNTER=2 ;; normal) COUNTER=10 ;; hard) COUNTER=15 ;;
                           esac
                           if [ "$NEW_HP" -gt 0 ]; then
+                            # Apply modifier to boss counter
+                            if [ "$MODIFIER" = "curse-fury" ]; then
+                              COUNTER=$((COUNTER * 2))
+                            elif [ "$MODIFIER" = "blessing-resilience" ]; then
+                              COUNTER=$((COUNTER / 2))
+                            fi
                             if [ "$HERO_CLASS" = "warrior" ]; then
                               COUNTER=$((COUNTER * 4 / 5))
                             elif [ "$HERO_CLASS" = "rogue" ]; then
@@ -210,6 +232,10 @@ spec:
                           ALIVE=$(echo "$DUNGEON_JSON" | jq '[.spec.monsterHP[] | select(. > 0)] | length')
                           [ "$NEW_HP" -eq 0 ] && [ "$ALIVE" -gt 0 ] && ALIVE=$((ALIVE - 1))
                           TOTAL_COUNTER=$((ALIVE * COUNTER))
+                          # Apply modifier to monster counter
+                          if [ "$MODIFIER" = "blessing-resilience" ]; then
+                            TOTAL_COUNTER=$((TOTAL_COUNTER / 2))
+                          fi
                           if [ "$TOTAL_COUNTER" -gt 0 ]; then
                             if [ "$HERO_CLASS" = "warrior" ]; then
                               TOTAL_COUNTER=$((TOTAL_COUNTER * 4 / 5))
