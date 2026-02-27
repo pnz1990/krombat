@@ -152,7 +152,7 @@ fi
 TEST_NAME="guardrail-$(date +%s)"
 curl -s -X POST http://localhost:$GUARDRAIL_PORT/api/v1/dungeons \
   -H "Content-Type: application/json" \
-  -d "{\"name\":\"$TEST_NAME\",\"monsters\":1,\"difficulty\":\"easy\"}" -o /dev/null
+  -d "{\"name\":\"$TEST_NAME\",\"monsters\":1,\"difficulty\":\"easy\",\"heroClass\":\"warrior\",\"namespace\":\"tests\"}" -o /dev/null
 
 sleep 10
 
