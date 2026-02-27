@@ -67,7 +67,7 @@ A turn-based dungeon RPG where the entire game state lives in Kubernetes, orches
 ## Development Rules
 - **NEVER run applications locally** — all builds via Docker, pushed to ECR through GitHub Actions CI
 - **Deployments happen via Argo CD** — push manifests to Git, Argo CD syncs to cluster
-- **Feature branches + PRs** — all changes go through feature branches (`feature/issue-XX-desc`), PRs to `main`, CI must pass before merge. No direct pushes to `main`
+- **Feature branches + PRs** — all changes go through feature branches (`feature/issue-XX-desc`), PRs to `main`, CI must pass before merge. No direct pushes to `main`. A separate AI process monitors PRs, merges when CI passes, and opens issues if CI fails — so after creating a PR, move on to the next task
 - **To deploy**: merge PR → CI builds image → `kubectl rollout restart deployment/<name> -n rpg-system`
 - **When RGD schema changes**: `kubectl delete rgd <name>` → Argo CD recreates
 - **Local validation only**: `go build` for compilation, `python3 -c "import yaml; ..."` for YAML
