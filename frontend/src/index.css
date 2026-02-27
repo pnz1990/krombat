@@ -473,10 +473,12 @@ body {
 
 /* Inventory */
 .inventory-bar { display: flex; gap: 4px; align-items: center; margin: 4px 0 8px; flex-wrap: wrap; }
-.equip-badge { font-size: 7px; padding: 2px 6px; background: #1a2a1a; border: 1px solid #4a4; border-radius: 4px; color: #8f8; }
-.item-btn { font-size: 14px; padding: 2px 4px; background: #1a1a2a; border: 1px solid; border-radius: 4px; cursor: pointer; }
-.item-btn:hover:not(:disabled) { background: #2a2a4a; }
+.equip-badge { font-size: 7px; padding: 2px 6px; background: #1a2a1a; border: 1px solid #4a4; border-radius: 4px; color: #8f8; display: flex; align-items: center; gap: 4px; }
+.equip-badge.equipped { border-color: var(--gold); color: var(--gold); background: rgba(245, 197, 24, 0.1); }
+.item-btn { font-size: 14px; padding: 4px 6px; background: #1a1a2a; border: 2px solid; border-radius: 4px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.item-btn:hover:not(:disabled) { background: #2a2a4a; transform: translateY(-1px); }
 .item-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.item-label { font-size: 6px; color: var(--text-dim); font-family: 'Press Start 2P', monospace; }
 
 /* Status effects */
 .effect-badges { display: flex; gap: 6px; margin: 4px 0; }

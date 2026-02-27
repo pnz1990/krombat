@@ -29,6 +29,8 @@ export default function App() {
   const [attackPhase, setAttackPhase] = useState<string | null>(null)
   const [showHelp, setShowHelp] = useState(false)
   const [deleting, setDeleting] = useState<string | null>(null)
+  const [lootDrop, setLootDrop] = useState<string | null>(null)
+  const prevInventoryRef = useRef('')
   const [attackTarget, setAttackTarget] = useState<string | null>(null)
   const [animPhase, setAnimPhase] = useState<'idle' | 'hero-attack' | 'enemy-attack' | 'done'>('idle')
 
@@ -109,6 +111,16 @@ export default function App() {
         await new Promise(r => setTimeout(r, 1000))
       }
       setDetail(updated)
+      // Detect new loot drops
+      const oldInv = prevInventoryRef.current
+      const newInv = updated.spec.inventory || ''
+      if (newInv && newInv !== oldInv) {
+        const oldItems = oldInv.split(',').filter(Boolean)
+        const newItems = newInv.split(',').filter(Boolean)
+        const dropped = newItems.filter(item => !oldItems.includes(item))
+        if (dropped.length > 0) setLootDrop(dropped[dropped.length - 1])
+      }
+      prevInventoryRef.current = newInv
       await new Promise(r => setTimeout(r, 100))
 
       // Show counter-attack damage on hero
@@ -200,6 +212,8 @@ export default function App() {
           animPhase={animPhase}
           attackTarget={attackTarget}
           floatingDmg={floatingDmg}
+          lootDrop={lootDrop}
+          onDismissLoot={() => setLootDrop(null)}
           events={events}
           showLoot={showLoot}
           onOpenLoot={() => setShowLoot(true)}
@@ -269,13 +283,14 @@ function DungeonList({ dungeons, onSelect, onDelete, deleting }: {
   )
 }
 
-function DungeonView({ cr, onBack, onAttack, onDelete, events, showLoot, onOpenLoot, onCloseLoot, currentTurn, turnRound, attackPhase, animPhase, attackTarget, showHelp, onToggleHelp, floatingDmg }: {
+function DungeonView({ cr, onBack, onAttack, onDelete, events, showLoot, onOpenLoot, onCloseLoot, currentTurn, turnRound, attackPhase, animPhase, attackTarget, showHelp, onToggleHelp, floatingDmg, lootDrop, onDismissLoot }: {
   cr: DungeonCR; onBack: () => void; onAttack: (t: string, d: number) => void; onDelete: () => void; events: WSEvent[]
   showLoot: boolean; onOpenLoot: () => void; onCloseLoot: () => void
   currentTurn: string; turnRound: number; attackPhase: string | null
   animPhase: string; attackTarget: string | null
   showHelp: boolean; onToggleHelp: () => void
   floatingDmg: { target: string; amount: string; color: string } | null
+  lootDrop: string | null; onDismissLoot: () => void
 }) {
   if (!cr?.metadata?.name) return <div className="loading">Loading dungeon</div>
   const spec = cr.spec || { monsters: 0, difficulty: 'normal', monsterHP: [], bossHP: 0, heroHP: 100, currentTurn: 'hero', turnRound: 1 }
@@ -387,6 +402,28 @@ function DungeonView({ cr, onBack, onAttack, onDelete, events, showLoot, onOpenL
         </div>
       )}
 
+      {lootDrop && (
+        <div className="modal-overlay" onClick={onDismissLoot}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize: 48, marginBottom: 12 }}>🎁</div>
+            <h2 style={{ color: 'var(--gold)', fontSize: 12, marginBottom: 8 }}>LOOT DROP!</h2>
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8 }}>
+              <ItemSprite id={lootDrop} size={48} />
+            </div>
+            <div style={{ fontSize: 9, color: lootDrop.includes('epic') ? '#9b59b6' : lootDrop.includes('rare') ? '#5dade2' : '#aaa', marginBottom: 4 }}>
+              {lootDrop.replace(/-/g, ' ').toUpperCase()}
+            </div>
+            <div style={{ fontSize: 7, color: 'var(--text-dim)', marginBottom: 12 }}>
+              {lootDrop.includes('weapon') ? 'Equip for bonus damage on next 3 attacks' :
+               lootDrop.includes('armor') ? 'Equip for damage reduction this dungeon' :
+               lootDrop.includes('hppotion') ? 'Use to restore HP' :
+               lootDrop.includes('manapotion') ? 'Use to restore mana' : 'A mysterious item'}
+            </div>
+            <button className="btn btn-gold" onClick={onDismissLoot}>Got it!</button>
+          </div>
+        </div>
+      )}
+
       <div className="status-bar">
         <div><span className="label">Monsters alive:</span><span className="value">{status?.livingMonsters ?? '?'}</span></div>
         <div><span className="label">Boss:</span><span className="value">{bossState}</span></div>
@@ -458,18 +495,32 @@ function DungeonView({ cr, onBack, onAttack, onDelete, events, showLoot, onOpenL
         const RARITY_COLOR: Record<string, string> = { common: '#aaa', rare: '#5dade2', epic: '#9b59b6' }
         return (
           <div className="inventory-bar">
-            {wb > 0 && <span className="equip-badge" title={`+${wb} damage, ${wu} uses left`}><ItemSprite id={`weapon-common`} size={16} /> +{wb}({wu})</span>}
-            {ab > 0 && <span className="equip-badge" title={`+${ab}% defense`}><ItemSprite id={`armor-common`} size={16} /> +{ab}%</span>}
+            {wb > 0 && (
+              <Tooltip text={`Weapon equipped: +${wb} damage, ${wu} uses remaining`}>
+                <span className="equip-badge equipped"><ItemSprite id="weapon-common" size={16} /> ⚔️+{wb} ({wu})</span>
+              </Tooltip>
+            )}
+            {ab > 0 && (
+              <Tooltip text={`Armor equipped: +${ab}% damage reduction on counter-attacks`}>
+                <span className="equip-badge equipped"><ItemSprite id="armor-common" size={16} /> 🛡️+{ab}%</span>
+              </Tooltip>
+            )}
             {items.map((item, i) => {
               const rarity = item.split('-').pop()!
-              const isUsable = item.includes('potion')
+              const isPotion = item.includes('potion')
+              const isWeapon = item.includes('weapon')
+              const isArmor = item.includes('armor')
+              const alreadyEquipped = (isWeapon && wb > 0) || (isArmor && ab > 0)
+              const label = isPotion ? 'Use' : alreadyEquipped ? 'Swap' : 'Equip'
               return (
-                <button key={i} className="item-btn" disabled={!!attackPhase}
-                  style={{ borderColor: RARITY_COLOR[rarity] || '#aaa' }}
-                  title={`${item} (click to ${isUsable ? 'use' : 'equip'})`}
-                  onClick={() => onAttack(isUsable ? `use-${item}` : `equip-${item}`, 0)}>
-                  <ItemSprite id={item} size={24} />
-                </button>
+                <Tooltip key={i} text={`${item.replace(/-/g, ' ')} — click to ${label.toLowerCase()}`}>
+                  <button className="item-btn" disabled={!!attackPhase}
+                    style={{ borderColor: RARITY_COLOR[rarity] || '#aaa' }}
+                    onClick={() => onAttack(isPotion ? `use-${item}` : `equip-${item}`, 0)}>
+                    <ItemSprite id={item} size={24} />
+                    <span className="item-label">{label}</span>
+                  </button>
+                </Tooltip>
               )
             })}
           </div>
