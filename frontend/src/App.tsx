@@ -136,8 +136,22 @@ export default function App() {
       // Read combat log from Dungeon CR
       const heroAction = updated.spec.lastHeroAction
       const enemyAction = updated.spec.lastEnemyAction
-      if (heroAction) addEvent('⚔️', heroAction)
-      if (enemyAction) addEvent('💀', enemyAction)
+      if (heroAction) {
+        // Parse action for better icons
+        const icon = heroAction.includes('heals') ? '💚' : heroAction.includes('Taunt') ? '🛡️' : heroAction.includes('Backstab') ? '🗡️' : heroAction.includes('STUNNED') ? '🟡' : '⚔️'
+        addEvent(icon, heroAction)
+        // Loot drop
+        if (heroAction.includes('Dropped')) addEvent('🎁', heroAction.split('Dropped')[1]?.trim() || 'Loot dropped!')
+        // Kill
+        if (heroAction.includes('-> 0)')) {
+          const target = heroAction.match(/damage to (\S+)/)?.[1] || 'enemy'
+          addEvent('💀', `${target} slain!`)
+        }
+      }
+      if (enemyAction) {
+        const eIcon = enemyAction.includes('POISON') ? '🟢' : enemyAction.includes('BURN') ? '🔴' : enemyAction.includes('STUN') ? '🟡' : enemyAction.includes('defeated') ? '👑' : '💀'
+        addEvent(eIcon, enemyAction)
+      }
       const s = updated.status
       if (s?.victory) addEvent('🏆', 'VICTORY! Boss defeated!')
       else if (s?.bossState === 'ready') addEvent('🐉', 'Boss unlocked! All monsters slain!')
@@ -304,10 +318,10 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
   const spec = cr.spec || { monsters: 0, difficulty: 'normal', monsterHP: [], bossHP: 0, heroHP: 100, currentTurn: 'hero', turnRound: 1 }
   const status = cr.status
   const dungeonName = cr.metadata.name
-  const maxMonsterHP = Number(status?.maxMonsterHP) || 50
-  const maxBossHP = Number(status?.maxBossHP) || 400
+  const maxMonsterHP = Number(status?.maxMonsterHP) || Math.max(...(spec.monsterHP || [0]))
+  const maxBossHP = Number(status?.maxBossHP) || spec.bossHP || 400
   const heroHP = spec.heroHP ?? 100
-  const maxHeroHP = Number(status?.maxHeroHP) || 100
+  const maxHeroHP = Number(status?.maxHeroHP) || Math.max(heroHP, 100)
   const isDefeated = status?.defeated || heroHP <= 0
   const bossState = status?.bossState || 'pending'
   const isHeroTurn = !currentTurn || currentTurn === 'hero'
@@ -584,37 +598,6 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
   )
 }
 
-function formatEventIcon(e: WSEvent): string {
-  if (e.type === 'COMBAT' && e.action === 'HERO') return '⚔️'
-  if (e.type === 'COMBAT' && e.action === 'MONSTER') return '💀'
-  if (e.type === 'ATTACK_EVENT') return '📡'
-  if (e.type === 'DUNGEON_UPDATE') {
-    const s = e.payload?.status
-    if (s?.victory) return '🏆'
-    if (s?.bossState === 'ready') return '🐉'
-    if (s?.bossState === 'defeated') return '👑'
-    return '📜'
-  }
-  return '📡'
-}
-
-function formatEventMsg(e: WSEvent): string {
-  if (e.type === 'COMBAT') return e.payload?.status?.bossState || 'Combat'
-  if (e.type === 'ATTACK_EVENT' && e.action === 'ADDED') return 'Attack submitted'
-  if (e.type === 'ATTACK_EVENT' && e.action === 'DELETED') return 'Attack completed'
-  if (e.type === 'ATTACK_EVENT') return 'Attack processing'
-  if (e.type === 'DUNGEON_UPDATE') {
-    const s = e.payload?.status
-    if (s?.victory) return 'VICTORY! Boss defeated!'
-    if (s?.bossState === 'ready') return 'Boss unlocked! All monsters slain!'
-    if (s?.bossState === 'defeated') return 'Boss has fallen!'
-    const living = s?.livingMonsters
-    if (living !== undefined) return `${living} monster${living !== 1 ? 's' : ''} remaining`
-    return 'Dungeon state updated'
-  }
-  return `${e.action} ${e.type}`
-}
-
 // Parse dice formula from CR status (e.g. "2d8+5" -> {count:2, sides:8, mod:5})
 function parseDice(formula: string): { count: number; sides: number; mod: number } {
   const m = formula.match(/(\d+)d(\d+)\+(\d+)/)
@@ -639,7 +622,7 @@ function EntityCard({ name, entity, state, hp, maxHP, diceFormula, onAttack, dis
   const [displayDice, setDisplayDice] = useState<number[]>([])
   const [rolls, setRolls] = useState<number[]>([])
   const [total, setTotal] = useState<number | null>(null)
-  const pct = maxHP > 0 ? (hp / maxHP) * 100 : 0
+  const pct = maxHP > 0 ? Math.min((hp / maxHP) * 100, 100) : 0
   const hpClass = pct > 60 ? 'high' : pct > 30 ? 'mid' : 'low'
   const canAttack = !disabled && !rolling && ((entity === 'monster' && state === 'alive') || (entity === 'boss' && state === 'ready'))
   const base = parseDice(diceFormula)
