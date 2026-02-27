@@ -230,10 +230,10 @@ spec:
                         fi
 
                         # === ROGUE BACKSTAB (target ends with -backstab) ===
-                        IS_BACKSTARMOR_VAL=false
+                        IS_BACKSTAB=false
                         REAL_TARGET="$TARGET"
                         if echo "$TARGET" | grep -q "\-backstab$"; then
-                          IS_BACKSTARMOR_VAL=true
+                          IS_BACKSTAB=true
                           REAL_TARGET=$(echo "$TARGET" | sed 's/-backstab$//')
                           if [ "$HERO_CLASS" != "rogue" ]; then
                             echo "Only rogue can backstab"; exit 1
