@@ -157,7 +157,7 @@ curl -s -X POST http://localhost:$GUARDRAIL_PORT/api/v1/dungeons \
 sleep 10
 
 # GetDungeon response must be a raw CR (not wrapped)
-RESP=$(curl -s http://localhost:$GUARDRAIL_PORT/api/v1/dungeons/default/$TEST_NAME)
+RESP=$(curl -s http://localhost:$GUARDRAIL_PORT/api/v1/dungeons/tests/$TEST_NAME)
 echo "$RESP" | python3 -c "
 import json,sys
 d=json.load(sys.stdin)
@@ -171,7 +171,7 @@ assert 'loot' not in d or isinstance(d.get('loot'), str), 'loot at top level'
   || fail "GetDungeon response has wrong shape"
 
 # Cleanup
-kubectl delete dungeon "$TEST_NAME" --ignore-not-found --wait=false &>/dev/null
+kubectl delete dungeon "$TEST_NAME" -n tests --ignore-not-found --wait=false &>/dev/null
 [ -n "$PF_PID" ] && kill "$PF_PID" 2>/dev/null
 
 # --- Summary ---

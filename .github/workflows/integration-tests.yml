@@ -50,6 +50,9 @@ jobs:
             sleep 5
           done
 
+      - name: Ensure tests namespace
+        run: kubectl create ns tests --dry-run=client -o yaml | kubectl apply -f -
+
       - name: Run integration tests
         run: ./tests/run.sh
 

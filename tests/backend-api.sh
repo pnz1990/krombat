@@ -4,6 +4,7 @@
 set -euo pipefail
 
 BASE="http://localhost:8080"
+TEST_NS="tests"
 DUNGEON="api-test-$(date +%s)"
 PASS=0
 FAIL=0
@@ -15,7 +16,7 @@ fail() { echo "  ❌ $1"; FAIL=$((FAIL+1)); TESTS+=("FAIL: $1"); }
 
 cleanup() {
   log "Cleanup"
-  kubectl delete dungeon "$DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
+  kubectl delete dungeon "$DUNGEON" -n tests --ignore-not-found --wait=false 2>/dev/null || true
   kubectl delete attacks --all --ignore-not-found --wait=false 2>/dev/null || true
 }
 trap cleanup EXIT
@@ -44,7 +45,7 @@ curl -s "$BASE/metrics" | grep -q "k8s_rpg_dungeons_created_total" \
 log "Test 3: Create dungeon"
 RESP=$(curl -s -w "\n%{http_code}" -X POST "$BASE/api/v1/dungeons" \
   -H "Content-Type: application/json" \
-  -d "{\"name\":\"$DUNGEON\",\"monsters\":2,\"difficulty\":\"easy\"}")
+  -d "{\"name\":\"$DUNGEON\",\"monsters\":2,\"difficulty\":\"easy\",\"heroClass\":\"warrior\",\"namespace\":\"tests\"}")
 CODE=$(echo "$RESP" | tail -1)
 [ "$CODE" = "201" ] && pass "POST /dungeons -> 201" || fail "POST /dungeons -> $CODE"
 
@@ -68,9 +69,9 @@ echo "$RESP" | python3 -c "import json,sys; d=json.load(sys.stdin); assert any(x
 # --- Test 6: Get dungeon ---
 log "Test 6: Get dungeon response shape"
 sleep 15  # wait for kro
-RESP=$(curl -s "$BASE/api/v1/dungeons/default/$DUNGEON")
-CODE=$(curl -s -o /dev/null -w "%{http_code}" "$BASE/api/v1/dungeons/default/$DUNGEON")
-[ "$CODE" = "200" ] && pass "GET /dungeons/default/$DUNGEON -> 200" || fail "GET dungeon -> $CODE"
+RESP=$(curl -s "$BASE/api/v1/dungeons/tests/$DUNGEON")
+CODE=$(curl -s -o /dev/null -w "%{http_code}" "$BASE/api/v1/dungeons/tests/$DUNGEON")
+[ "$CODE" = "200" ] && pass "GET /dungeons/tests/$DUNGEON -> 200" || fail "GET dungeon -> $CODE"
 
 # Verify response is a raw Dungeon CR (has metadata.name, spec, not wrapped in {dungeon:...})
 echo "$RESP" | python3 -c "
@@ -90,28 +91,28 @@ print('OK')
 
 # --- Test 7: Get nonexistent dungeon ---
 log "Test 7: Get nonexistent dungeon"
-CODE=$(curl -s -o /dev/null -w "%{http_code}" "$BASE/api/v1/dungeons/default/nonexistent-xyz")
+CODE=$(curl -s -o /dev/null -w "%{http_code}" "$BASE/api/v1/dungeons/tests/nonexistent-xyz")
 [ "$CODE" = "404" ] && pass "GET nonexistent -> 404" || fail "GET nonexistent -> $CODE"
 
 # --- Test 8: Submit attack ---
 log "Test 8: Submit attack"
-CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeons/default/$DUNGEON/attacks" \
+CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeons/tests/$DUNGEON/attacks" \
   -H "Content-Type: application/json" -d "{\"target\":\"${DUNGEON}-monster-0\",\"damage\":30}")
 [ "$CODE" = "202" ] && pass "POST attack -> 202" || fail "POST attack -> $CODE"
 
 # --- Test 9: Attack validation ---
 log "Test 9: Attack validation"
-CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeons/default/validation-test/attacks" \
+CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeons/tests/validation-test/attacks" \
   -H "Content-Type: application/json" -d '{"target":"","damage":0}')
 [ "$CODE" = "400" ] && pass "Invalid attack rejected -> 400" || fail "Invalid attack -> $CODE"
 
 # --- Test 10: Rate limiting ---
 log "Test 10: Rate limiting"
 # Fire two attacks simultaneously — second should be rate limited
-curl -s -o /dev/null -X POST "$BASE/api/v1/dungeons/default/$DUNGEON/attacks" \
+curl -s -o /dev/null -X POST "$BASE/api/v1/dungeons/tests/$DUNGEON/attacks" \
   -H "Content-Type: application/json" -d "{\"target\":\"${DUNGEON}-monster-1\",\"damage\":10}" &
 sleep 0.1
-CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeons/default/$DUNGEON/attacks" \
+CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeons/tests/$DUNGEON/attacks" \
   -H "Content-Type: application/json" -d "{\"target\":\"${DUNGEON}-monster-1\",\"damage\":10}")
 wait
 [ "$CODE" = "429" ] && pass "Rate limited -> 429" || fail "Rate limit not enforced -> $CODE"
