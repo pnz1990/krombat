@@ -68,7 +68,7 @@ module "eks" {
   }
 
   # Observability
-  cluster_addons = {
+  addons = {
     amazon-cloudwatch-observability = {
       most_recent = true
     }

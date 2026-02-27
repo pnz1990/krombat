@@ -35,12 +35,12 @@ export default function App() {
   // Refresh on WebSocket events — deduplicate consecutive identical messages
   const lastMsgRef = useRef('')
   useEffect(() => { if (lastEvent) {
-    const msg = `${lastEvent.type}:${lastEvent.action}:${lastEvent.payload?.status?.livingMonsters}:${lastEvent.payload?.status?.bossState}`
-    if (msg !== lastMsgRef.current) {
+    const displayMsg = formatEventMsg(lastEvent)
+    if (displayMsg !== lastMsgRef.current) {
       if (!(lastEvent.type === 'ATTACK_EVENT' && lastEvent.action === 'MODIFIED')) {
         setEvents(prev => [lastEvent, ...prev].slice(0, 30))
       }
-      lastMsgRef.current = msg
+      lastMsgRef.current = displayMsg
     }
     refresh()
   }}, [lastEvent, refresh])
