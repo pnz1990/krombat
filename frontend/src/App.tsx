@@ -67,10 +67,28 @@ export default function App() {
     if (selected) {
       setLoading(true)
       setEvents([])
-      getDungeon(selected.ns, selected.name)
-        .then(d => setDetail(d))
-        .catch(e => setError(e.message))
-        .finally(() => setLoading(false))
+      // Poll until dungeon is ready (kro may take 5-10s to reconcile)
+      let cancelled = false
+      const poll = async () => {
+        for (let i = 0; i < 15; i++) {
+          if (cancelled) return
+          try {
+            const d = await getDungeon(selected.ns, selected.name)
+            if (d?.status?.livingMonsters !== undefined || d?.status?.bossState) {
+              setDetail(d)
+              setLoading(false)
+              return
+            }
+            // CR exists but status not populated yet
+            setDetail(d)
+          } catch {}
+          await new Promise(r => setTimeout(r, 2000))
+        }
+        setLoading(false)
+        setError('Dungeon is still initializing...')
+      }
+      poll()
+      return () => { cancelled = true }
     } else {
       setDetail(null)
       setShowLoot(false)
@@ -95,6 +113,29 @@ export default function App() {
   const handleAttack = async (target: string, damage: number) => {
     if (!selected || attackPhase) return
     setError('')
+
+    // Item actions (equip/use) — simple submit + poll, no combat animation
+    if (target.startsWith('equip-') || target.startsWith('use-')) {
+      setAttackPhase(target.startsWith('equip-') ? '🛡️ Equipping...' : '💚 Using item...')
+      try {
+        await submitAttack(selected.ns, selected.name, target, 0)
+        for (let i = 0; i < 10; i++) {
+          await new Promise(r => setTimeout(r, 1000))
+          const fetched = await getDungeon(selected.ns, selected.name)
+          if (fetched.spec.inventory !== detail?.spec.inventory ||
+              fetched.spec.weaponBonus !== detail?.spec.weaponBonus ||
+              fetched.spec.armorBonus !== detail?.spec.armorBonus ||
+              fetched.spec.heroHP !== detail?.spec.heroHP) {
+            setDetail(fetched)
+            prevInventoryRef.current = fetched.spec.inventory || ''
+            break
+          }
+        }
+      } catch (e: any) { setError(e.message) }
+      setAttackPhase(null)
+      return
+    }
+
     const isAbility = target === 'hero' || target === 'activate-taunt'
     const shortTarget = isAbility ? target : target.replace(/-backstab$/, '').split('-').slice(-2).join('-')
     try {
@@ -235,7 +276,7 @@ export default function App() {
           <DungeonList dungeons={dungeons.filter(d => d.namespace === activeNs)} onSelect={handleSelect} onDelete={handleDelete} deleting={deleting} />
         </>
       ) : loading ? (
-        <div className="loading">Loading dungeon</div>
+        <div className="loading">⏳ Dungeon initializing... kro is reconciling resources</div>
       ) : detail ? (
         <DungeonView
           cr={detail}
@@ -326,7 +367,7 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
   floatingDmg: { target: string; amount: string; color: string } | null
   lootDrop: string | null; onDismissLoot: () => void
 }) {
-  if (!cr?.metadata?.name) return <div className="loading">Loading dungeon</div>
+  if (!cr?.metadata?.name) return <div className="loading">{loading ? '⏳ Dungeon initializing...' : 'Loading dungeon'}</div>
   const spec = cr.spec || { monsters: 0, difficulty: 'normal', monsterHP: [], bossHP: 0, heroHP: 100, currentTurn: 'hero', turnRound: 1 }
   const status = cr.status
   const dungeonName = cr.metadata.name
