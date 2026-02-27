@@ -67,7 +67,7 @@ export default function App() {
   return (
     <div className="app">
       <header className="header">
-        <h1>⚔️ KUBERNETES RPG ⚔️</h1>
+        <img src="/logo.png" alt="Kubernetes RPG" className="logo" />
         <p>Powered by kro ResourceGraphDefinitions on EKS</p>
         <p style={{ fontSize: '7px', marginTop: 4, color: connected ? '#00ff41' : '#e94560' }}>
           {connected ? '● CONNECTED' : '○ DISCONNECTED'}
@@ -204,12 +204,42 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
         {events.length === 0 && <div className="event-entry">Waiting for events...</div>}
         {events.map((e, i) => (
           <div key={i} className="event-entry">
-            <span className="event-type">[{e.type}]</span> {e.action} {e.name}
+            <span className="event-icon">{formatEventIcon(e)}</span>
+            <span className="event-msg">{formatEventMsg(e)}</span>
+            <span className="event-detail">{e.name}</span>
           </div>
         ))}
       </div>
     </div>
   )
+}
+
+function formatEventIcon(e: WSEvent): string {
+  if (e.type === 'ATTACK_EVENT') return '⚔️'
+  if (e.type === 'DUNGEON_UPDATE') {
+    const s = e.payload?.status
+    if (s?.victory) return '🏆'
+    if (s?.bossState === 'ready') return '🐉'
+    if (s?.bossState === 'defeated') return '👑'
+    return '📜'
+  }
+  return '📡'
+}
+
+function formatEventMsg(e: WSEvent): string {
+  if (e.type === 'ATTACK_EVENT' && e.action === 'ADDED') return 'Attack submitted'
+  if (e.type === 'ATTACK_EVENT' && e.action === 'MODIFIED') return 'Attack processing'
+  if (e.type === 'ATTACK_EVENT' && e.action === 'DELETED') return 'Attack completed'
+  if (e.type === 'DUNGEON_UPDATE') {
+    const s = e.payload?.status
+    if (s?.victory) return 'VICTORY! Boss defeated!'
+    if (s?.bossState === 'ready') return 'Boss unlocked! All monsters slain!'
+    if (s?.bossState === 'defeated') return 'Boss has fallen!'
+    const living = s?.livingMonsters
+    if (living !== undefined) return `${living} monster${living !== 1 ? 's' : ''} remaining`
+    return 'Dungeon state updated'
+  }
+  return `${e.action} ${e.type}`
 }
 
 function EntityCard({ name, entity, state, hp, maxHP, onAttack }: {

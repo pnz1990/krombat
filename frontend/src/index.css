@@ -36,6 +36,7 @@ body {
 }
 .header h1 { font-size: 20px; color: var(--gold); text-shadow: 3px 3px 0 #000; letter-spacing: 2px; }
 .header p { font-size: 8px; color: var(--text-dim); margin-top: 8px; }
+.logo { max-width: 300px; image-rendering: pixelated; margin-bottom: 8px; }
 
 /* Buttons */
 .btn {
@@ -192,7 +193,10 @@ body {
   font-size: 7px;
 }
 .event-log h3 { font-size: 9px; color: var(--text-dim); margin-bottom: 8px; }
-.event-entry { padding: 4px 0; border-bottom: 1px solid #222; color: var(--text-dim); }
+.event-entry { padding: 4px 0; border-bottom: 1px solid #222; color: var(--text-dim); display: flex; gap: 8px; align-items: center; }
+.event-icon { font-size: 12px; flex-shrink: 0; }
+.event-msg { color: var(--text); flex: 1; }
+.event-detail { color: #555; font-size: 6px; }
 .event-entry .event-type { color: var(--blue); }
 .event-entry .event-time { color: #555; }
 
