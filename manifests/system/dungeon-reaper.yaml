@@ -65,7 +65,7 @@ spec:
                       NS=$(echo "$DUNGEON" | cut -d/ -f1)
                       NAME=$(echo "$DUNGEON" | cut -d/ -f2)
                       echo "Deleting dungeon $NAME (namespace $NS, age: $((AGE/3600))h)"
-                      kubectl delete dungeon "$NAME" -n "$NS" || true
+                      kubectl delete dungeon "$NAME" -n "$NS" --wait=false || true
                     fi
                   done
 

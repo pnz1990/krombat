@@ -139,7 +139,7 @@ assert 'loot' not in d or isinstance(d.get('loot'), str), 'loot at top level'
   || fail "GetDungeon response has wrong shape"
 
 # Cleanup
-kubectl delete dungeon "$TEST_NAME" --ignore-not-found &>/dev/null
+kubectl delete dungeon "$TEST_NAME" --ignore-not-found --wait=false &>/dev/null
 [ -n "$PF_PID" ] && kill "$PF_PID" 2>/dev/null
 
 # --- Summary ---

@@ -15,8 +15,8 @@ fail() { echo "  ❌ $1"; FAIL=$((FAIL+1)); TESTS+=("FAIL: $1"); }
 
 cleanup() {
   log "Cleanup"
-  kubectl delete dungeon "$DUNGEON" --ignore-not-found 2>/dev/null || true
-  kubectl delete attacks --all --ignore-not-found 2>/dev/null || true
+  kubectl delete dungeon "$DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
+  kubectl delete attacks --all --ignore-not-found --wait=false 2>/dev/null || true
 }
 trap cleanup EXIT
 

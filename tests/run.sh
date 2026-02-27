@@ -26,8 +26,8 @@ wait_for() {
 
 cleanup() {
   log "Cleanup"
-  kubectl delete attack -l test-dungeon="$DUNGEON_NAME" --ignore-not-found 2>/dev/null || true
-  kubectl delete dungeon "$DUNGEON_NAME" --ignore-not-found 2>/dev/null || true
+  kubectl delete attack -l test-dungeon="$DUNGEON_NAME" --ignore-not-found --wait=false 2>/dev/null || true
+  kubectl delete dungeon "$DUNGEON_NAME" --ignore-not-found --wait=false 2>/dev/null || true
   wait_for "namespace deletion" "! kubectl get ns $DUNGEON_NAME 2>/dev/null" 120 || true
 }
 trap cleanup EXIT
@@ -256,8 +256,8 @@ VICTORY=$(kubectl get dungeon "$DUNGEON_NAME" -o jsonpath='{.status.victory}')
 log "Test 7: Drift correction (delete alive pod, kro recreates)"
 
 # First reset: create a fresh dungeon for drift test
-kubectl delete attack -l test-dungeon="$DUNGEON_NAME" --ignore-not-found 2>/dev/null || true
-kubectl delete dungeon "$DUNGEON_NAME" --ignore-not-found 2>/dev/null || true
+kubectl delete attack -l test-dungeon="$DUNGEON_NAME" --ignore-not-found --wait=false 2>/dev/null || true
+kubectl delete dungeon "$DUNGEON_NAME" --ignore-not-found --wait=false 2>/dev/null || true
 wait_for "old namespace gone" "! kubectl get ns $DUNGEON_NAME 2>/dev/null" 120
 
 DUNGEON_NAME="test-drift-$(date +%s)"
