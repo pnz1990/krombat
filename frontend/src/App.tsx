@@ -32,20 +32,8 @@ export default function App() {
     } catch {}
   }, [])
 
-  // Refresh on WebSocket events — deduplicate by formatted message
-  const lastMsgRef = useRef('')
-  useEffect(() => { if (lastEvent) {
-    // Skip all ATTACK_EVENT MODIFIED (noisy intermediate states)
-    const isNoise = lastEvent.type === 'ATTACK_EVENT' && lastEvent.action === 'MODIFIED'
-    if (!isNoise) {
-      const displayMsg = formatEventMsg(lastEvent)
-      if (displayMsg !== lastMsgRef.current) {
-        lastMsgRef.current = displayMsg
-        setEvents(prev => [lastEvent, ...prev].slice(0, 30))
-      }
-    }
-    refresh()
-  }}, [lastEvent, refresh])
+  // Refresh on WebSocket events — only refresh data, don't add to event log
+  useEffect(() => { if (lastEvent) { refresh() } }, [lastEvent, refresh])
 
   // Initial load + load dungeon detail when URL changes
   useEffect(() => {
@@ -71,7 +59,9 @@ export default function App() {
     } catch (e: any) { setError(e.message) }
   }
 
-  const [attackPhase, setAttackPhase] = useState<string | null>(null)
+  const addEvent = (icon: string, msg: string) => {
+    setEvents(prev => [{ type: 'COMBAT', action: icon, name: msg, namespace: '', payload: null }, ...prev].slice(0, 30))
+  }
 
   const handleAttack = async (target: string, damage: number) => {
     if (!selected) return
@@ -79,16 +69,20 @@ export default function App() {
     const shortTarget = target.split('-').slice(-2).join('-')
     try {
       setAttackPhase(`⚔️ Attacking ${shortTarget}...`)
-      setEvents(prev => [{ type: 'COMBAT', action: 'HERO', name: '', namespace: '', payload: { status: { bossState: `Hero deals ${damage} damage to ${shortTarget}` } } }, ...prev].slice(0, 30))
+      addEvent('⚔️', `Hero deals ${damage} damage to ${shortTarget}`)
       await submitAttack(selected.ns, selected.name, target, damage)
-      setTimeout(() => {
-        setAttackPhase('💀 Monsters counter-attack!')
-        setEvents(prev => [{ type: 'COMBAT', action: 'MONSTER', name: '', namespace: '', payload: { status: { bossState: 'Monsters strike back!' } } }, ...prev].slice(0, 30))
-        setTimeout(() => {
-          setAttackPhase(null)
-          refresh()
-        }, 1500)
-      }, 1500)
+      await new Promise(r => setTimeout(r, 1500))
+      setAttackPhase('💀 Monsters counter-attack!')
+      addEvent('💀', 'Monsters strike back!')
+      await new Promise(r => setTimeout(r, 1500))
+      setAttackPhase(null)
+      const updated = await getDungeon(selected.ns, selected.name)
+      setDetail(updated)
+      const s = updated.status
+      if (s?.victory) addEvent('🏆', 'VICTORY! Boss defeated!')
+      else if (s?.bossState === 'ready') addEvent('🐉', 'Boss unlocked! All monsters slain!')
+      else if ((updated.spec.heroHP ?? 100) <= 0) addEvent('💀', 'Hero has fallen...')
+      else addEvent('📜', `${s?.livingMonsters ?? '?'} monsters remaining`)
     } catch (e: any) { setError(e.message); setAttackPhase(null) }
   }
 
@@ -281,9 +275,8 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
         {events.length === 0 && <div className="event-entry">Waiting for events...</div>}
         {events.map((e, i) => (
           <div key={i} className="event-entry">
-            <span className="event-icon">{formatEventIcon(e)}</span>
-            <span className="event-msg">{formatEventMsg(e)}</span>
-            <span className="event-detail">{e.name}</span>
+            <span className="event-icon">{e.action}</span>
+            <span className="event-msg">{e.name}</span>
           </div>
         ))}
       </div>
