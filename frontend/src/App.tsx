@@ -30,6 +30,7 @@ export default function App() {
   const [showHelp, setShowHelp] = useState(false)
   const [deleting, setDeleting] = useState<string | null>(null)
   const [lootDrop, setLootDrop] = useState<string | null>(null)
+  const [activeNs, setActiveNs] = useState('default')
   const prevInventoryRef = useRef('')
   const [attackTarget, setAttackTarget] = useState<string | null>(null)
   const [animPhase, setAnimPhase] = useState<'idle' | 'hero-attack' | 'enemy-attack' | 'done'>('idle')
@@ -68,7 +69,7 @@ export default function App() {
   const handleCreate = async (name: string, monsters: number, difficulty: string, heroClass: string) => {
     setError('')
     try {
-      await createDungeon(name, monsters, difficulty, heroClass)
+      await createDungeon(name, monsters, difficulty, heroClass, activeNs)
       setTimeout(refresh, 2000)
     } catch (e: any) { setError(e.message) }
   }
@@ -197,8 +198,15 @@ export default function App() {
 
       {!selected ? (
         <>
+          <div className="ns-filter">
+            {['default', 'tests'].map(n => (
+              <button key={n} className={`btn ${activeNs === n ? 'btn-gold' : 'btn-blue'}`}
+                style={{ fontSize: '7px', padding: '4px 10px' }}
+                onClick={() => setActiveNs(n)}>{n}</button>
+            ))}
+          </div>
           <CreateForm onCreate={handleCreate} />
-          <DungeonList dungeons={dungeons} onSelect={handleSelect} onDelete={handleDelete} deleting={deleting} />
+          <DungeonList dungeons={dungeons.filter(d => d.namespace === activeNs)} onSelect={handleSelect} onDelete={handleDelete} deleting={deleting} />
         </>
       ) : loading ? (
         <div className="loading">Loading dungeon</div>
@@ -274,8 +282,9 @@ function DungeonList({ dungeons, onSelect, onDelete, deleting }: {
           <div className="stats">
             <span className={`tag tag-${d.difficulty}`}>{d.difficulty}</span>
             <span>Monsters: {d.livingMonsters ?? '?'}</span>
-            <span>Boss: {d.bossState ?? '?'}</span>
+            <span>Boss: {d.bossState === 'pending' ? '🔒 Locked' : d.bossState === 'ready' ? '⚔️ Ready' : d.bossState === 'defeated' ? '👑 Defeated' : d.bossState ?? '?'}</span>
             {d.victory && <span className="victory">VICTORY!</span>}
+            {!d.victory && <span style={{ color: 'var(--green)' }}>In Progress</span>}
           </div>
         </div>
       ))}

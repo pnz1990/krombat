@@ -90,6 +90,7 @@ body {
 .tag-hard { color: var(--accent); border-color: var(--accent); }
 
 /* Create Form */
+.ns-filter { display: flex; gap: 6px; margin-bottom: 12px; }
 .create-form {
   display: flex;
   gap: 8px;

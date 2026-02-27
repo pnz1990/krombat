@@ -48,6 +48,7 @@ type CreateDungeonReq struct {
 	Monsters   int64  `json:"monsters"`
 	Difficulty string `json:"difficulty"`
 	HeroClass  string `json:"heroClass"`
+	Namespace  string `json:"namespace"`
 }
 
 func (h *Handler) CreateDungeon(w http.ResponseWriter, r *http.Request) {
@@ -63,6 +64,9 @@ func (h *Handler) CreateDungeon(w http.ResponseWriter, r *http.Request) {
 	if req.Difficulty != "easy" && req.Difficulty != "normal" && req.Difficulty != "hard" {
 		writeError(w, "difficulty must be easy, normal, or hard", http.StatusBadRequest)
 		return
+	}
+	if req.Namespace == "" {
+		req.Namespace = "default"
 	}
 
 	// Use client-provided HP values, or derive from difficulty
@@ -118,7 +122,7 @@ func (h *Handler) CreateDungeon(w http.ResponseWriter, r *http.Request) {
 		},
 	}}
 
-	result, err := h.client.Dynamic.Resource(k8s.DungeonGVR).Namespace("default").Create(
+	result, err := h.client.Dynamic.Resource(k8s.DungeonGVR).Namespace(req.Namespace).Create(
 		context.Background(), dungeon, metav1.CreateOptions{})
 	if err != nil {
 		writeError(w, err.Error(), http.StatusInternalServerError)

@@ -75,7 +75,7 @@ spec:
                           BURN_TURNS=$((BURN_TURNS - 1))
                           DOT_NOTE="$DOT_NOTE""Burn -8 HP. "
                         fi
-                        [ "$HERO_HP" -lt 0 ] && HERO_HP=0
+                        if [ "$HERO_HP" -lt 0 ]; then HERO_HP=0; fi
                         EFFECT_PATCH=",\"poisonTurns\":$POISON_TURNS,\"burnTurns\":$BURN_TURNS"
 
                         # Check stun
@@ -88,7 +88,7 @@ spec:
                         EFFECT_PATCH="$EFFECT_PATCH,\"stunTurns\":$STUN_TURNS"
 
                         # Decrement backstab cooldown each turn
-                        [ "$BACKSTAB_CD" -gt 0 ] && BACKSTAB_CD=$((BACKSTAB_CD - 1))
+                        if [ "$BACKSTAB_CD" -gt 0 ]; then BACKSTAB_CD=$((BACKSTAB_CD - 1)); fi
 
                         MANA_PATCH=""
                         EXTRA_PATCH=""
@@ -122,12 +122,12 @@ spec:
                           if [ -n "$MANA_ADD" ]; then MANA_ADD_VAL=$MANA_ADD; fi
                           if [ "$MANA_ADD_VAL" -gt 0 ]; then
                             NEW_MANA=$((HERO_MANA + MANA_ADD))
-                            [ "$NEW_MANA" -gt 5 ] && NEW_MANA=5
+                            if [ "$NEW_MANA" -gt 5 ]; then NEW_MANA=5; fi
                             HERO_ACTION="Used $ITEM_TYPE! Mana: $HERO_MANA -> $NEW_MANA"
                             PATCH="{\"spec\":{\"heroMana\":$NEW_MANA,\"inventory\":\"$NEW_INV\",\"backstabCooldown\":$BACKSTAB_CD,\"lastHeroAction\":\"$HERO_ACTION\",\"lastEnemyAction\":\"Item used\"}}"
                           else
                             NEW_HP=$((HERO_HP + HEAL))
-                            [ "$NEW_HP" -gt "$MAX_HP" ] && NEW_HP=$MAX_HP
+                            if [ "$NEW_HP" -gt "$MAX_HP" ]; then NEW_HP=$MAX_HP; fi
                             HERO_ACTION="Used $ITEM_TYPE! HP: $HERO_HP -> $NEW_HP"
                             PATCH="{\"spec\":{\"heroHP\":$NEW_HP,\"inventory\":\"$NEW_INV\",\"backstabCooldown\":$BACKSTAB_CD,\"lastHeroAction\":\"$HERO_ACTION\",\"lastEnemyAction\":\"Item used\"}}"
                           fi
@@ -177,7 +177,7 @@ spec:
                           MAX_HP=80
                           HEAL=30
                           NEW_HP=$((HERO_HP + HEAL))
-                          [ "$NEW_HP" -gt "$MAX_HP" ] && NEW_HP=$MAX_HP
+                          if [ "$NEW_HP" -gt "$MAX_HP" ]; then NEW_HP=$MAX_HP; fi
                           HERO_MANA=$((HERO_MANA - 2))
                           HERO_ACTION="Mage heals for $((NEW_HP - HERO_HP)) HP! (Mana: $HERO_MANA)"
                           ENEMY_ACTION="No counter-attack during heal"
@@ -285,7 +285,7 @@ spec:
                         if echo "$REAL_TARGET" | grep -q "boss"; then
                           OLD_HP=$(echo "$DUNGEON_JSON" | jq -r '.spec.bossHP')
                           NEW_HP=$((OLD_HP - EFFECTIVE_DAMAGE))
-                          [ "$NEW_HP" -lt 0 ] && NEW_HP=0
+                          if [ "$NEW_HP" -lt 0 ]; then NEW_HP=0; fi
                           # Boss counter-attack
                           case "$DIFFICULTY" in
                             easy)   COUNTER=2 ;; normal) COUNTER=10 ;; hard) COUNTER=15 ;;
@@ -316,7 +316,7 @@ spec:
                             fi
                             HERO_HP=$((HERO_HP - COUNTER))
                           fi
-                          [ "$HERO_HP" -lt 0 ] && HERO_HP=0
+                          if [ "$HERO_HP" -lt 0 ]; then HERO_HP=0; fi
                           HP_PATCH="\"bossHP\":$NEW_HP"
                           # Boss guaranteed loot drop
                           if [ "$NEW_HP" -eq 0 ]; then
@@ -332,7 +332,7 @@ spec:
                           IDX=$(echo "$REAL_TARGET" | grep -oE '[0-9]+$')
                           OLD_HP=$(echo "$DUNGEON_JSON" | jq -r ".spec.monsterHP[$IDX]")
                           NEW_HP=$((OLD_HP - EFFECTIVE_DAMAGE))
-                          [ "$NEW_HP" -lt 0 ] && NEW_HP=0
+                          if [ "$NEW_HP" -lt 0 ]; then NEW_HP=0; fi
                           HP_ARRAY=$(echo "$DUNGEON_JSON" | jq ".spec.monsterHP[$IDX] = $NEW_HP | .spec.monsterHP")
                           # Mage mana regen on kill
                           if [ "$NEW_HP" -eq 0 ] && [ "$HERO_CLASS" = "mage" ] && [ "$HERO_MANA" -lt 5 ]; then
@@ -367,7 +367,7 @@ spec:
                             easy)   COUNTER=2 ;; normal) COUNTER=4 ;; hard) COUNTER=6 ;;
                           esac
                           ALIVE=$(echo "$DUNGEON_JSON" | jq '[.spec.monsterHP[] | select(. > 0)] | length')
-                          [ "$NEW_HP" -eq 0 ] && [ "$ALIVE" -gt 0 ] && ALIVE=$((ALIVE - 1))
+                          if [ "$NEW_HP" -eq 0 ] && [ "$ALIVE" -gt 0 ]; then ALIVE=$((ALIVE - 1)); fi
                           TOTAL_COUNTER=$((ALIVE * COUNTER))
                           # Apply modifier to monster counter
                           if [ "$MODIFIER" = "blessing-resilience" ]; then
@@ -393,7 +393,7 @@ spec:
                             fi
                             HERO_HP=$((HERO_HP - TOTAL_COUNTER))
                           fi
-                          [ "$HERO_HP" -lt 0 ] && HERO_HP=0
+                          if [ "$HERO_HP" -lt 0 ]; then HERO_HP=0; fi
                           HP_PATCH="\"monsterHP\":$HP_ARRAY"
                         fi
 
