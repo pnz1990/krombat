@@ -348,9 +348,9 @@ function formatEventMsg(e: WSEvent): string {
 }
 
 const DICE: Record<string, { count: number; sides: number; mod: number }> = {
-  easy: { count: 1, sides: 6, mod: 2 },
-  normal: { count: 2, sides: 6, mod: 3 },
-  hard: { count: 3, sides: 8, mod: 5 },
+  easy: { count: 2, sides: 8, mod: 5 },
+  normal: { count: 2, sides: 10, mod: 8 },
+  hard: { count: 3, sides: 10, mod: 10 },
 }
 
 function rollDice(count: number, sides: number): number[] {

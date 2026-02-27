@@ -181,6 +181,34 @@ EOF
 kubectl delete dungeon my-dungeon
 ```
 
+## How to Play
+
+### Creating a Dungeon
+Choose a name, number of monsters (1-10), difficulty, and hero class. The game creates a dungeon with monsters, a boss, and your hero.
+
+### Combat
+Click a monster or boss to attack. Damage is rolled using dice (shown in the UI). After your attack, all alive enemies counter-attack automatically. Kill all monsters to unlock the boss, then defeat the boss to win.
+
+### Difficulty Levels
+| Difficulty | Monster HP | Boss HP | Monster Counter | Boss Counter | Dice |
+|------------|-----------|---------|-----------------|--------------|------|
+| Easy       | 30        | 200     | 2 per monster   | 5            | 2d8+5 (7-21) |
+| Normal     | 50        | 400     | 4 per monster   | 10           | 2d10+8 (10-28) |
+| Hard       | 80        | 800     | 6 per monster   | 15           | 3d10+10 (13-40) |
+
+### Hero Classes
+| Class | HP | Damage | Special |
+|-------|-----|--------|---------|
+| ⚔️ Warrior | 150 | 1.0x | 20% damage reduction on all counter-attacks |
+| 🔮 Mage | 80 | 1.5x vs boss | 5 mana (1 per attack, half damage at 0 mana) |
+| 🗡️ Rogue | 100 | 1.2x | 30% chance to dodge counter-attacks entirely |
+
+### Tips
+- **Warrior**: Best for beginners. High HP lets you survive many counter-attacks
+- **Mage**: Glass cannon. Rush the boss with 1.5x damage before mana runs out
+- **Rogue**: High risk/reward. Dodge procs can save you, but bad luck kills you
+- Kill monsters first to reduce incoming counter-attack damage before engaging the boss
+
 ## License
 
 MIT

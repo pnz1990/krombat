@@ -90,9 +90,9 @@ spec:
                           [ "$NEW_HP" -lt 0 ] && NEW_HP=0
                           # Boss counter-attack
                           case "$DIFFICULTY" in
-                            easy)   COUNTER=15 ;;
-                            normal) COUNTER=25 ;;
-                            hard)   COUNTER=40 ;;
+                            easy)   COUNTER=2 ;;
+                            normal) COUNTER=10 ;;
+                            hard)   COUNTER=15 ;;
                           esac
                           if [ "$NEW_HP" -gt 0 ]; then
                             # Apply class defense
@@ -118,9 +118,9 @@ spec:
                           HP_ARRAY=$(echo "$DUNGEON_JSON" | jq ".spec.monsterHP[$IDX] = $NEW_HP | .spec.monsterHP")
                           # All alive monsters counter-attack
                           case "$DIFFICULTY" in
-                            easy)   COUNTER=5 ;;
-                            normal) COUNTER=8 ;;
-                            hard)   COUNTER=12 ;;
+                            easy)   COUNTER=2 ;;
+                            normal) COUNTER=4 ;;
+                            hard)   COUNTER=6 ;;
                           esac
                           ALIVE=$(echo "$DUNGEON_JSON" | jq '[.spec.monsterHP[] | select(. > 0)] | length')
                           [ "$NEW_HP" -eq 0 ] && [ "$ALIVE" -gt 0 ] && ALIVE=$((ALIVE - 1))
