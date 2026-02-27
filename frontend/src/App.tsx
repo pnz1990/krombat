@@ -158,6 +158,9 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
   const dungeonName = cr.metadata.name
   const maxMonsterHP = { easy: 30, normal: 50, hard: 80 }[spec.difficulty] || 50
   const maxBossHP = { easy: 200, normal: 400, hard: 800 }[spec.difficulty] || 400
+  const heroHP = (spec as any).heroHP ?? 100
+  const maxHeroHP = 100
+  const isDefeated = heroHP <= 0
   const bossState = status?.bossState || (spec.bossHP > 0 ? ((spec.monsterHP || []).every(hp => hp === 0) ? 'ready' : 'pending') : 'defeated')
 
   return (
@@ -166,6 +169,13 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
         <h2>⚔️ {dungeonName}</h2>
         <button className="back-btn" onClick={onBack}>← Back to dungeons</button>
       </div>
+
+      {isDefeated && (
+        <div className="defeat-banner">
+          <h2>💀 DEFEAT 💀</h2>
+          <p className="defeat-text">Your hero has fallen...</p>
+        </div>
+      )}
 
       {status?.victory && (
         <div className="victory-banner">
@@ -194,6 +204,15 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
         <div><span className="label">Difficulty:</span><span className="value">{spec.difficulty}</span></div>
       </div>
 
+      <div className="hero-bar">
+        <span className="hero-label">🛡️ HERO</span>
+        <div className="hp-bar-bg" style={{ flex: 1 }}>
+          <div className={`hp-bar-fill ${heroHP > 60 ? 'high' : heroHP > 30 ? 'mid' : 'low'}`}
+            style={{ width: `${(heroHP / maxHeroHP) * 100}%` }} />
+        </div>
+        <span className="hero-hp-text">HP: {heroHP} / {maxHeroHP}</span>
+      </div>
+
       <h3 style={{ fontSize: '10px', marginBottom: 8, color: '#888' }}>MONSTERS</h3>
       <div className="monster-grid">
         {(spec.monsterHP || []).map((hp, idx) => {
@@ -201,14 +220,14 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
           const mName = `${dungeonName}-monster-${idx}`
           return (
             <EntityCard key={mName} name={mName} entity="monster"
-              state={state} hp={hp} maxHP={maxMonsterHP} onAttack={onAttack} />
+              state={state} hp={hp} maxHP={maxMonsterHP} difficulty={spec.difficulty} onAttack={onAttack} disabled={isDefeated} />
           )
         })}
       </div>
 
       <h3 style={{ fontSize: '10px', marginBottom: 8, color: '#888' }}>BOSS</h3>
       <EntityCard name={`${dungeonName}-boss`} entity="boss"
-        state={bossState} hp={spec.bossHP} maxHP={maxBossHP} onAttack={onAttack} />
+        state={bossState} hp={spec.bossHP} maxHP={maxBossHP} difficulty={spec.difficulty} onAttack={onAttack} disabled={isDefeated} />
 
       <h3 style={{ fontSize: '10px', margin: '16px 0 8px', color: '#888' }}>EVENT LOG</h3>
       <div className="event-log">
@@ -253,20 +272,75 @@ function formatEventMsg(e: WSEvent): string {
   return `${e.action} ${e.type}`
 }
 
-function EntityCard({ name, entity, state, hp, maxHP, onAttack }: {
+const DICE: Record<string, { count: number; sides: number; mod: number }> = {
+  easy: { count: 1, sides: 6, mod: 2 },
+  normal: { count: 2, sides: 6, mod: 3 },
+  hard: { count: 3, sides: 8, mod: 5 },
+}
+
+function rollDice(count: number, sides: number): number[] {
+  return Array.from({ length: count }, () => Math.floor(Math.random() * sides) + 1)
+}
+
+function diceLabel(d: { count: number; sides: number; mod: number }) {
+  return `${d.count}d${d.sides}+${d.mod}`
+}
+
+function EntityCard({ name, entity, state, hp, maxHP, difficulty, onAttack, disabled }: {
   name: string; entity: string; state: string; hp: number; maxHP: number
-  onAttack: (target: string, damage: number) => void
+  difficulty: string; onAttack: (target: string, damage: number) => void; disabled?: boolean
 }) {
-  const [dmg, setDmg] = useState(entity === 'boss' ? 100 : 25)
+  const [rolling, setRolling] = useState(false)
+  const [rolls, setRolls] = useState<number[]>([])
+  const [total, setTotal] = useState<number | null>(null)
   const pct = maxHP > 0 ? (hp / maxHP) * 100 : 0
   const hpClass = pct > 60 ? 'high' : pct > 30 ? 'mid' : 'low'
   const sprite = entity === 'boss'
     ? SPRITES[`boss_${state}`] || '🐉'
     : SPRITES[`monster_${state}`] || '👹'
-  const canAttack = (entity === 'monster' && state === 'alive') || (entity === 'boss' && state === 'ready')
+  const canAttack = !disabled && !rolling && ((entity === 'monster' && state === 'alive') || (entity === 'boss' && state === 'ready'))
+  const base = DICE[difficulty] || DICE.normal
+  const d = entity === 'boss' ? { count: base.count + 1, sides: base.sides + 2, mod: base.mod + 2 } : base
+
+  const handleRoll = () => {
+    setRolling(true)
+    setRolls([])
+    setTotal(null)
+    setTimeout(() => {
+      const r = rollDice(d.count, d.sides)
+      const dmg = r.reduce((a, b) => a + b, 0) + d.mod
+      setRolls(r)
+      setTotal(dmg)
+      setTimeout(() => {
+        onAttack(name, dmg)
+        setRolls([])
+        setTotal(null)
+        setRolling(false)
+      }, 800)
+    }, 600)
+  }
 
   return (
     <div className={`entity-card ${state}`}>
+      {(rolling || total !== null) && (
+        <div className="dice-roll-overlay">
+          <div className="dice-formula">Rolling {diceLabel(d)}...</div>
+          <div className="dice-container">
+            {total === null
+              ? Array.from({ length: d.count }, (_, i) => (
+                  <div key={i} className="die rolling">{Math.ceil(Math.random() * d.sides)}</div>
+                ))
+              : rolls.map((v, i) => <div key={i} className="die">{v}</div>)
+            }
+          </div>
+          {total !== null && (
+            <>
+              <div className="dice-modifier">{rolls.join(' + ')} + {d.mod}</div>
+              <div className="dice-result">💥 {total}</div>
+            </>
+          )}
+        </div>
+      )}
       <div className="entity-sprite">{sprite}</div>
       <div className="entity-name">{name.split('-').slice(-2).join('-')}</div>
       <div className={`entity-state ${state}`}>{state}</div>
@@ -276,9 +350,8 @@ function EntityCard({ name, entity, state, hp, maxHP, onAttack }: {
       </div>
       {canAttack && (
         <div className="attack-controls">
-          <input type="number" min={1} value={dmg} onChange={e => setDmg(+e.target.value)} />
           <button className="btn btn-primary" style={{ fontSize: '7px', padding: '4px 8px' }}
-            onClick={() => onAttack(name, dmg)}>⚔️ ATK</button>
+            onClick={handleRoll}>🎲 {diceLabel(d)}</button>
         </div>
       )}
     </div>
