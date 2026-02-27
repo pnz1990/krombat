@@ -159,7 +159,14 @@ export default function App() {
     try {
       await deleteDungeon(delNs, delName)
       if (selected?.name === delName) navigate('/')
-      setTimeout(() => { setDeleting(null); refresh() }, 2000)
+      // Poll until dungeon is actually gone
+      for (let i = 0; i < 15; i++) {
+        await new Promise(r => setTimeout(r, 2000))
+        const list = await listDungeons()
+        setDungeons(list)
+        if (!list.find(d => d.name === delName)) { setDeleting(null); return }
+      }
+      setDeleting(null)
     } catch (e: any) { setError(e.message); setDeleting(null) }
   }
 
