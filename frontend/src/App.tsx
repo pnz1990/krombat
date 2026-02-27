@@ -34,7 +34,10 @@ export default function App() {
 
   // Refresh on WebSocket events
   useEffect(() => { if (lastEvent) {
-    setEvents(prev => [lastEvent, ...prev].slice(0, 50))
+    // Only log meaningful events (skip MODIFIED noise from attack processing)
+    if (!(lastEvent.type === 'ATTACK_EVENT' && lastEvent.action === 'MODIFIED')) {
+      setEvents(prev => [lastEvent, ...prev].slice(0, 50))
+    }
     refresh()
   }}, [lastEvent, refresh])
 
@@ -108,8 +111,8 @@ export default function App() {
           showLoot={showLoot}
           onOpenLoot={() => setShowLoot(true)}
           onCloseLoot={() => setShowLoot(false)}
-          currentTurn={detail.spec.currentTurn}
-          turnRound={detail.spec.turnRound}
+          currentTurn={'hero'}
+          turnRound={1}
         />
       ) : null}
     </div>
@@ -191,17 +194,7 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
 
       {!gameOver && (
         <div className="turn-bar">
-          <span className="turn-round">Round {turnRound}</span>
-          <div className="turn-order">
-            {turnOrder.map(t => (
-              <span key={t.id} className={`turn-token${currentTurn === t.id ? ' active' : ''}${!t.alive ? ' dead' : ''}`}>
-                {t.label}
-              </span>
-            ))}
-          </div>
-          <span className="turn-indicator">
-            {isHeroTurn ? '⚔️ Your turn!' : `💀 ${currentTurn} attacks!`}
-          </span>
+          <span className="turn-indicator">⚔️ Ready to attack!</span>
         </div>
       )}
 
@@ -255,14 +248,14 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
           const mName = `${dungeonName}-monster-${idx}`
           return (
             <EntityCard key={mName} name={mName} entity="monster"
-              state={state} hp={hp} maxHP={maxMonsterHP} difficulty={spec.difficulty} onAttack={onAttack} disabled={isDefeated || !isHeroTurn} />
+              state={state} hp={hp} maxHP={maxMonsterHP} difficulty={spec.difficulty} onAttack={onAttack} disabled={isDefeated} />
           )
         })}
       </div>
 
       <h3 style={{ fontSize: '10px', marginBottom: 8, color: '#888' }}>BOSS</h3>
       <EntityCard name={`${dungeonName}-boss`} entity="boss"
-        state={bossState} hp={spec.bossHP} maxHP={maxBossHP} difficulty={spec.difficulty} onAttack={onAttack} disabled={isDefeated || !isHeroTurn} />
+        state={bossState} hp={spec.bossHP} maxHP={maxBossHP} difficulty={spec.difficulty} onAttack={onAttack} disabled={isDefeated} />
 
       <h3 style={{ fontSize: '10px', margin: '16px 0 8px', color: '#888' }}>EVENT LOG</h3>
       <div className="event-log">
