@@ -70,7 +70,12 @@ module "eks" {
   # Observability
   addons = {
     amazon-cloudwatch-observability = {
-      most_recent = true
+      most_recent                 = true
+      service_account_role_arn    = aws_iam_role.cloudwatch_agent.arn
+      pod_identity_association = [{
+        role_arn        = aws_iam_role.cloudwatch_agent.arn
+        service_account = "cloudwatch-agent"
+      }]
     }
   }
 

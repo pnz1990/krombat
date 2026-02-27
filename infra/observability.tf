@@ -1,3 +1,22 @@
+# --- CloudWatch Agent IAM Role (for Container Insights) ---
+
+resource "aws_iam_role" "cloudwatch_agent" {
+  name = "${var.cluster_name}-cloudwatch-agent"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = { Service = "pods.eks.amazonaws.com" }
+      Action    = ["sts:AssumeRole", "sts:TagSession"]
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "cloudwatch_agent" {
+  role       = aws_iam_role.cloudwatch_agent.name
+  policy_arn = "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
+}
+
 # --- CloudWatch Log Groups ---
 
 resource "aws_cloudwatch_log_group" "rpg_system" {
