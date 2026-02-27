@@ -3,10 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { DungeonSummary, DungeonCR, listDungeons, getDungeon, createDungeon, submitAttack } from './api'
 import { useWebSocket, WSEvent } from './useWebSocket'
 
-const SPRITES: Record<string, string> = {
-  monster_alive: '👹', monster_dead: '💀',
-  boss_pending: '🔒', boss_ready: '🐉', boss_defeated: '👑',
-}
+import { Sprite, getMonsterSprite, SpriteAction } from './Sprite'
 
 export default function App() {
   const { ns, name } = useParams<{ ns: string; name: string }>()
@@ -20,6 +17,8 @@ export default function App() {
   const [error, setError] = useState('')
   const [showLoot, setShowLoot] = useState(false)
   const [attackPhase, setAttackPhase] = useState<string | null>(null)
+  const [attackTarget, setAttackTarget] = useState<string | null>(null)
+  const [animPhase, setAnimPhase] = useState<'idle' | 'hero-attack' | 'enemy-attack' | 'done'>('idle')
 
   const { connected, lastEvent } = useWebSocket(selected?.ns, selected?.name)
   const selectedRef = useRef(selected)
@@ -69,13 +68,18 @@ export default function App() {
     setError('')
     const shortTarget = target.split('-').slice(-2).join('-')
     try {
+      setAttackTarget(target)
+      setAnimPhase('hero-attack')
       setAttackPhase(`⚔️ Attacking ${shortTarget}...`)
       addEvent('⚔️', `Hero deals ${damage} damage to ${shortTarget}`)
       await submitAttack(selected.ns, selected.name, target, damage)
       await new Promise(r => setTimeout(r, 1500))
       setAttackPhase('💀 Enemies counter-attack!')
+      setAnimPhase('enemy-attack')
       await new Promise(r => setTimeout(r, 1500))
       setAttackPhase(null)
+      setAnimPhase('idle')
+      setAttackTarget(null)
       const updated = await getDungeon(selected.ns, selected.name)
       setDetail(updated)
       // Read action log from Dungeon CR (written by attack Job)
@@ -87,7 +91,7 @@ export default function App() {
       if (s?.victory) addEvent('🏆', 'VICTORY! Boss defeated!')
       else if (s?.bossState === 'ready') addEvent('🐉', 'Boss unlocked! All monsters slain!')
       else if ((updated.spec.heroHP ?? 100) <= 0) addEvent('💀', 'Hero has fallen...')
-    } catch (e: any) { setError(e.message); setAttackPhase(null) }
+    } catch (e: any) { setError(e.message); setAttackPhase(null); setAnimPhase('idle'); setAttackTarget(null) }
   }
 
   const handleSelect = (ns: string, name: string) => {
@@ -124,6 +128,8 @@ export default function App() {
           onBack={() => { navigate('/'); refresh() }}
           onAttack={handleAttack}
           attackPhase={attackPhase}
+          animPhase={animPhase}
+          attackTarget={attackTarget}
           events={events}
           showLoot={showLoot}
           onOpenLoot={() => setShowLoot(true)}
@@ -185,6 +191,7 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
   cr: DungeonCR; onBack: () => void; onAttack: (t: string, d: number) => void; events: WSEvent[]
   showLoot: boolean; onOpenLoot: () => void; onCloseLoot: () => void
   currentTurn: string; turnRound: number; attackPhase: string | null
+  animPhase: string; attackTarget: string | null
 }) {
   if (!cr?.metadata?.name) return <div className="loading">Loading dungeon</div>
   const spec = cr.spec || { monsters: 0, difficulty: 'normal', monsterHP: [], bossHP: 0, heroHP: 100, currentTurn: 'hero', turnRound: 1 }
@@ -256,7 +263,8 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
       </div>
 
       <div className="hero-bar">
-        <div className={`hero-sprite ${spec.heroClass || 'warrior'}`} />
+        <Sprite spriteType={spec.heroClass || 'warrior'} size={64}
+          action={isDefeated ? 'dead' : status?.victory ? 'victory' : animPhase === 'hero-attack' ? 'attack' : animPhase === 'enemy-attack' ? 'hurt' : 'idle'} />
         <span className="hero-label">{(spec.heroClass || 'warrior').toUpperCase()}</span>
         <div className="hp-bar-bg" style={{ flex: 1 }}>
           <div className={`hp-bar-fill ${heroHP > 60 ? 'high' : heroHP > 30 ? 'mid' : 'low'}`}
@@ -271,16 +279,28 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
         {(spec.monsterHP || []).map((hp, idx) => {
           const state = hp > 0 ? 'alive' : 'dead'
           const mName = `${dungeonName}-monster-${idx}`
+          const mSprite = getMonsterSprite(idx)
+          let mAction: SpriteAction = state === 'dead' ? 'dead' : 'idle'
+          if (attackTarget === mName && animPhase === 'hero-attack') mAction = 'hurt'
+          if (state === 'alive' && animPhase === 'enemy-attack') mAction = 'attack'
           return (
             <EntityCard key={mName} name={mName} entity="monster"
-              state={state} hp={hp} maxHP={maxMonsterHP} difficulty={spec.difficulty} onAttack={onAttack} disabled={isDefeated || !!attackPhase} />
+              state={state} hp={hp} maxHP={maxMonsterHP} difficulty={spec.difficulty} onAttack={onAttack} disabled={isDefeated || !!attackPhase}
+              spriteType={mSprite} spriteAction={mAction} />
           )
         })}
       </div>
 
       <h3 style={{ fontSize: '10px', marginBottom: 8, color: '#888' }}>BOSS</h3>
-      <EntityCard name={`${dungeonName}-boss`} entity="boss"
-        state={bossState} hp={spec.bossHP} maxHP={maxBossHP} difficulty={spec.difficulty} onAttack={onAttack} disabled={isDefeated || !!attackPhase} />
+      {(() => {
+        let bAction: SpriteAction = bossState === 'defeated' ? 'dead' : bossState === 'pending' ? 'idle' : 'idle'
+        if (attackTarget?.includes('boss') && animPhase === 'hero-attack') bAction = 'hurt'
+        if (bossState === 'ready' && animPhase === 'enemy-attack' && attackTarget?.includes('boss')) bAction = 'attack'
+        if (status?.victory) bAction = 'dead'
+        return <EntityCard name={`${dungeonName}-boss`} entity="boss"
+          state={bossState} hp={spec.bossHP} maxHP={maxBossHP} difficulty={spec.difficulty} onAttack={onAttack} disabled={isDefeated || !!attackPhase}
+          spriteType="dragon" spriteAction={bAction} />
+      })()}
 
       <h3 style={{ fontSize: '10px', margin: '16px 0 8px', color: '#888' }}>EVENT LOG</h3>
       <div className="event-log">
@@ -341,9 +361,10 @@ function diceLabel(d: { count: number; sides: number; mod: number }) {
   return `${d.count}d${d.sides}+${d.mod}`
 }
 
-function EntityCard({ name, entity, state, hp, maxHP, difficulty, onAttack, disabled }: {
+function EntityCard({ name, entity, state, hp, maxHP, difficulty, onAttack, disabled, spriteType, spriteAction }: {
   name: string; entity: string; state: string; hp: number; maxHP: number
   difficulty: string; onAttack: (target: string, damage: number) => void; disabled?: boolean
+  spriteType: string; spriteAction: SpriteAction
 }) {
   const [rolling, setRolling] = useState(false)
   const [displayDice, setDisplayDice] = useState<number[]>([])
@@ -351,9 +372,6 @@ function EntityCard({ name, entity, state, hp, maxHP, difficulty, onAttack, disa
   const [total, setTotal] = useState<number | null>(null)
   const pct = maxHP > 0 ? (hp / maxHP) * 100 : 0
   const hpClass = pct > 60 ? 'high' : pct > 30 ? 'mid' : 'low'
-  const sprite = entity === 'boss'
-    ? SPRITES[`boss_${state}`] || '🐉'
-    : SPRITES[`monster_${state}`] || '👹'
   const canAttack = !disabled && !rolling && ((entity === 'monster' && state === 'alive') || (entity === 'boss' && state === 'ready'))
   const base = DICE[difficulty] || DICE.normal
   const d = entity === 'boss' ? { count: base.count + 1, sides: base.sides + 2, mod: base.mod + 2 } : base
@@ -403,7 +421,7 @@ function EntityCard({ name, entity, state, hp, maxHP, difficulty, onAttack, disa
           )}
         </div>
       )}
-      <div className="entity-sprite">{sprite}</div>
+      <Sprite spriteType={spriteType} action={spriteAction} size={64} flip={entity !== 'boss' && entity !== 'monster' ? false : true} />
       <div className="entity-name">{name.split('-').slice(-2).join('-')}</div>
       <div className={`entity-state ${state}`}>{state}</div>
       <div className="hp-bar-container">
