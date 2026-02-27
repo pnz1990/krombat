@@ -33,20 +33,20 @@ spec:
           labels:
             game.k8s.example/dungeon: ${schema.metadata.name}
 
-    # --- Hero CR ---
+    # --- Hero CR (depends on ns via namespace reference) ---
     - id: heroCR
       template:
         apiVersion: game.k8s.example/v1alpha1
         kind: Hero
         metadata:
           name: "${schema.metadata.name + '-hero'}"
-          namespace: ${schema.metadata.name}
+          namespace: ${ns.metadata.name}
         spec:
           dungeonName: ${schema.metadata.name}
           hp: ${schema.spec.heroHP}
           difficulty: ${schema.spec.difficulty}
 
-    # --- Monster CRs (dynamic count) ---
+    # --- Monster CRs (depends on ns via namespace reference) ---
     - id: monsterCRs
       forEach:
         - idx: ${lists.range(size(schema.spec.monsterHP))}
@@ -55,35 +55,35 @@ spec:
         kind: Monster
         metadata:
           name: "${schema.metadata.name + '-monster-' + string(idx)}"
-          namespace: ${schema.metadata.name}
+          namespace: ${ns.metadata.name}
         spec:
           dungeonName: ${schema.metadata.name}
           index: ${idx}
           hp: ${schema.spec.monsterHP[idx]}
           difficulty: ${schema.spec.difficulty}
 
-    # --- Boss CR ---
+    # --- Boss CR (depends on ns via namespace reference) ---
     - id: bossCR
       template:
         apiVersion: game.k8s.example/v1alpha1
         kind: Boss
         metadata:
           name: "${schema.metadata.name + '-boss'}"
-          namespace: ${schema.metadata.name}
+          namespace: ${ns.metadata.name}
         spec:
           dungeonName: ${schema.metadata.name}
           hp: ${schema.spec.bossHP}
           difficulty: ${schema.spec.difficulty}
           monstersAlive: "${size(schema.spec.monsterHP.filter(hp, hp > 0))}"
 
-    # --- Treasure CR ---
+    # --- Treasure CR (depends on ns via namespace reference) ---
     - id: treasureCR
       template:
         apiVersion: game.k8s.example/v1alpha1
         kind: Treasure
         metadata:
           name: "${schema.metadata.name + '-treasure'}"
-          namespace: ${schema.metadata.name}
+          namespace: ${ns.metadata.name}
         spec:
           dungeonName: ${schema.metadata.name}
 
@@ -94,7 +94,7 @@ spec:
         kind: ResourceQuota
         metadata:
           name: dungeon-quota
-          namespace: ${schema.metadata.name}
+          namespace: ${ns.metadata.name}
         spec:
           hard:
             pods: "20"
@@ -108,7 +108,7 @@ spec:
         kind: NetworkPolicy
         metadata:
           name: dungeon-default-deny
-          namespace: ${schema.metadata.name}
+          namespace: ${ns.metadata.name}
         spec:
           podSelector: {}
           policyTypes:
