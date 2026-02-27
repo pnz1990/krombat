@@ -148,7 +148,7 @@ body {
 
 @keyframes pulse { 0%,100% { box-shadow: 0 0 0 transparent; } 50% { box-shadow: 0 0 16px var(--accent); } }
 
-.entity-sprite { font-size: 40px; margin-bottom: 8px; }
+.entity-sprite { font-size: 40px; margin-bottom: 8px; display: flex; justify-content: center; }
 .entity-name { font-size: 9px; color: var(--text); margin-bottom: 4px; }
 .entity-state { font-size: 7px; text-transform: uppercase; margin-bottom: 8px; }
 .entity-state.alive { color: var(--green); }

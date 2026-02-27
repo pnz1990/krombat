@@ -292,6 +292,7 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
       </div>
 
       <h3 style={{ fontSize: '10px', marginBottom: 8, color: '#888' }}>BOSS</h3>
+      <div style={{ maxWidth: 200 }}>
       {(() => {
         let bAction: SpriteAction = bossState === 'defeated' ? 'dead' : bossState === 'pending' ? 'idle' : 'idle'
         if (attackTarget?.includes('boss') && animPhase === 'hero-attack') bAction = 'hurt'
@@ -301,6 +302,7 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
           state={bossState} hp={spec.bossHP} maxHP={maxBossHP} difficulty={spec.difficulty} onAttack={onAttack} disabled={isDefeated || !!attackPhase}
           spriteType="dragon" spriteAction={bAction} />
       })()}
+      </div>
 
       <h3 style={{ fontSize: '10px', margin: '16px 0 8px', color: '#888' }}>EVENT LOG</h3>
       <div className="event-log">
