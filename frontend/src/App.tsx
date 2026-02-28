@@ -164,7 +164,6 @@ export default function App() {
       await new Promise(r => setTimeout(r, 100))
 
       // Read combat log from Dungeon CR
-      const enemyAction = updated.spec.lastEnemyAction
       if (heroAction) {
         const icon = heroAction.includes('heals') ? '💚' : heroAction.includes('Taunt') ? '🛡️' : heroAction.includes('Backstab') ? '🗡️' : heroAction.includes('STUNNED') ? '🟡' : '⚔️'
         addEvent(icon, heroAction)
