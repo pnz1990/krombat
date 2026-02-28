@@ -4,7 +4,7 @@
 set -euo pipefail
 
 DUNGEON_NAME="test-$(date +%s)"
-TEST_NS="tests"
+
 PASS=0
 FAIL=0
 TESTS=()
@@ -27,8 +27,8 @@ wait_for() {
 
 cleanup() {
   log "Cleanup"
-  kubectl delete attacks --all -n "$TEST_NS" --ignore-not-found --wait=false 2>/dev/null || true
-  kubectl delete dungeons --all -n "$TEST_NS" --ignore-not-found --wait=false 2>/dev/null || true
+  kubectl delete attacks --all  --ignore-not-found --wait=false 2>/dev/null || true
+  kubectl delete dungeons --all  --ignore-not-found --wait=false 2>/dev/null || true
 }
 trap cleanup EXIT
 
@@ -37,7 +37,6 @@ trap cleanup EXIT
 log "Pre-flight checks"
 
 # Ensure tests namespace exists
-kubectl create ns "$TEST_NS" --dry-run=client -o yaml | kubectl apply -f - 2>/dev/null
 
 # Wait for RGDs to be functional (CRDs exist = kro accepted the RGDs)
 wait_for "Dungeon CRD available" \
@@ -59,7 +58,6 @@ apiVersion: game.k8s.example/v1alpha1
 kind: Dungeon
 metadata:
   name: $DUNGEON_NAME
-  namespace: tests
 spec:
   monsters: 2
   difficulty: easy
@@ -117,14 +115,14 @@ kubectl get resourcequota dungeon-quota -n "$DUNGEON_NAME" &>/dev/null \
 log "Test 2: Verify initial state"
 
 wait_for "livingMonsters=2" \
-  "[ \$(kubectl get dungeon $DUNGEON_NAME -n $TEST_NS -o jsonpath='{.status.livingMonsters}' 2>/dev/null) = '2' ]" 30 \
+  "[ \$(kubectl get dungeon $DUNGEON_NAME  -o jsonpath='{.status.livingMonsters}' 2>/dev/null) = '2' ]" 30 \
   && pass "livingMonsters=2" || fail "livingMonsters!=2"
 
 wait_for "bossState=pending" \
-  "[ \$(kubectl get dungeon $DUNGEON_NAME -n $TEST_NS -o jsonpath='{.status.bossState}' 2>/dev/null) = 'pending' ]" 30 \
+  "[ \$(kubectl get dungeon $DUNGEON_NAME  -o jsonpath='{.status.bossState}' 2>/dev/null) = 'pending' ]" 30 \
   && pass "bossState=pending" || fail "bossState!=pending"
 
-VICTORY=$(kubectl get dungeon "$DUNGEON_NAME" -n "$TEST_NS" -o jsonpath='{.status.victory}')
+VICTORY=$(kubectl get dungeon "$DUNGEON_NAME"  -o jsonpath='{.status.victory}')
 [ "$VICTORY" = "false" ] && pass "victory=false" || fail "victory=$VICTORY (expected false)"
 
 M0_STATE=$(kubectl get pod "${DUNGEON_NAME}-monster-0" -n "$DUNGEON_NAME" -o jsonpath='{.metadata.labels.game\.k8s\.example/state}')
@@ -146,7 +144,7 @@ metadata:
     test-dungeon: $DUNGEON_NAME
 spec:
   dungeonName: $DUNGEON_NAME
-  dungeonNamespace: tests
+  dungeonNamespace: default
   target: ${DUNGEON_NAME}-monster-0
   damage: 15
 EOF
@@ -157,9 +155,9 @@ wait_for "attack-1 job complete" \
   || fail "Attack job did not complete"
 
 wait_for "monster-0 HP updated" \
-  "[ \$(kubectl get dungeon $DUNGEON_NAME -n $TEST_NS -o jsonpath='{.spec.monsterHP[0]}' 2>/dev/null) = '15' ]" 30
+  "[ \$(kubectl get dungeon $DUNGEON_NAME  -o jsonpath='{.spec.monsterHP[0]}' 2>/dev/null) = '15' ]" 30
 
-M0_HP=$(kubectl get dungeon "$DUNGEON_NAME" -n "$TEST_NS" -o jsonpath='{.spec.monsterHP[0]}')
+M0_HP=$(kubectl get dungeon "$DUNGEON_NAME"  -o jsonpath='{.spec.monsterHP[0]}')
 [ "$M0_HP" = "15" ] && pass "monster-0 HP=15 after 15 damage" || fail "monster-0 HP=$M0_HP (expected 15)"
 
 M0_STATE=$(kubectl get pod "${DUNGEON_NAME}-monster-0" -n "$DUNGEON_NAME" -o jsonpath='{.metadata.labels.game\.k8s\.example/state}')
@@ -178,7 +176,7 @@ metadata:
     test-dungeon: $DUNGEON_NAME
 spec:
   dungeonName: $DUNGEON_NAME
-  dungeonNamespace: tests
+  dungeonNamespace: default
   target: ${DUNGEON_NAME}-monster-0
   damage: 15
 EOF
@@ -187,9 +185,9 @@ wait_for "attack-2 job complete" \
   "kubectl get job ${DUNGEON_NAME}-atk2 -o jsonpath='{.status.succeeded}' 2>/dev/null | grep -q 1" 60
 
 wait_for "monster-0 HP=0" \
-  "[ \$(kubectl get dungeon $DUNGEON_NAME -n $TEST_NS -o jsonpath='{.spec.monsterHP[0]}' 2>/dev/null) = '0' ]" 30
+  "[ \$(kubectl get dungeon $DUNGEON_NAME  -o jsonpath='{.spec.monsterHP[0]}' 2>/dev/null) = '0' ]" 30
 
-M0_HP=$(kubectl get dungeon "$DUNGEON_NAME" -n "$TEST_NS" -o jsonpath='{.spec.monsterHP[0]}')
+M0_HP=$(kubectl get dungeon "$DUNGEON_NAME"  -o jsonpath='{.spec.monsterHP[0]}')
 [ "$M0_HP" = "0" ] && pass "monster-0 HP=0" || fail "monster-0 HP=$M0_HP (expected 0)"
 
 wait_for "monster-0 dead label" \
@@ -198,7 +196,7 @@ wait_for "monster-0 dead label" \
   || fail "monster-0 not marked dead"
 
 wait_for "livingMonsters=1" \
-  "[ \$(kubectl get dungeon $DUNGEON_NAME -n $TEST_NS -o jsonpath='{.status.livingMonsters}' 2>/dev/null) = '1' ]" 30 \
+  "[ \$(kubectl get dungeon $DUNGEON_NAME  -o jsonpath='{.status.livingMonsters}' 2>/dev/null) = '1' ]" 30 \
   && pass "livingMonsters=1" || fail "livingMonsters!=1"
 
 # --- Test 5: Kill monster-1, boss should become ready ---
@@ -214,7 +212,7 @@ metadata:
     test-dungeon: $DUNGEON_NAME
 spec:
   dungeonName: $DUNGEON_NAME
-  dungeonNamespace: tests
+  dungeonNamespace: default
   target: ${DUNGEON_NAME}-monster-1
   damage: 30
 EOF
@@ -223,7 +221,7 @@ wait_for "attack-3 job complete" \
   "kubectl get job ${DUNGEON_NAME}-atk3 -o jsonpath='{.status.succeeded}' 2>/dev/null | grep -q 1" 60
 
 wait_for "livingMonsters=0" \
-  "[ \$(kubectl get dungeon $DUNGEON_NAME -n $TEST_NS -o jsonpath='{.status.livingMonsters}' 2>/dev/null) = '0' ]" 30 \
+  "[ \$(kubectl get dungeon $DUNGEON_NAME  -o jsonpath='{.status.livingMonsters}' 2>/dev/null) = '0' ]" 30 \
   && pass "livingMonsters=0" || fail "livingMonsters!=0"
 
 wait_for "boss ready" \
@@ -232,7 +230,7 @@ wait_for "boss ready" \
   || fail "boss not ready"
 
 wait_for "dungeon bossState=ready" \
-  "[ \$(kubectl get dungeon $DUNGEON_NAME -n $TEST_NS -o jsonpath='{.status.bossState}' 2>/dev/null) = 'ready' ]" 30 \
+  "[ \$(kubectl get dungeon $DUNGEON_NAME  -o jsonpath='{.status.bossState}' 2>/dev/null) = 'ready' ]" 30 \
   && pass "dungeon bossState=ready" || fail "dungeon bossState!=ready"
 
 # --- Test 6: Defeat boss, victory ---
@@ -248,7 +246,7 @@ metadata:
     test-dungeon: $DUNGEON_NAME
 spec:
   dungeonName: $DUNGEON_NAME
-  dungeonNamespace: tests
+  dungeonNamespace: default
   target: ${DUNGEON_NAME}-boss
   damage: 200
 EOF
@@ -262,7 +260,7 @@ wait_for "boss defeated" \
   || fail "boss not defeated"
 
 wait_for "victory=true" \
-  "[ \$(kubectl get dungeon $DUNGEON_NAME -n $TEST_NS -o jsonpath='{.status.victory}' 2>/dev/null) = 'true' ]" 30 \
+  "[ \$(kubectl get dungeon $DUNGEON_NAME  -o jsonpath='{.status.victory}' 2>/dev/null) = 'true' ]" 30 \
   && pass "victory=true" || fail "victory!=true"
 
 # --- Test 7: Drift correction ---
@@ -270,10 +268,7 @@ wait_for "victory=true" \
 log "Test 7: Drift correction (delete alive pod, kro recreates)"
 
 # First reset: create a fresh dungeon for drift test
-kubectl delete attack -l test-dungeon="$DUNGEON_NAME" --ignore-not-found --wait=false 2>/dev/null || true
-kubectl delete dungeon "$DUNGEON_NAME" -n "$TEST_NS" --ignore-not-found --wait=false 2>/dev/null || true
-wait_for "old namespace gone" "! kubectl get ns $DUNGEON_NAME 2>/dev/null" 60
-
+# First reset: use a fresh dungeon name for drift test (no need to wait for old namespace)
 DUNGEON_NAME="test-drift-$(date +%s)"
 
 cat <<EOF | kubectl apply -f -
@@ -281,7 +276,6 @@ apiVersion: game.k8s.example/v1alpha1
 kind: Dungeon
 metadata:
   name: $DUNGEON_NAME
-  namespace: tests
 spec:
   monsters: 1
   difficulty: easy
@@ -323,7 +317,6 @@ apiVersion: game.k8s.example/v1alpha1
 kind: Dungeon
 metadata:
   name: $ABILITY_DUNGEON
-  namespace: tests
 spec:
   monsters: 1
   difficulty: easy
@@ -336,7 +329,7 @@ spec:
 EOF
 
 wait_for "ability dungeon ready" \
-  "kubectl get dungeon $ABILITY_DUNGEON -n $TEST_NS -o jsonpath='{.status.livingMonsters}' 2>/dev/null | grep -q 1" 60
+  "kubectl get dungeon $ABILITY_DUNGEON  -o jsonpath='{.status.livingMonsters}' 2>/dev/null | grep -q 1" 60
 
 # Mage heal test
 cat <<EOF | kubectl apply -f -
@@ -346,7 +339,7 @@ metadata:
   name: ${ABILITY_DUNGEON}-heal
 spec:
   dungeonName: $ABILITY_DUNGEON
-  dungeonNamespace: tests
+  dungeonNamespace: default
   target: hero
   damage: 0
 EOF
@@ -355,8 +348,8 @@ wait_for "heal job complete" \
   "kubectl get job ${ABILITY_DUNGEON}-heal -o jsonpath='{.status.succeeded}' 2>/dev/null | grep -q 1" 60
 sleep 5
 
-HEAL_HP=$(kubectl get dungeon "$ABILITY_DUNGEON" -n "$TEST_NS" -o jsonpath='{.spec.heroHP}')
-HEAL_MANA=$(kubectl get dungeon "$ABILITY_DUNGEON" -n "$TEST_NS" -o jsonpath='{.spec.heroMana}')
+HEAL_HP=$(kubectl get dungeon "$ABILITY_DUNGEON"  -o jsonpath='{.spec.heroHP}')
+HEAL_MANA=$(kubectl get dungeon "$ABILITY_DUNGEON"  -o jsonpath='{.spec.heroMana}')
 [ "$HEAL_HP" = "80" ] && pass "Mage heal: HP 50->80 (capped at max)" || fail "Mage heal HP=$HEAL_HP (expected 80)"
 [ "$HEAL_MANA" = "3" ] && pass "Mage heal: mana 5->3 (costs 2)" || fail "Mage heal mana=$HEAL_MANA (expected 3)"
 
@@ -367,7 +360,6 @@ apiVersion: game.k8s.example/v1alpha1
 kind: Dungeon
 metadata:
   name: $TAUNT_DUNGEON
-  namespace: tests
 spec:
   monsters: 1
   difficulty: easy
@@ -378,7 +370,7 @@ spec:
   modifier: none
 EOF
 wait_for "taunt dungeon ready" \
-  "kubectl get dungeon $TAUNT_DUNGEON -n $TEST_NS -o jsonpath='{.status.livingMonsters}' 2>/dev/null | grep -q 1" 60
+  "kubectl get dungeon $TAUNT_DUNGEON  -o jsonpath='{.status.livingMonsters}' 2>/dev/null | grep -q 1" 60
 
 cat <<EOF | kubectl apply -f -
 apiVersion: game.k8s.example/v1alpha1
@@ -387,7 +379,7 @@ metadata:
   name: ${TAUNT_DUNGEON}-taunt
 spec:
   dungeonName: $TAUNT_DUNGEON
-  dungeonNamespace: tests
+  dungeonNamespace: default
   target: activate-taunt
   damage: 0
 EOF
@@ -396,10 +388,10 @@ wait_for "taunt job complete" \
   "kubectl get job ${TAUNT_DUNGEON}-taunt -o jsonpath='{.status.succeeded}' 2>/dev/null | grep -q 1" 60
 
 wait_for "taunt active" \
-  "[ \$(kubectl get dungeon $TAUNT_DUNGEON -n $TEST_NS -o jsonpath='{.spec.tauntActive}' 2>/dev/null) = '1' ]" 15 \
+  "[ \$(kubectl get dungeon $TAUNT_DUNGEON  -o jsonpath='{.spec.tauntActive}' 2>/dev/null) = '1' ]" 15 \
   && pass "Warrior taunt: tauntActive=1" || fail "Warrior taunt failed"
 
-kubectl delete dungeon "$TAUNT_DUNGEON" -n "$TEST_NS" --ignore-not-found --wait=false 2>/dev/null || true
+kubectl delete dungeon "$TAUNT_DUNGEON"  --ignore-not-found --wait=false 2>/dev/null || true
 
 # Rogue backstab test
 BACKSTAB_DUNGEON="test-backstab-$(date +%s)"
@@ -408,7 +400,6 @@ apiVersion: game.k8s.example/v1alpha1
 kind: Dungeon
 metadata:
   name: $BACKSTAB_DUNGEON
-  namespace: tests
 spec:
   monsters: 1
   difficulty: easy
@@ -419,7 +410,7 @@ spec:
   modifier: none
 EOF
 wait_for "backstab dungeon ready" \
-  "kubectl get dungeon $BACKSTAB_DUNGEON -n $TEST_NS -o jsonpath='{.status.livingMonsters}' 2>/dev/null | grep -q 1" 60
+  "kubectl get dungeon $BACKSTAB_DUNGEON  -o jsonpath='{.status.livingMonsters}' 2>/dev/null | grep -q 1" 60
 
 cat <<EOF | kubectl apply -f -
 apiVersion: game.k8s.example/v1alpha1
@@ -428,7 +419,7 @@ metadata:
   name: ${BACKSTAB_DUNGEON}-backstab
 spec:
   dungeonName: $BACKSTAB_DUNGEON
-  dungeonNamespace: tests
+  dungeonNamespace: default
   target: ${BACKSTAB_DUNGEON}-monster-0-backstab
   damage: 15
 EOF
@@ -437,14 +428,14 @@ wait_for "backstab job complete" \
   "kubectl get job ${BACKSTAB_DUNGEON}-backstab -o jsonpath='{.status.succeeded}' 2>/dev/null | grep -q 1" 60
 
 wait_for "backstab applied" \
-  "[ \$(kubectl get dungeon $BACKSTAB_DUNGEON -n $TEST_NS -o jsonpath='{.spec.backstabCooldown}' 2>/dev/null) = '3' ]" 15
+  "[ \$(kubectl get dungeon $BACKSTAB_DUNGEON  -o jsonpath='{.spec.backstabCooldown}' 2>/dev/null) = '3' ]" 15
 
-BS_CD=$(kubectl get dungeon "$BACKSTAB_DUNGEON" -n "$TEST_NS" -o jsonpath='{.spec.backstabCooldown}')
-BS_HP=$(kubectl get dungeon "$BACKSTAB_DUNGEON" -n "$TEST_NS" -o jsonpath='{.spec.monsterHP[0]}')
+BS_CD=$(kubectl get dungeon "$BACKSTAB_DUNGEON"  -o jsonpath='{.spec.backstabCooldown}')
+BS_HP=$(kubectl get dungeon "$BACKSTAB_DUNGEON"  -o jsonpath='{.spec.monsterHP[0]}')
 [ "$BS_CD" = "3" ] && pass "Rogue backstab: cooldown=3" || fail "Backstab cooldown=$BS_CD (expected 3)"
 [ "$BS_HP" = "0" ] && pass "Rogue backstab: 3x damage kills monster" || fail "Backstab monster HP=$BS_HP (expected 0)"
 
-kubectl delete dungeon "$BACKSTAB_DUNGEON" -n "$TEST_NS" --ignore-not-found --wait=false 2>/dev/null || true
+kubectl delete dungeon "$BACKSTAB_DUNGEON"  --ignore-not-found --wait=false 2>/dev/null || true
 
 # --- Test 10: Dungeon modifiers ---
 
@@ -457,7 +448,6 @@ apiVersion: game.k8s.example/v1alpha1
 kind: Dungeon
 metadata:
   name: $MOD_DUNGEON
-  namespace: tests
 spec:
   monsters: 1
   difficulty: easy
@@ -469,9 +459,9 @@ spec:
 EOF
 
 wait_for "modifier dungeon ready" \
-  "kubectl get dungeon $MOD_DUNGEON -n $TEST_NS -o jsonpath='{.status.modifierType}' 2>/dev/null | grep -q blessing-strength" 60
+  "kubectl get dungeon $MOD_DUNGEON  -o jsonpath='{.status.modifierType}' 2>/dev/null | grep -q blessing-strength" 60
 
-MOD_STATUS=$(kubectl get dungeon "$MOD_DUNGEON" -n "$TEST_NS" -o jsonpath='{.status.modifier}')
+MOD_STATUS=$(kubectl get dungeon "$MOD_DUNGEON"  -o jsonpath='{.status.modifier}')
 echo "$MOD_STATUS" | grep -q "damage" \
   && pass "Modifier CR: status shows effect description" \
   || fail "Modifier status=$MOD_STATUS"
@@ -482,7 +472,7 @@ wait_for "modifier CR exists" \
   && pass "Modifier CR created in dungeon namespace" \
   || fail "Modifier CR missing"
 
-kubectl delete dungeon "$MOD_DUNGEON" -n "$TEST_NS" --ignore-not-found --wait=false 2>/dev/null || true
+kubectl delete dungeon "$MOD_DUNGEON"  --ignore-not-found --wait=false 2>/dev/null || true
 
 # --- Test 11: Status effects ---
 
@@ -495,7 +485,6 @@ apiVersion: game.k8s.example/v1alpha1
 kind: Dungeon
 metadata:
   name: $FX_DUNGEON
-  namespace: tests
 spec:
   monsters: 1
   difficulty: easy
@@ -510,7 +499,7 @@ spec:
 EOF
 
 wait_for "fx dungeon ready" \
-  "kubectl get dungeon $FX_DUNGEON -n $TEST_NS -o jsonpath='{.status.livingMonsters}' 2>/dev/null | grep -q 1" 60
+  "kubectl get dungeon $FX_DUNGEON  -o jsonpath='{.status.livingMonsters}' 2>/dev/null | grep -q 1" 60
 
 cat <<EOF | kubectl apply -f -
 apiVersion: game.k8s.example/v1alpha1
@@ -519,7 +508,7 @@ metadata:
   name: ${FX_DUNGEON}-atk1
 spec:
   dungeonName: $FX_DUNGEON
-  dungeonNamespace: tests
+  dungeonNamespace: default
   target: ${FX_DUNGEON}-monster-0
   damage: 10
 EOF
@@ -529,13 +518,13 @@ wait_for "fx attack complete" \
 
 # Wait for the patch to propagate
 wait_for "fx dungeon patched" \
-  "[ \$(kubectl get dungeon $FX_DUNGEON -n $TEST_NS -o jsonpath='{.spec.poisonTurns}') != '2' ]" 30
+  "[ \$(kubectl get dungeon $FX_DUNGEON  -o jsonpath='{.spec.poisonTurns}') != '2' ]" 30
 
-FX_HP=$(kubectl get dungeon "$FX_DUNGEON" -n "$TEST_NS" -o jsonpath='{.spec.heroHP}')
-FX_POISON=$(kubectl get dungeon "$FX_DUNGEON" -n "$TEST_NS" -o jsonpath='{.spec.poisonTurns}')
-FX_BURN=$(kubectl get dungeon "$FX_DUNGEON" -n "$TEST_NS" -o jsonpath='{.spec.burnTurns}')
-FX_STUN=$(kubectl get dungeon "$FX_DUNGEON" -n "$TEST_NS" -o jsonpath='{.spec.stunTurns}')
-FX_MONSTER=$(kubectl get dungeon "$FX_DUNGEON" -n "$TEST_NS" -o jsonpath='{.spec.monsterHP[0]}')
+FX_HP=$(kubectl get dungeon "$FX_DUNGEON"  -o jsonpath='{.spec.heroHP}')
+FX_POISON=$(kubectl get dungeon "$FX_DUNGEON"  -o jsonpath='{.spec.poisonTurns}')
+FX_BURN=$(kubectl get dungeon "$FX_DUNGEON"  -o jsonpath='{.spec.burnTurns}')
+FX_STUN=$(kubectl get dungeon "$FX_DUNGEON"  -o jsonpath='{.spec.stunTurns}')
+FX_MONSTER=$(kubectl get dungeon "$FX_DUNGEON"  -o jsonpath='{.spec.monsterHP[0]}')
 
 # HP should be 150 - 5 (poison) - 8 (burn) - counter = ~136
 [ "$FX_HP" -lt 150 ] && pass "DoT applied: HP reduced from 150 to $FX_HP" || fail "DoT not applied: HP=$FX_HP"
@@ -545,7 +534,7 @@ FX_MONSTER=$(kubectl get dungeon "$FX_DUNGEON" -n "$TEST_NS" -o jsonpath='{.spec
 # Stun means 0 damage dealt
 [ "$FX_MONSTER" = "30" ] && pass "Stun: hero dealt 0 damage" || fail "Stun: monster HP=$FX_MONSTER (expected 30)"
 
-kubectl delete dungeon "$FX_DUNGEON" -n "$TEST_NS" --ignore-not-found --wait=false 2>/dev/null || true
+kubectl delete dungeon "$FX_DUNGEON"  --ignore-not-found --wait=false 2>/dev/null || true
 
 # --- Test 12: Loot system ---
 
@@ -558,7 +547,6 @@ apiVersion: game.k8s.example/v1alpha1
 kind: Dungeon
 metadata:
   name: $LOOT_DUNGEON
-  namespace: tests
 spec:
   monsters: 1
   difficulty: easy
@@ -571,7 +559,7 @@ spec:
 EOF
 
 wait_for "loot dungeon ready" \
-  "kubectl get dungeon $LOOT_DUNGEON -n $TEST_NS -o jsonpath='{.status.livingMonsters}' 2>/dev/null | grep -q 1" 60
+  "kubectl get dungeon $LOOT_DUNGEON  -o jsonpath='{.status.livingMonsters}' 2>/dev/null | grep -q 1" 60
 
 # Test item usage
 cat <<EOF | kubectl apply -f -
@@ -581,7 +569,7 @@ metadata:
   name: ${LOOT_DUNGEON}-use
 spec:
   dungeonName: $LOOT_DUNGEON
-  dungeonNamespace: tests
+  dungeonNamespace: default
   target: use-hppotion-rare
   damage: 0
 EOF
@@ -590,7 +578,7 @@ wait_for "use item job complete" \
   "kubectl get job ${LOOT_DUNGEON}-use -o jsonpath='{.status.succeeded}' 2>/dev/null | grep -q 1" 60
 sleep 5
 
-LOOT_INV=$(kubectl get dungeon "$LOOT_DUNGEON" -n "$TEST_NS" -o jsonpath='{.spec.inventory}')
+LOOT_INV=$(kubectl get dungeon "$LOOT_DUNGEON"  -o jsonpath='{.spec.inventory}')
 [ -z "$LOOT_INV" ] && pass "Item consumed: inventory empty" || fail "Item not consumed: inv=$LOOT_INV"
 
 # Kill monster (1 HP) — may drop loot
@@ -601,7 +589,7 @@ metadata:
   name: ${LOOT_DUNGEON}-kill
 spec:
   dungeonName: $LOOT_DUNGEON
-  dungeonNamespace: tests
+  dungeonNamespace: default
   target: ${LOOT_DUNGEON}-monster-0
   damage: 10
 EOF
@@ -610,12 +598,12 @@ wait_for "kill job complete" \
   "kubectl get job ${LOOT_DUNGEON}-kill -o jsonpath='{.status.succeeded}' 2>/dev/null | grep -q 1" 60
 sleep 5
 
-LOOT_ACTION=$(kubectl get dungeon "$LOOT_DUNGEON" -n "$TEST_NS" -o jsonpath='{.spec.lastHeroAction}')
+LOOT_ACTION=$(kubectl get dungeon "$LOOT_DUNGEON"  -o jsonpath='{.spec.lastHeroAction}')
 echo "$LOOT_ACTION" | grep -q "monster-0" \
   && pass "Monster killed, action logged" \
   || fail "Kill action missing: $LOOT_ACTION"
 
-kubectl delete dungeon "$LOOT_DUNGEON" -n "$TEST_NS" --ignore-not-found --wait=false 2>/dev/null || true
+kubectl delete dungeon "$LOOT_DUNGEON"  --ignore-not-found --wait=false 2>/dev/null || true
 
 # --- Test 13: 7 RGDs all Active ---
 
