@@ -561,7 +561,7 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
               const label = isPotion ? 'Use' : alreadyEquipped ? 'Swap' : 'Equip'
               return (
                 <Tooltip key={i} text={`${item.replace(/-/g, ' ')} — click to ${label.toLowerCase()}`}>
-                  <button className="item-btn" disabled={!!attackPhase}
+                  <button className="item-btn" disabled={gameOver || !!attackPhase}
                     style={{ borderColor: RARITY_COLOR[rarity] || '#aaa' }}
                     onClick={() => onAttack(isPotion ? `use-${item}` : `equip-${item}`, 0)}>
                     <ItemSprite id={item} size={24} />
@@ -585,7 +585,7 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
           if (state === 'alive' && animPhase === 'enemy-attack') mAction = 'attack'
           return (
             <EntityCard key={mName} name={mName} entity="monster"
-              state={state} hp={hp} maxHP={maxMonsterHP} diceFormula={status?.diceFormula || "2d10+8"} onAttack={onAttack} disabled={isDefeated || !!attackPhase}
+              state={state} hp={hp} maxHP={maxMonsterHP} diceFormula={status?.diceFormula || "2d10+8"} onAttack={onAttack} disabled={gameOver || !!attackPhase}
               spriteType={mSprite} spriteAction={mAction}
               floatingDmg={floatingDmg?.target === mName ? floatingDmg.amount : null}
               heroClass={spec.heroClass} backstabCooldown={spec.backstabCooldown}
@@ -602,7 +602,7 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
         if (bossState === 'ready' && animPhase === 'enemy-attack' && attackTarget?.includes('boss')) bAction = 'attack'
         if (status?.victory) bAction = 'dead'
         return <EntityCard name={`${dungeonName}-boss`} entity="boss"
-          state={bossState} hp={spec.bossHP} maxHP={maxBossHP} diceFormula={status?.diceFormula || "2d10+8"} onAttack={onAttack} disabled={isDefeated || !!attackPhase}
+          state={bossState} hp={spec.bossHP} maxHP={maxBossHP} diceFormula={status?.diceFormula || "2d10+8"} onAttack={onAttack} disabled={gameOver || !!attackPhase}
           spriteType="dragon" spriteAction={bAction}
           floatingDmg={floatingDmg?.target?.includes('boss') ? floatingDmg.amount : null}
           heroClass={spec.heroClass} backstabCooldown={spec.backstabCooldown}
