@@ -508,169 +508,154 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
         <div><span className="label">Monsters alive:</span><span className="value">{status?.livingMonsters ?? '?'}</span></div>
         <div><span className="label">Boss:</span><span className="value">{bossState}</span></div>
         <div><span className="label">Difficulty:</span><span className="value">{spec.difficulty}</span></div>
-        {spec.modifier && spec.modifier !== 'none' && (
-          <div title={status?.modifier || spec.modifier} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <ItemSprite id={spec.modifier} size={20} />
-            <span className="value">{status?.modifier || spec.modifier}</span>
-          </div>
-        )}
       </div>
 
-      <Tooltip text={
-        spec.heroClass === 'mage' ? '🔮 Mage · 80 HP · 1.5x boss damage · 5 mana (1/attack, half dmg at 0) · <PixelIcon name="heal" size={12} /> Heal: costs 2 mana, restores 30 HP' :
-        spec.heroClass === 'rogue' ? '🗡️ Rogue · 100 HP · 1.2x damage · 30% dodge on counter-attacks · <PixelIcon name="dagger" size={12} /> Backstab: 3x damage, 3-turn cooldown' :
-        '⚔️ Warrior · 150 HP · 20% damage reduction on counter-attacks · <PixelIcon name="shield" size={12} /> Taunt: activate before attacking for 60% counter-attack reduction (1 turn cooldown)'
-      }>
-      <div className="hero-bar" style={{ position: 'relative' }}>
-        {floatingDmg?.target === 'hero' && <div className="floating-dmg" style={{ color: floatingDmg.color }}>{floatingDmg.amount}</div>}
-        <Sprite spriteType={spec.heroClass || 'warrior'} size={64}
-          action={isDefeated ? 'dead' : status?.victory ? 'victory' : animPhase === 'hero-attack' ? 'attack' : animPhase === 'enemy-attack' ? 'hurt' : 'idle'} />
-        <span className="hero-label">{(spec.heroClass || 'warrior').toUpperCase()}</span>
-        <div className="hp-bar-bg" style={{ flex: 1 }}>
-          <div className={`hp-bar-fill ${heroHP > 60 ? 'high' : heroHP > 30 ? 'mid' : 'low'}`}
-            style={{ width: `${Math.min((heroHP / maxHeroHP) * 100, 100)}%` }} />
-        </div>
-        <span className="hero-hp-text">HP: {heroHP} / {maxHeroHP}</span>
-        {(spec.heroClass === 'mage') && <span className="mana-text">◇ Mana: {spec.heroMana ?? 0}</span>}
-      </div>
-      </Tooltip>
-
-      {!gameOver && !attackPhase && (
-        <div className="ability-bar">
-          {spec.heroClass === 'mage' && (
-            <button className="btn btn-ability" disabled={(spec.heroMana ?? 0) < 2 || heroHP >= 80}
-              onClick={() => onAttack('hero', 0)}>
-              <PixelIcon name="heal" size={12} /> Heal (2 mana)
-            </button>
-          )}
-          {spec.heroClass === 'warrior' && (
-            <button className={`btn btn-ability${(spec.tauntActive ?? 0) === 1 ? ' active' : ''}`}
-              disabled={(spec.tauntActive ?? 0) >= 1}
-              onClick={() => onAttack('activate-taunt', 0)}>
-              <PixelIcon name="shield" size={12} /> Taunt {(spec.tauntActive ?? 0) > 1 ? `(${(spec.tauntActive ?? 0) - 1} CD)` : (spec.tauntActive ?? 0) === 1 ? '(Active!)' : ''}
-            </button>
-          )}
-          {spec.heroClass === 'rogue' && (
-            <span className="cooldown-text">
-              <PixelIcon name="dagger" size={12} /> Backstab: {(spec.backstabCooldown ?? 0) > 0 ? `${spec.backstabCooldown} turns CD` : 'Ready!'}
-            </span>
-          )}
-        </div>
-      )}
-
-      {(() => {
-        const items = (spec.inventory || '').split(',').filter(Boolean)
-        const wb = spec.weaponBonus || 0
-        const wu = spec.weaponUses || 0
-        const ab = spec.armorBonus || 0
-        const modifier = spec.modifier || 'none'
-        const poison = spec.poisonTurns || 0
-        const burn = spec.burnTurns || 0
-        const stun = spec.stunTurns || 0
-        const RARITY_COLOR: Record<string, string> = { common: '#aaa', rare: '#5dade2', epic: '#9b59b6' }
-
-        return (
-          <div className="equip-panel">
-            <div className="equip-grid">
-              <div className="equip-row">
-                <div className="equip-slot empty" title="Helmet (coming soon)"><PixelIcon name="lock" size={16} /></div>
-              </div>
-              <div className="equip-row">
-                <div className="equip-slot empty" title="Shield (coming soon)"><PixelIcon name="lock" size={16} /></div>
-                <div className={`equip-slot${ab > 0 ? ' filled' : ' empty'}`} title={ab > 0 ? `Armor: +${ab}% defense` : 'No armor'}>
-                  {ab > 0 ? <><ItemSprite id="armor-common" size={24} /><span className="slot-stat">+{ab}%</span></> : <PixelIcon name="shield" size={16} color="#333" />}
-                </div>
-                <div className={`equip-slot${wb > 0 ? ' filled' : ' empty'}`} title={wb > 0 ? `Weapon: +${wb} dmg (${wu} uses)` : 'No weapon'}>
-                  {wb > 0 ? <><ItemSprite id="weapon-common" size={24} /><span className="slot-stat">+{wb}</span></> : <PixelIcon name="sword" size={16} color="#333" />}
-                </div>
-              </div>
-              <div className="equip-row">
-                <div className="equip-slot empty" title="Pants (coming soon)"><PixelIcon name="lock" size={16} /></div>
-              </div>
-              <div className="equip-row">
-                <div className="equip-slot empty" title="Boots (coming soon)"><PixelIcon name="lock" size={16} /></div>
-              </div>
-            </div>
-
-            <div className="status-row">
-              {modifier !== 'none' && (
-                <div className={`status-badge ${modifier.startsWith('curse') ? 'curse' : 'blessing'}`} title={status?.modifier || modifier}>
-                  <ItemSprite id={modifier} size={20} />
-                </div>
-              )}
-              {poison > 0 && <div className="status-badge effect" title={`Poison: ${poison} turns`}><PixelIcon name="poison" size={14} /><span>{poison}</span></div>}
-              {burn > 0 && <div className="status-badge effect" title={`Burn: ${burn} turns`}><PixelIcon name="fire" size={14} /><span>{burn}</span></div>}
-              {stun > 0 && <div className="status-badge effect" title={`Stun: ${stun} turns`}><PixelIcon name="lightning" size={14} /><span>{stun}</span></div>}
-            </div>
-
-            {items.length > 0 && (
-              <div className="backpack">
-                <div className="backpack-label">Backpack</div>
-                <div className="backpack-grid">
-                  {items.map((item, i) => {
-                    const rarity = item.split('-').pop()!
-                    const isPotion = item.includes('potion')
-                    return (
-                      <button key={i} className="backpack-slot" disabled={gameOver || !!attackPhase}
-                        style={{ borderColor: RARITY_COLOR[rarity] || '#555' }}
-                        title={item.replace(/-/g, ' ')}
-                        onClick={() => onAttack(isPotion ? `use-${item}` : `equip-${item}`, 0)}>
-                        <ItemSprite id={item} size={24} />
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
+      <div className="game-layout">
+        {/* LEFT PANEL — Monsters, Boss, Events (70%) */}
+        <div className="left-panel">
+          <h3 style={{ fontSize: '10px', marginBottom: 8, color: '#888' }}>MONSTERS</h3>
+          <div className="monster-grid">
+            {(spec.monsterHP || []).map((hp, idx) => {
+              const state = hp > 0 ? 'alive' : 'dead'
+              const mName = `${dungeonName}-monster-${idx}`
+              const mSprite = getMonsterSprite(idx)
+              let mAction: SpriteAction = state === 'dead' ? 'dead' : 'idle'
+              if (attackTarget === mName && animPhase === 'hero-attack') mAction = 'hurt'
+              if (state === 'alive' && animPhase === 'enemy-attack') mAction = 'attack'
+              return (
+                <EntityCard key={mName} name={mName} entity="monster"
+                  state={state} hp={hp} maxHP={maxMonsterHP} diceFormula={status?.diceFormula || "2d10+8"} onAttack={onAttack} disabled={gameOver || !!attackPhase}
+                  spriteType={mSprite} spriteAction={mAction}
+                  floatingDmg={floatingDmg?.target === mName ? floatingDmg.amount : null}
+                  heroClass={spec.heroClass} backstabCooldown={spec.backstabCooldown}
+                  tooltip={`${mSprite} · HP: ${hp}/${maxMonsterHP} · Counter: ${status?.monsterCounter || '?'} dmg/monster`} />
+              )
+            })}
           </div>
-        )
-      })()}
 
-      <h3 style={{ fontSize: '10px', marginBottom: 8, color: '#888' }}>MONSTERS</h3>
-      <div className="monster-grid">
-        {(spec.monsterHP || []).map((hp, idx) => {
-          const state = hp > 0 ? 'alive' : 'dead'
-          const mName = `${dungeonName}-monster-${idx}`
-          const mSprite = getMonsterSprite(idx)
-          let mAction: SpriteAction = state === 'dead' ? 'dead' : 'idle'
-          if (attackTarget === mName && animPhase === 'hero-attack') mAction = 'hurt'
-          if (state === 'alive' && animPhase === 'enemy-attack') mAction = 'attack'
-          return (
-            <EntityCard key={mName} name={mName} entity="monster"
-              state={state} hp={hp} maxHP={maxMonsterHP} diceFormula={status?.diceFormula || "2d10+8"} onAttack={onAttack} disabled={gameOver || !!attackPhase}
-              spriteType={mSprite} spriteAction={mAction}
-              floatingDmg={floatingDmg?.target === mName ? floatingDmg.amount : null}
+          <h3 style={{ fontSize: '10px', marginBottom: 8, color: '#888' }}>BOSS</h3>
+          <div style={{ maxWidth: 200 }}>
+          {(() => {
+            let bAction: SpriteAction = bossState === 'defeated' ? 'dead' : 'idle'
+            if (attackTarget?.includes('boss') && animPhase === 'hero-attack') bAction = 'hurt'
+            if (bossState === 'ready' && animPhase === 'enemy-attack' && attackTarget?.includes('boss')) bAction = 'attack'
+            if (status?.victory) bAction = 'dead'
+            return <EntityCard name={`${dungeonName}-boss`} entity="boss"
+              state={bossState} hp={spec.bossHP} maxHP={maxBossHP} diceFormula={status?.diceFormula || "2d10+8"} onAttack={onAttack} disabled={gameOver || !!attackPhase}
+              spriteType="dragon" spriteAction={bAction}
+              floatingDmg={floatingDmg?.target?.includes('boss') ? floatingDmg.amount : null}
               heroClass={spec.heroClass} backstabCooldown={spec.backstabCooldown}
-              tooltip={`${mSprite} · HP: ${hp}/${maxMonsterHP} · Counter: ${status?.monsterCounter || '?'} dmg/monster`} />
-          )
-        })}
-      </div>
-
-      <h3 style={{ fontSize: '10px', marginBottom: 8, color: '#888' }}>BOSS</h3>
-      <div style={{ maxWidth: 200 }}>
-      {(() => {
-        let bAction: SpriteAction = bossState === 'defeated' ? 'dead' : bossState === 'pending' ? 'idle' : 'idle'
-        if (attackTarget?.includes('boss') && animPhase === 'hero-attack') bAction = 'hurt'
-        if (bossState === 'ready' && animPhase === 'enemy-attack' && attackTarget?.includes('boss')) bAction = 'attack'
-        if (status?.victory) bAction = 'dead'
-        return <EntityCard name={`${dungeonName}-boss`} entity="boss"
-          state={bossState} hp={spec.bossHP} maxHP={maxBossHP} diceFormula={status?.diceFormula || "2d10+8"} onAttack={onAttack} disabled={gameOver || !!attackPhase}
-          spriteType="dragon" spriteAction={bAction}
-          floatingDmg={floatingDmg?.target?.includes('boss') ? floatingDmg.amount : null}
-          heroClass={spec.heroClass} backstabCooldown={spec.backstabCooldown}
-          tooltip={`Dragon · HP: ${spec.bossHP}/${maxBossHP} · ${bossState === 'pending' ? 'Kill all monsters to unlock' : bossState === 'ready' ? 'Ready to fight!' : 'Defeated'} · Counter: ${status?.bossCounter || '?'} dmg`} />
-      })()}
-      </div>
-
-      <h3 style={{ fontSize: '10px', margin: '16px 0 8px', color: '#888' }}>EVENT LOG</h3>
-      <div className="event-log">
-        {events.length === 0 && <div className="event-entry">Waiting for events...</div>}
-        {events.map((e, i) => (
-          <div key={i} className="event-entry">
-            <span className="event-icon">{e.action}</span>
-            <span className="event-msg">{e.name}</span>
+              tooltip={`Dragon · HP: ${spec.bossHP}/${maxBossHP} · ${bossState === 'pending' ? 'Kill all monsters to unlock' : bossState === 'ready' ? 'Ready to fight!' : 'Defeated'} · Counter: ${status?.bossCounter || '?'} dmg`} />
+          })()}
           </div>
-        ))}
+
+          <h3 style={{ fontSize: '10px', margin: '16px 0 8px', color: '#888' }}>EVENT LOG</h3>
+          <div className="event-log">
+            {events.length === 0 && <div className="event-entry">Waiting for events...</div>}
+            {events.map((e, i) => (
+              <div key={i} className="event-entry">
+                <span className="event-icon">{e.action}</span>
+                <span className="event-msg">{e.name}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* RIGHT PANEL — Hero, Equipment, Abilities (30%) */}
+        <div className="right-panel">
+          <div className="hero-section">
+            <Sprite spriteType={spec.heroClass || 'warrior'} size={80}
+              action={isDefeated ? 'dead' : status?.victory ? 'victory' : animPhase === 'hero-attack' ? 'attack' : animPhase === 'enemy-attack' ? 'hurt' : 'idle'} />
+            <div className="hero-label">{(spec.heroClass || 'warrior').toUpperCase()}</div>
+            <div className="hp-bar-bg">
+              <div className={`hp-bar-fill ${heroHP > 60 ? 'high' : heroHP > 30 ? 'mid' : 'low'}`}
+                style={{ width: `${Math.min((heroHP / maxHeroHP) * 100, 100)}%` }} />
+            </div>
+            <div className="hero-hp-text">HP: {heroHP} / {maxHeroHP}</div>
+            {spec.heroClass === 'mage' && <div className="mana-text"><PixelIcon name="mana" size={10} /> Mana: {spec.heroMana ?? 0}</div>}
+            {floatingDmg?.target === 'hero' && <div className="floating-dmg" style={{ color: floatingDmg.color }}>{floatingDmg.amount}</div>}
+          </div>
+
+          {!gameOver && !attackPhase && (
+            <div className="ability-bar">
+              {spec.heroClass === 'mage' && (
+                <button className="btn btn-ability" disabled={(spec.heroMana ?? 0) < 2 || heroHP >= 80}
+                  onClick={() => onAttack('hero', 0)}>
+                  <PixelIcon name="heal" size={12} /> Heal
+                </button>
+              )}
+              {spec.heroClass === 'warrior' && (
+                <button className={`btn btn-ability${(spec.tauntActive ?? 0) === 1 ? ' active' : ''}`}
+                  disabled={(spec.tauntActive ?? 0) >= 1}
+                  onClick={() => onAttack('activate-taunt', 0)}>
+                  <PixelIcon name="shield" size={12} /> Taunt
+                </button>
+              )}
+              {spec.heroClass === 'rogue' && (
+                <span className="cooldown-text">
+                  <PixelIcon name="dagger" size={12} /> Backstab: {(spec.backstabCooldown ?? 0) > 0 ? `${spec.backstabCooldown} CD` : 'Ready'}
+                </span>
+              )}
+            </div>
+          )}
+
+          {(() => {
+            const items = (spec.inventory || '').split(',').filter(Boolean)
+            const wb = spec.weaponBonus || 0
+            const wu = spec.weaponUses || 0
+            const ab = spec.armorBonus || 0
+            const modifier = spec.modifier || 'none'
+            const poison = spec.poisonTurns || 0
+            const burn = spec.burnTurns || 0
+            const stun = spec.stunTurns || 0
+            const RARITY_COLOR: Record<string, string> = { common: '#aaa', rare: '#5dade2', epic: '#9b59b6' }
+            return (
+              <div className="equip-panel">
+                <div className="equip-grid">
+                  <div className="equip-row"><div className="equip-slot empty" title="Helmet"><PixelIcon name="lock" size={14} /></div></div>
+                  <div className="equip-row">
+                    <div className="equip-slot empty" title="Shield"><PixelIcon name="lock" size={14} /></div>
+                    <div className={`equip-slot${ab > 0 ? ' filled' : ' empty'}`} title={ab > 0 ? `+${ab}% def` : 'Armor'}>
+                      {ab > 0 ? <><ItemSprite id="armor-common" size={22} /><span className="slot-stat">+{ab}%</span></> : <PixelIcon name="shield" size={14} color="#333" />}
+                    </div>
+                    <div className={`equip-slot${wb > 0 ? ' filled' : ' empty'}`} title={wb > 0 ? `+${wb} dmg (${wu})` : 'Weapon'}>
+                      {wb > 0 ? <><ItemSprite id="weapon-common" size={22} /><span className="slot-stat">+{wb}</span></> : <PixelIcon name="sword" size={14} color="#333" />}
+                    </div>
+                  </div>
+                  <div className="equip-row"><div className="equip-slot empty" title="Pants"><PixelIcon name="lock" size={14} /></div></div>
+                  <div className="equip-row"><div className="equip-slot empty" title="Boots"><PixelIcon name="lock" size={14} /></div></div>
+                </div>
+
+                <div className="status-row">
+                  {modifier !== 'none' && <div className={`status-badge ${modifier.startsWith('curse') ? 'curse' : 'blessing'}`} title={status?.modifier || modifier}><ItemSprite id={modifier} size={18} /></div>}
+                  {poison > 0 && <div className="status-badge effect" title={`Poison ${poison}t`}><PixelIcon name="poison" size={12} /><span>{poison}</span></div>}
+                  {burn > 0 && <div className="status-badge effect" title={`Burn ${burn}t`}><PixelIcon name="fire" size={12} /><span>{burn}</span></div>}
+                  {stun > 0 && <div className="status-badge effect" title={`Stun ${stun}t`}><PixelIcon name="lightning" size={12} /><span>{stun}</span></div>}
+                </div>
+
+                {items.length > 0 && (
+                  <div className="backpack">
+                    <div className="backpack-label">Backpack</div>
+                    <div className="backpack-grid">
+                      {items.map((item, i) => {
+                        const rarity = item.split('-').pop()!
+                        const isPotion = item.includes('potion')
+                        return (
+                          <button key={i} className="backpack-slot" disabled={gameOver || !!attackPhase}
+                            style={{ borderColor: RARITY_COLOR[rarity] || '#555' }}
+                            title={item.replace(/-/g, ' ')}
+                            onClick={() => onAttack(isPotion ? `use-${item}` : `equip-${item}`, 0)}>
+                            <ItemSprite id={item} size={22} />
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          })()}
+        </div>
       </div>
     </div>
   )

@@ -547,3 +547,21 @@ body {
 }
 .backpack-slot:hover:not(:disabled) { border-color: var(--gold); background: #1a1a2a; }
 .backpack-slot:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Two-column game layout */
+.game-layout { display: flex; gap: 12px; align-items: flex-start; }
+.left-panel { flex: 7; min-width: 0; }
+.right-panel { flex: 3; min-width: 180px; max-width: 250px; background: #0d0d1a; border: 1px solid #1a1a2e; border-radius: 6px; padding: 8px; position: sticky; top: 8px; }
+
+/* Hero section in right panel */
+.hero-section { display: flex; flex-direction: column; align-items: center; gap: 4px; margin-bottom: 8px; position: relative; }
+.hero-section .hero-label { font-size: 8px; color: var(--gold); }
+.hero-section .hp-bar-bg { width: 100%; }
+.hero-section .hero-hp-text { font-size: 7px; color: #aaa; }
+.hero-section .mana-text { font-size: 7px; color: #9b59b6; }
+
+/* Right panel ability bar */
+.right-panel .ability-bar { justify-content: center; margin-bottom: 8px; }
+
+/* Right panel equip panel */
+.right-panel .equip-panel { flex-direction: column; align-items: center; gap: 8px; }
