@@ -4,6 +4,7 @@ import { DungeonSummary, DungeonCR, listDungeons, getDungeon, createDungeon, sub
 import { useWebSocket, WSEvent } from './useWebSocket'
 
 import { Sprite, getMonsterSprite, SpriteAction, ItemSprite } from './Sprite'
+import { PixelIcon } from './PixelIcon'
 
 // 8-bit styled text icons (consistent cross-platform, matches pixel font)
 const ICO = {
@@ -319,7 +320,7 @@ function DungeonList({ dungeons, onSelect, onDelete, deleting }: {
       {dungeons.map(d => (
         <div key={d.name} className={`dungeon-tile${deleting === d.name ? ' deleting' : ''}`} onClick={() => onSelect(d.namespace, d.name)}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h3>{d.victory ? '👑 ' : '⚔️ '}{d.name}</h3>
+            <h3>{d.victory ? '' : ''}{d.name}</h3>
             {deleting === d.name ? (
               <span style={{ fontSize: '7px', color: 'var(--accent)' }}>Deleting...</span>
             ) : (
@@ -329,7 +330,7 @@ function DungeonList({ dungeons, onSelect, onDelete, deleting }: {
           <div className="stats">
             <span className={`tag tag-${d.difficulty}`}>{d.difficulty}</span>
             <span>Monsters: {d.livingMonsters ?? '?'}</span>
-            <span>Boss: {d.bossState === 'pending' ? '🔒 Locked' : d.bossState === 'ready' ? '⚔️ Ready' : d.bossState === 'defeated' ? '👑 Defeated' : d.bossState ?? '?'}</span>
+            <span>Boss: {d.bossState === 'pending' ? 'Locked' : d.bossState === 'ready' ? 'Ready' : d.bossState === 'defeated' ? 'Defeated' : d.bossState ?? '?'}</span>
             {d.victory && <span className="victory">VICTORY!</span>}
             {!d.victory && <span style={{ color: 'var(--green)' }}>In Progress</span>}
           </div>
@@ -375,7 +376,7 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
   return (
     <div>
       <div className="dungeon-header">
-        <h2>⚔️ {dungeonName}</h2>
+        <h2><PixelIcon name="sword" size={14} /> {dungeonName}</h2>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <button className="help-btn" onClick={onToggleHelp}>?</button>
           <button className="back-btn" onClick={onBack}>← Back</button>
@@ -387,7 +388,7 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
           <div className="modal help-modal" onClick={e => e.stopPropagation()}>
             <h2 style={{ color: 'var(--gold)', fontSize: 12, marginBottom: 12 }}>📖 HOW TO PLAY</h2>
             <div className="help-section">
-              <h3>⚔️ Combat</h3>
+              <h3><PixelIcon name="sword" size={10} /> Combat</h3>
               <p>Click a monster or boss to roll dice and attack. After your attack, all alive enemies counter-attack automatically.</p>
               <p>Kill all monsters to unlock the boss. Defeat the boss to win!</p>
             </div>
@@ -403,7 +404,7 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
               </table>
             </div>
             <div className="help-section">
-              <h3>🛡️ Hero Classes</h3>
+              <h3><PixelIcon name="shield" size={10} /> Hero Classes</h3>
               <table className="help-table">
                 <thead><tr><th>Class</th><th>HP</th><th>Special</th></tr></thead>
                 <tbody>
@@ -430,14 +431,14 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
           <div className="modal combat-modal" onClick={e => e.stopPropagation()}>
             {combatModal.phase === 'rolling' ? (
               <>
-                <h2 style={{ color: 'var(--gold)', fontSize: 14, marginBottom: 16 }}>⚔️ COMBAT</h2>
+                <h2 style={{ color: 'var(--gold)', fontSize: 14, marginBottom: 16 }}>COMBAT</h2>
                 <DiceRoller formula={combatModal.formula} />
                 <p style={{ fontSize: 8, color: '#888', marginTop: 12 }}>Waiting for attack to resolve...</p>
               </>
             ) : (
               <>
                 <button className="modal-close" onClick={onDismissCombat}>✕</button>
-                <h2 style={{ color: 'var(--gold)', fontSize: 14, marginBottom: 12 }}>⚔️ COMBAT RESULTS</h2>
+                <h2 style={{ color: 'var(--gold)', fontSize: 14, marginBottom: 12 }}>COMBAT RESULTS</h2>
                 <CombatBreakdown heroAction={combatModal.heroAction} enemyAction={combatModal.enemyAction} spec={combatModal.spec} oldHP={combatModal.oldHP} />
                 <button className="btn btn-gold" style={{ marginTop: 16 }} onClick={onDismissCombat}>Continue</button>
               </>
@@ -448,20 +449,20 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
 
       {!gameOver && !combatModal && (
         <div className="turn-bar">
-          <span className="turn-indicator">⚔️ Ready to attack!</span>
+          <span className="turn-indicator"><PixelIcon name="sword" size={12} /> Ready to attack!</span>
         </div>
       )}
 
       {isDefeated && (
         <div className="defeat-banner">
-          <h2>💀 DEFEAT 💀</h2>
+          <h2><PixelIcon name="skull" size={18} /> DEFEAT <PixelIcon name="skull" size={18} /></h2>
           <p className="defeat-text">Your hero has fallen...</p>
         </div>
       )}
 
       {status?.victory && (
         <div className="victory-banner">
-          <h2>🏆 VICTORY! 🏆</h2>
+          <h2><PixelIcon name="crown" size={18} /> VICTORY! <PixelIcon name="crown" size={18} /></h2>
           <p className="loot">The dungeon has been conquered!</p>
           <button className="btn btn-gold" style={{ marginTop: 12 }} onClick={onOpenLoot}>
             🗝️ Open Treasure
@@ -472,7 +473,7 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
       {showLoot && (
         <div className="modal-overlay" onClick={onCloseLoot}>
           <div className="modal" onClick={e => e.stopPropagation()}>
-            <div style={{ fontSize: 48, marginBottom: 12 }}>🏆</div>
+            <div style={{ marginBottom: 12 }}><PixelIcon name="crown" size={48} /></div>
             <h2 style={{ color: 'var(--gold)', fontSize: 14, marginBottom: 12 }}>TREASURE UNLOCKED</h2>
             <div className="loot-content">{status?.loot || 'The treasure awaits...'}</div>
             <button className="btn btn-gold" style={{ marginTop: 16 }} onClick={onCloseLoot}>Close</button>
@@ -483,7 +484,7 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
       {lootDrop && (
         <div className="modal-overlay" onClick={onDismissLoot}>
           <div className="modal" onClick={e => e.stopPropagation()}>
-            <div style={{ fontSize: 48, marginBottom: 12 }}>🎁</div>
+            <div style={{ marginBottom: 12 }}><PixelIcon name="chest" size={48} /></div>
             <h2 style={{ color: 'var(--gold)', fontSize: 12, marginBottom: 8 }}>LOOT DROP!</h2>
             <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8 }}>
               <ItemSprite id={lootDrop} size={48} />
@@ -515,9 +516,9 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
       </div>
 
       <Tooltip text={
-        spec.heroClass === 'mage' ? '🔮 Mage · 80 HP · 1.5x boss damage · 5 mana (1/attack, half dmg at 0) · 💚 Heal: costs 2 mana, restores 30 HP' :
-        spec.heroClass === 'rogue' ? '🗡️ Rogue · 100 HP · 1.2x damage · 30% dodge on counter-attacks · 🗡️ Backstab: 3x damage, 3-turn cooldown' :
-        '⚔️ Warrior · 150 HP · 20% damage reduction on counter-attacks · 🛡️ Taunt: activate before attacking for 60% counter-attack reduction (1 turn cooldown)'
+        spec.heroClass === 'mage' ? '🔮 Mage · 80 HP · 1.5x boss damage · 5 mana (1/attack, half dmg at 0) · <PixelIcon name="heal" size={12} /> Heal: costs 2 mana, restores 30 HP' :
+        spec.heroClass === 'rogue' ? '🗡️ Rogue · 100 HP · 1.2x damage · 30% dodge on counter-attacks · <PixelIcon name="dagger" size={12} /> Backstab: 3x damage, 3-turn cooldown' :
+        '⚔️ Warrior · 150 HP · 20% damage reduction on counter-attacks · <PixelIcon name="shield" size={12} /> Taunt: activate before attacking for 60% counter-attack reduction (1 turn cooldown)'
       }>
       <div className="hero-bar" style={{ position: 'relative' }}>
         {floatingDmg?.target === 'hero' && <div className="floating-dmg" style={{ color: floatingDmg.color }}>{floatingDmg.amount}</div>}
@@ -546,19 +547,19 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
           {spec.heroClass === 'mage' && (
             <button className="btn btn-ability" disabled={(spec.heroMana ?? 0) < 2 || heroHP >= 80}
               onClick={() => onAttack('hero', 0)}>
-              💚 Heal (2 mana)
+              <PixelIcon name="heal" size={12} /> Heal (2 mana)
             </button>
           )}
           {spec.heroClass === 'warrior' && (
             <button className={`btn btn-ability${(spec.tauntActive ?? 0) === 1 ? ' active' : ''}`}
               disabled={(spec.tauntActive ?? 0) >= 1}
               onClick={() => onAttack('activate-taunt', 0)}>
-              🛡️ Taunt {(spec.tauntActive ?? 0) > 1 ? `(${(spec.tauntActive ?? 0) - 1} CD)` : (spec.tauntActive ?? 0) === 1 ? '(Active!)' : ''}
+              <PixelIcon name="shield" size={12} /> Taunt {(spec.tauntActive ?? 0) > 1 ? `(${(spec.tauntActive ?? 0) - 1} CD)` : (spec.tauntActive ?? 0) === 1 ? '(Active!)' : ''}
             </button>
           )}
           {spec.heroClass === 'rogue' && (
             <span className="cooldown-text">
-              🗡️ Backstab: {(spec.backstabCooldown ?? 0) > 0 ? `${spec.backstabCooldown} turns CD` : 'Ready!'}
+              <PixelIcon name="dagger" size={12} /> Backstab: {(spec.backstabCooldown ?? 0) > 0 ? `${spec.backstabCooldown} turns CD` : 'Ready!'}
             </span>
           )}
         </div>
@@ -575,12 +576,12 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
           <div className="inventory-bar">
             {wb > 0 && (
               <Tooltip text={`Weapon equipped: +${wb} damage, ${wu} uses remaining`}>
-                <span className="equip-badge equipped"><ItemSprite id="weapon-common" size={16} /> ⚔️+{wb} ({wu})</span>
+                <span className="equip-badge equipped"><ItemSprite id="weapon-common" size={16} /> +{wb} ({wu})</span>
               </Tooltip>
             )}
             {ab > 0 && (
               <Tooltip text={`Armor equipped: +${ab}% damage reduction on counter-attacks`}>
-                <span className="equip-badge equipped"><ItemSprite id="armor-common" size={16} /> 🛡️+{ab}%</span>
+                <span className="equip-badge equipped"><ItemSprite id="armor-common" size={16} /> +{ab}%</span>
               </Tooltip>
             )}
             {items.map((item, i) => {
@@ -660,63 +661,63 @@ function CombatBreakdown({ heroAction, enemyAction, spec, oldHP }: { heroAction:
   const lines: { icon: string; text: string; color?: string }[] = []
 
   // DoT effects
-  if (heroAction.includes('Poison')) lines.push({ icon: '🟢', text: 'Poison: -5 HP', color: '#2ecc71' })
-  if (heroAction.includes('Burn')) lines.push({ icon: '🔴', text: 'Burn: -8 HP', color: '#e74c3c' })
-  if (heroAction.includes('STUNNED')) lines.push({ icon: '🟡', text: 'STUNNED! No damage dealt', color: '#f1c40f' })
+  if (heroAction.includes('Poison')) lines.push({ icon: 'poison', text: 'Poison: -5 HP', color: '#2ecc71' })
+  if (heroAction.includes('Burn')) lines.push({ icon: 'fire', text: 'Burn: -8 HP', color: '#e74c3c' })
+  if (heroAction.includes('STUNNED')) lines.push({ icon: 'lightning', text: 'STUNNED! No damage dealt', color: '#f1c40f' })
 
   // Hero attack
   const dmgMatch = heroAction.match(/deals (\d+) damage.*\(HP: (\d+) -> (\d+)\)/)
-  if (dmgMatch) lines.push({ icon: '⚔️', text: `Dealt ${dmgMatch[1]} damage (${dmgMatch[2]} → ${dmgMatch[3]} HP)` })
+  if (dmgMatch) lines.push({ icon: 'sword', text: `Dealt ${dmgMatch[1]} damage (${dmgMatch[2]} → ${dmgMatch[3]} HP)` })
   if (heroAction.includes('heals')) {
     const healMatch = heroAction.match(/heals for (\d+)/)
-    if (healMatch) lines.push({ icon: '💚', text: `Healed ${healMatch[1]} HP` })
+    if (healMatch) lines.push({ icon: 'heal', text: `Healed ${healMatch[1]} HP` })
   }
-  if (heroAction.includes('Taunt')) lines.push({ icon: '🛡️', text: 'Taunt activated! 60% damage reduction' })
+  if (heroAction.includes('Taunt')) lines.push({ icon: 'shield', text: 'Taunt activated! 60% damage reduction' })
 
   // Modifiers
-  if (heroAction.includes('Blessing')) { const m = heroAction.match(/\[Blessing:[^\]]+\]/); if (m) lines.push({ icon: '🟢', text: m[0], color: '#2ecc71' }) }
-  if (heroAction.includes('Curse')) { const m = heroAction.match(/\[Curse:[^\]]+\]/); if (m) lines.push({ icon: '🔴', text: m[0], color: '#e74c3c' }) }
-  if (heroAction.includes('CRIT')) lines.push({ icon: '⭐', text: 'CRITICAL HIT! 2x damage', color: '#f5c518' })
+  if (heroAction.includes('Blessing')) { const m = heroAction.match(/\[Blessing:[^\]]+\]/); if (m) lines.push({ icon: 'poison', text: m[0], color: '#2ecc71' }) }
+  if (heroAction.includes('Curse')) { const m = heroAction.match(/\[Curse:[^\]]+\]/); if (m) lines.push({ icon: 'fire', text: m[0], color: '#e74c3c' }) }
+  if (heroAction.includes('CRIT')) lines.push({ icon: 'star', text: 'CRITICAL HIT! 2x damage', color: '#f5c518' })
 
   // Class bonuses
-  if (heroAction.includes('Backstab 3x')) lines.push({ icon: '🗡️', text: 'Backstab: 3x damage multiplier' })
-  if (heroAction.includes('Mage critical')) lines.push({ icon: '🔮', text: 'Mage: 1.5x boss damage' })
-  if (heroAction.includes('Rogue precision')) lines.push({ icon: '🗡️', text: 'Rogue: 1.2x damage' })
-  if (heroAction.includes('No mana')) lines.push({ icon: '🔮', text: 'No mana! Half damage', color: '#e74c3c' })
+  if (heroAction.includes('Backstab 3x')) lines.push({ icon: 'dagger', text: 'Backstab: 3x damage multiplier' })
+  if (heroAction.includes('Mage critical')) lines.push({ icon: 'mana', text: 'Mage: 1.5x boss damage' })
+  if (heroAction.includes('Rogue precision')) lines.push({ icon: 'dagger', text: 'Rogue: 1.2x damage' })
+  if (heroAction.includes('No mana')) lines.push({ icon: 'mana', text: 'No mana! Half damage', color: '#e74c3c' })
 
   // Weapon bonus
-  if (heroAction.includes('+') && heroAction.includes('wpn')) lines.push({ icon: '🗡️', text: 'Weapon bonus applied' })
+  if (heroAction.includes('+') && heroAction.includes('wpn')) lines.push({ icon: 'dagger', text: 'Weapon bonus applied' })
 
   // Loot
-  if (heroAction.includes('Dropped')) { const m = heroAction.match(/Dropped (.+?)!/); if (m) lines.push({ icon: '🎁', text: `Loot: ${m[1]}`, color: '#f5c518' }) }
-  if (heroAction.includes('mana!')) lines.push({ icon: '🔮', text: '+1 mana (monster kill)', color: '#9b59b6' })
+  if (heroAction.includes('Dropped')) { const m = heroAction.match(/Dropped (.+?)!/); if (m) lines.push({ icon: 'chest', text: `Loot: ${m[1]}`, color: '#f5c518' }) }
+  if (heroAction.includes('mana!')) lines.push({ icon: 'mana', text: '+1 mana (monster kill)', color: '#9b59b6' })
 
   // Enemy action
   if (enemyAction) {
     const counterMatch = enemyAction.match(/(\d+) (?:total )?damage/)
     if (counterMatch) {
       const hpLost = oldHP - (spec.heroHP ?? 0)
-      lines.push({ icon: '💀', text: enemyAction })
-      if (heroAction.includes('Rogue dodged')) lines.push({ icon: '✨', text: 'Rogue dodged the counter-attack!', color: '#2ecc71' })
+      lines.push({ icon: 'skull', text: enemyAction })
+      if (heroAction.includes('Rogue dodged')) lines.push({ icon: 'star', text: 'Rogue dodged the counter-attack!', color: '#2ecc71' })
     } else {
-      lines.push({ icon: '💀', text: enemyAction })
+      lines.push({ icon: 'skull', text: enemyAction })
     }
   }
 
   // Status effects applied
-  if (enemyAction.includes('POISON')) lines.push({ icon: '🟢', text: 'Poisoned! -5 HP/turn for 3 turns', color: '#2ecc71' })
-  if (enemyAction.includes('BURN')) lines.push({ icon: '🔴', text: 'Burning! -8 HP/turn for 2 turns', color: '#e74c3c' })
-  if (enemyAction.includes('STUN')) lines.push({ icon: '🟡', text: 'Stunned! Skip next attack', color: '#f1c40f' })
+  if (enemyAction.includes('POISON')) lines.push({ icon: 'poison', text: 'Poisoned! -5 HP/turn for 3 turns', color: '#2ecc71' })
+  if (enemyAction.includes('BURN')) lines.push({ icon: 'fire', text: 'Burning! -8 HP/turn for 2 turns', color: '#e74c3c' })
+  if (enemyAction.includes('STUN')) lines.push({ icon: 'lightning', text: 'Stunned! Skip next attack', color: '#f1c40f' })
 
   // Kill / victory
-  if (dmgMatch && dmgMatch[3] === '0') lines.push({ icon: '💀', text: 'Target slain!', color: '#f5c518' })
-  if (enemyAction.includes('defeated')) lines.push({ icon: '👑', text: 'BOSS DEFEATED!', color: '#f5c518' })
+  if (dmgMatch && dmgMatch[3] === '0') lines.push({ icon: 'skull', text: 'Target slain!', color: '#f5c518' })
+  if (enemyAction.includes('defeated')) lines.push({ icon: 'crown', text: 'BOSS DEFEATED!', color: '#f5c518' })
 
   return (
     <div className="combat-breakdown">
       {lines.map((l, i) => (
         <div key={i} className="combat-line" style={{ color: l.color }}>
-          <span className="combat-icon">{l.icon}</span>
+          <span className="combat-icon"><PixelIcon name={l.icon} size={14} /></span>
           <span>{l.text}</span>
         </div>
       ))}
@@ -781,7 +782,7 @@ function EntityCard({ name, entity, state, hp, maxHP, diceFormula, onAttack, dis
             onClick={() => onAttack(name, 0)}>🎲 {diceLabel(d)}</button>
           {heroClass === 'rogue' && (backstabCooldown ?? 0) === 0 && (
             <button className="btn btn-ability" style={{ fontSize: '7px', padding: '4px 8px' }}
-              onClick={() => onAttack(name + '-backstab', 0)}>🗡️ Backstab</button>
+              onClick={() => onAttack(name + '-backstab', 0)}>Backstab</button>
           )}
         </div>
       )}
