@@ -134,6 +134,14 @@ fi
 
 [ "$GAME_LOGIC_LEAKS" -eq 0 ] || fail "Game logic leaked into frontend"
 
+# Backend should not have combat logic (damage calc, counter-attacks, class modifiers)
+BACKEND_FILE="backend/internal/handlers/handlers.go"
+if grep -q "EFFECTIVE_DAMAGE\|counter.attack\|dodge.*chance\|damage.*reduction" "$BACKEND_FILE" 2>/dev/null; then
+  echo "  ❌ Backend has combat logic"; fail "Combat logic in backend"
+else
+  echo "  ✅ No combat logic in backend"; pass "No combat logic in backend"
+fi
+
 # --- API response guardrails ---
 
 echo ""

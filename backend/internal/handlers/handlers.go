@@ -117,6 +117,9 @@ func (h *Handler) CreateDungeon(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Use client-provided HP values, or derive from difficulty
+	// NOTE: Backend sets initial HP values as a convenience. The game is fully
+	// playable via kubectl by setting these values manually. All COMBAT logic
+	// lives in the Attack Job. This is the ONLY game logic in the backend.
 	hp, _ := defaultHP[req.Difficulty]
 	monsterHP := make([]interface{}, req.Monsters)
 	for i := range monsterHP {
