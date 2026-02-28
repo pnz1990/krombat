@@ -11,10 +11,26 @@ spec:
     group: game.k8s.example
     spec:
       dungeonName: string | required=true
+      opened: integer | default=0
     status:
-      loot: "${'Treasure code: ' + treasureSecret.metadata.name + '-LOOT'}"
+      treasureState: "${treasureState.data.state}"
+      loot: "${treasureState.data.loot}"
 
   resources:
+    - id: treasureState
+      template:
+        apiVersion: v1
+        kind: ConfigMap
+        metadata:
+          name: "${schema.spec.dungeonName + '-treasure-state'}"
+          namespace: ${schema.metadata.namespace}
+          labels:
+            game.k8s.example/dungeon: ${schema.spec.dungeonName}
+            game.k8s.example/entity: treasure
+        data:
+          state: "${schema.spec.opened == 1 ? 'opened' : 'unopened'}"
+          loot: "${schema.spec.opened == 1 ? 'Treasure code: ' + schema.spec.dungeonName + '-LOOT' : ''}"
+
     - id: treasureSecret
       template:
         apiVersion: v1

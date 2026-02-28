@@ -177,6 +177,20 @@ spec:
                           echo "Conflict, retrying ($i/5)..."; sleep $i; continue
                         fi
 
+                        # === OPEN TREASURE ===
+                        if [ "$TARGET" = "open-treasure" ]; then
+                          BOSS_HP_CHK=$(echo "$DUNGEON_JSON" | jq -r '.spec.bossHP // 1')
+                          ALIVE_CHK=$(echo "$DUNGEON_JSON" | jq '[.spec.monsterHP[] | select(. > 0)] | length')
+                          if [ "$BOSS_HP_CHK" -gt 0 ] || [ "$ALIVE_CHK" -gt 0 ]; then
+                            echo "Cannot open treasure: boss not defeated"; exit 1
+                          fi
+                          PATCH="{\"spec\":{\"treasureOpened\":1,\"lastHeroAction\":\"Opened the treasure chest!\",\"lastEnemyAction\":\"\"}}"
+                          if kubectl patch dungeon "$DUNGEON" -n "$DUNGEON_NS" --type=merge -p "$PATCH" 2>&1; then
+                            echo "Treasure opened!"; exit 0
+                          fi
+                          echo "Conflict, retrying ($i/5)..."; sleep $i; continue
+                        fi
+
                         # === MAGE HEAL ===
                         if [ "$TARGET" = "hero" ]; then
                           if [ "$HERO_CLASS" != "mage" ]; then

@@ -27,6 +27,7 @@ spec:
       poisonTurns: integer | default=0
       burnTurns: integer | default=0
       stunTurns: integer | default=0
+      treasureOpened: integer | default=0
       lastHeroAction: string | default=""
       lastEnemyAction: string | default=""
     status:
@@ -35,6 +36,7 @@ spec:
       victory: "${bossCR.status.?entityState.orValue('pending') == 'defeated'}"
       defeat: "${heroCR.status.?entityState.orValue('alive') == 'defeated'}"
       loot: "${treasureCR.status.?loot.orValue('')}"
+      treasureState: "${treasureCR.status.?treasureState.orValue('unopened')}"
       modifier: "${modifierCR.status.?effect.orValue('No modifier')}"
       modifierType: "${modifierCR.status.?modifierType.orValue('none')}"
       maxHeroHP: "${heroCR.status.?maxHP.orValue('100')}"
@@ -110,6 +112,7 @@ spec:
           namespace: ${ns.metadata.name}
         spec:
           dungeonName: ${schema.metadata.name}
+          opened: ${schema.spec.treasureOpened}
 
     # --- Modifier CR (conditional: only created when modifier is not "none") ---
     - id: modifierCR

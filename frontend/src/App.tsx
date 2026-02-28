@@ -113,7 +113,7 @@ export default function App() {
     if (!selected || attackPhase) return
     setError('')
     const isAbility = target === 'hero' || target === 'activate-taunt'
-    const isItem = target.startsWith('use-') || target.startsWith('equip-')
+    const isItem = target.startsWith('use-') || target.startsWith('equip-') || target === 'open-treasure'
     const shortTarget = (isAbility || isItem) ? target : target.replace(/-backstab$/, '').split('-').slice(-2).join('-')
     try {
       setAttackTarget(target.replace(/-backstab$/, ''))
@@ -470,20 +470,15 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
         <div className="victory-banner">
           <h2><PixelIcon name="crown" size={18} /> VICTORY! <PixelIcon name="crown" size={18} /></h2>
           <p className="loot">The dungeon has been conquered!</p>
-          <button className="btn btn-gold" style={{ marginTop: 12 }} onClick={onOpenLoot}>
-            🗝️ Open Treasure
-          </button>
-        </div>
-      )}
-
-      {showLoot && (
-        <div className="modal-overlay" onClick={onCloseLoot}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div style={{ marginBottom: 12 }}><PixelIcon name="crown" size={48} /></div>
-            <h2 style={{ color: 'var(--gold)', fontSize: 14, marginBottom: 12 }}>TREASURE UNLOCKED</h2>
-            <div className="loot-content">{status?.loot || 'The treasure awaits...'}</div>
-            <button className="btn btn-gold" style={{ marginTop: 16 }} onClick={onCloseLoot}>Close</button>
-          </div>
+          {(spec.treasureOpened ?? 0) === 0 ? (
+            <button className="btn btn-gold" style={{ marginTop: 12 }}
+              disabled={!!attackPhase}
+              onClick={() => onAttack('open-treasure', 0)}>
+              <PixelIcon name="key" size={12} /> Open Treasure
+            </button>
+          ) : (
+            <div className="loot-content" style={{ marginTop: 12 }}>{status?.loot || 'Loading treasure...'}</div>
+          )}
         </div>
       )}
 

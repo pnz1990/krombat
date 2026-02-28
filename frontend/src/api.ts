@@ -17,13 +17,14 @@ export interface DungeonCR {
     modifier?: string; inventory?: string
     weaponBonus?: number; weaponUses?: number; armorBonus?: number
     poisonTurns?: number; burnTurns?: number; stunTurns?: number
+    treasureOpened?: number
     lastHeroAction?: string; lastEnemyAction?: string
   }
   status?: {
     livingMonsters: number; bossState: string; victory: boolean; defeated: boolean
     loot: string; maxMonsterHP: number; maxBossHP: number
     maxHeroHP: number; diceFormula: string; monsterCounter: number; bossCounter: number
-    modifier?: string; modifierType?: string
+    modifier?: string; modifierType?: string; treasureState?: string
   }
 }
 
