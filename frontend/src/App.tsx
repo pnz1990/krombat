@@ -115,7 +115,7 @@ export default function App() {
       setAttackTarget(target.replace(/-backstab$/, ''))
       setAnimPhase('hero-attack')
       setAttackPhase(isAbility ? (target === 'hero' ? '💚 Healing...' : '🛡️ Taunting...') : `⚔️ Attacking ${shortTarget}...`)
-      if (!isAbility) setFloatingDmg({ target: target.replace(/-backstab$/, ''), amount: `-${damage}`, color: '#e94560' })
+      if (!isAbility) setFloatingDmg({ target: target.replace(/-backstab$/, ''), amount: '⚔️', color: '#e94560' })
       await submitAttack(selected.ns, selected.name, target, damage)
       await new Promise(r => setTimeout(r, 1500))
       setFloatingDmg(null)
@@ -658,23 +658,18 @@ function EntityCard({ name, entity, state, hp, maxHP, diceFormula, onAttack, dis
     setRolling(true)
     setRolls([])
     setTotal(null)
-    // Cycle random numbers during roll
+    // Submit attack immediately to lock all buttons — dice animation is cosmetic
+    onAttack(name, 0)
     const interval = setInterval(() => {
       setDisplayDice(rollDice(d.count, d.sides))
     }, 80)
     setTimeout(() => {
       clearInterval(interval)
       const r = rollDice(d.count, d.sides)
-      const dmg = r.reduce((a, b) => a + b, 0) + d.mod
       setRolls(r)
       setDisplayDice(r)
-      setTotal(dmg)
-      setTimeout(() => {
-        onAttack(name, dmg)
-        setRolls([])
-        setTotal(null)
-        setRolling(false)
-      }, 800)
+      setTotal(r.reduce((a, b) => a + b, 0) + d.mod)
+      setTimeout(() => { setRolls([]); setTotal(null); setRolling(false) }, 800)
     }, 600)
   }
 
@@ -714,11 +709,7 @@ function EntityCard({ name, entity, state, hp, maxHP, diceFormula, onAttack, dis
             onClick={handleRoll}>⊞ {diceLabel(d)}</button>
           {heroClass === 'rogue' && (backstabCooldown ?? 0) === 0 && (
             <button className="btn btn-ability" style={{ fontSize: '7px', padding: '4px 8px' }}
-              onClick={() => {
-                const r = rollDice(d.count, d.sides)
-                const dmg = r.reduce((a, b) => a + b, 0) + d.mod
-                onAttack(name + '-backstab', dmg)
-              }}>🗡️ Backstab</button>
+              onClick={() => onAttack(name + '-backstab', 0)}>🗡️ Backstab</button>
           )}
         </div>
       )}
