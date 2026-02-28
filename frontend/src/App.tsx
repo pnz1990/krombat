@@ -676,10 +676,9 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
           })()}
           </div>
 
-          <EventLogTabs events={events} k8sLog={k8sLog} />
         </div>
 
-        {/* RIGHT PANEL — Hero, Equipment, Abilities (30%) */}
+        {/* RIGHT PANEL */}
         <div className="right-panel">
           <div className="hero-section">
             <Sprite spriteType={spec.heroClass || 'warrior'} size={80}
@@ -784,6 +783,8 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
           })()}
         </div>
       </div>
+
+      <EventLogTabs events={events} k8sLog={k8sLog} />
     </div>
   )
 }
