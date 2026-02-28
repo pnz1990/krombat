@@ -8,7 +8,6 @@ import (
 	"math/rand"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/pnz1990/krombat/backend/internal/k8s"
@@ -262,12 +261,6 @@ func (h *Handler) CreateAttack(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Target == "" {
 		writeError(w, "target required", http.StatusBadRequest)
-		return
-	}
-	// Allow damage=0 for taunt/items, negative for heal
-	isAbility := req.Target == "hero" || req.Target == "activate-taunt" || strings.HasPrefix(req.Target, "use-") || strings.HasPrefix(req.Target, "equip-")
-	if !isAbility && req.Damage < 1 {
-		writeError(w, "damage (>0) required for attacks", http.StatusBadRequest)
 		return
 	}
 
