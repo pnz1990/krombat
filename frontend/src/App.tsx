@@ -429,7 +429,11 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
 
       {!gameOver && (
         <div className={`turn-bar ${attackPhase ? 'attacking' : ''}`}>
-          <span className={`turn-indicator${attackPhase?.includes('DAMAGE') ? ' damage-reveal' : ''}`}>{attackPhase || '⚔️ Ready to attack!'}</span>
+          {attackPhase?.includes('Rolling') ? (
+            <DiceRoller formula={status?.diceFormula || '2d10+8'} />
+          ) : (
+            <span className={`turn-indicator${attackPhase?.includes('DAMAGE') ? ' damage-reveal' : ''}`}>{attackPhase || '⚔️ Ready to attack!'}</span>
+          )}
         </div>
       )}
 
@@ -637,6 +641,21 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
 }
 
 // Parse dice formula from CR status (e.g. "2d8+5" -> {count:2, sides:8, mod:5})
+function DiceRoller({ formula }: { formula: string }) {
+  const d = parseDice(formula)
+  const [faces, setFaces] = useState<number[]>(() => rollDice(d.count, d.sides))
+  useEffect(() => {
+    const id = setInterval(() => setFaces(rollDice(d.count, d.sides)), 100)
+    return () => clearInterval(id)
+  }, [d.count, d.sides])
+  return (
+    <div className="dice-roller">
+      <div className="dice-label">🎲 Rolling {formula}...</div>
+      <div className="dice-faces">{faces.map((v, i) => <span key={i} className="die rolling">{v}</span>)}</div>
+    </div>
+  )
+}
+
 function parseDice(formula: string): { count: number; sides: number; mod: number } {
   const m = formula.match(/(\d+)d(\d+)\+(\d+)/)
   return m ? { count: +m[1], sides: +m[2], mod: +m[3] } : { count: 2, sides: 10, mod: 8 }
@@ -656,58 +675,16 @@ function EntityCard({ name, entity, state, hp, maxHP, diceFormula, onAttack, dis
   spriteType: string; spriteAction: SpriteAction; tooltip?: string; floatingDmg?: string | null
   heroClass?: string; backstabCooldown?: number
 }) {
-  const [rolling, setRolling] = useState(false)
-  const [displayDice, setDisplayDice] = useState<number[]>([])
-  const [rolls, setRolls] = useState<number[]>([])
-  const [total, setTotal] = useState<number | null>(null)
   const pct = maxHP > 0 ? Math.min((hp / maxHP) * 100, 100) : 0
   const hpClass = pct > 60 ? 'high' : pct > 30 ? 'mid' : 'low'
-  const canAttack = !disabled && !rolling && ((entity === 'monster' && state === 'alive') || (entity === 'boss' && state === 'ready'))
+  const canAttack = !disabled && ((entity === 'monster' && state === 'alive') || (entity === 'boss' && state === 'ready'))
   const base = parseDice(diceFormula)
   const d = entity === 'boss' ? { count: base.count + 1, sides: base.sides + 2, mod: base.mod + 2 } : base
-
-  const handleRoll = () => {
-    setRolling(true)
-    setRolls([])
-    setTotal(null)
-    // Submit immediately to lock all buttons — dice animation is cosmetic
-    onAttack(name, 0)
-    const interval = setInterval(() => {
-      setDisplayDice(rollDice(d.count, d.sides))
-    }, 80)
-    setTimeout(() => {
-      clearInterval(interval)
-      const r = rollDice(d.count, d.sides)
-      setRolls(r)
-      setDisplayDice(r)
-      setTotal(r.reduce((a, b) => a + b, 0) + d.mod)
-      setTimeout(() => { setRolls([]); setTotal(null); setRolling(false) }, 800)
-    }, 600)
-  }
 
   return (
     <Tooltip text={tooltip || ''}>
     <div className={`entity-card ${state}`} style={{ position: 'relative' }}>
       {floatingDmg && <div className="floating-dmg" style={{ color: '#e94560' }}>{floatingDmg}</div>}
-      {(rolling || total !== null) && (
-        <div className="dice-roll-overlay">
-          <div className="dice-formula">Rolling {diceLabel(d)}...</div>
-          <div className="dice-container">
-            {total === null
-              ? displayDice.map((v, i) => (
-                  <div key={i} className="die rolling">{v}</div>
-                ))
-              : rolls.map((v, i) => <div key={i} className="die landed">{v}</div>)
-            }
-          </div>
-          {total !== null && (
-            <>
-              <div className="dice-modifier">{rolls.join(' + ')} + {d.mod}</div>
-              <div className="dice-result">💥 {total}</div>
-            </>
-          )}
-        </div>
-      )}
       <Sprite spriteType={spriteType} action={spriteAction} size={64} flip={entity !== 'boss' && entity !== 'monster' ? false : true} />
       <div className="entity-name">{name.split('-').slice(-2).join('-')}</div>
       <div className={`entity-state ${state}`}>{state}</div>
@@ -718,7 +695,7 @@ function EntityCard({ name, entity, state, hp, maxHP, diceFormula, onAttack, dis
       {canAttack && (
         <div className="attack-controls">
           <button className="btn btn-primary" style={{ fontSize: '7px', padding: '4px 8px' }}
-            onClick={handleRoll}>⊞ {diceLabel(d)}</button>
+            onClick={() => onAttack(name, 0)}>🎲 {diceLabel(d)}</button>
           {heroClass === 'rogue' && (backstabCooldown ?? 0) === 0 && (
             <button className="btn btn-ability" style={{ fontSize: '7px', padding: '4px 8px' }}
               onClick={() => onAttack(name + '-backstab', 0)}>🗡️ Backstab</button>

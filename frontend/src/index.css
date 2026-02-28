@@ -500,3 +500,11 @@ body {
 /* Big damage reveal */
 .damage-reveal { font-size: 18px; color: #e94560; text-shadow: 2px 2px 0 #000, 0 0 10px #e94560; animation: damageReveal 0.3s ease-out; }
 @keyframes damageReveal { 0% { transform: scale(2); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+
+/* Dice roller in turn bar */
+.dice-roller { display: flex; align-items: center; gap: 8px; justify-content: center; }
+.dice-label { font-size: 9px; color: var(--gold); }
+.dice-faces { display: flex; gap: 4px; }
+.dice-faces .die { font-size: 14px; background: #1a1a2e; border: 1px solid var(--gold); border-radius: 3px; padding: 2px 5px; min-width: 20px; text-align: center; }
+.dice-faces .die.rolling { animation: dieShake 0.1s infinite; }
+@keyframes dieShake { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
