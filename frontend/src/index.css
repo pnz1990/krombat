@@ -581,3 +581,8 @@ body {
 .k8s-ts { font-size: 6px; color: #444; }
 .k8s-cmd { font-size: 7px; color: #4ec9b0; }
 .k8s-res { font-size: 7px; color: #888; }
+
+/* K8s log clickable entries */
+.k8s-entry.clickable { cursor: pointer; }
+.k8s-entry.clickable:hover { background: #1a1a2e; }
+.yaml-view { font-family: 'Courier New', monospace; font-size: 8px; color: #4ec9b0; background: #0a0a15; padding: 12px; border-radius: 4px; white-space: pre-wrap; word-break: break-all; max-height: 400px; overflow-y: auto; }

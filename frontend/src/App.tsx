@@ -32,10 +32,10 @@ export default function App() {
   const [dungeons, setDungeons] = useState<DungeonSummary[]>([])
   const [detail, setDetail] = useState<DungeonCR | null>(null)
   const [events, setEvents] = useState<WSEvent[]>([])
-  const [k8sLog, setK8sLog] = useState<{ ts: string; cmd: string; res: string }[]>([])
-  const addK8s = (cmd: string, res: string) => {
+  const [k8sLog, setK8sLog] = useState<{ ts: string; cmd: string; res: string; yaml?: string }[]>([])
+  const addK8s = (cmd: string, res: string, yaml?: string) => {
     const ts = new Date().toLocaleTimeString()
-    setK8sLog(prev => [{ ts, cmd, res }, ...prev].slice(0, 50))
+    setK8sLog(prev => [{ ts, cmd, res, yaml }, ...prev].slice(0, 50))
   }
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -66,7 +66,7 @@ export default function App() {
   }, [])
 
   // Refresh on WebSocket events — only refresh data, don't add to event log
-  useEffect(() => { if (lastEvent) { addK8s(`watch: ${lastEvent.type}`, `${lastEvent.action} ${lastEvent.name}`); refresh() } }, [lastEvent, refresh])
+  useEffect(() => { if (lastEvent) { refresh() } }, [lastEvent, refresh])
 
   // Initial load + load dungeon detail when URL changes
   useEffect(() => {
@@ -102,7 +102,8 @@ export default function App() {
     setError('')
     try {
       await createDungeon(name, monsters, difficulty, heroClass, activeNs)
-      addK8s(`kubectl apply -f dungeon.yaml  # ${name}, ${monsters} monsters, ${difficulty}, ${heroClass}`, 'dungeon.game.k8s.example created')
+      addK8s(`kubectl apply -f dungeon.yaml`, 'dungeon.game.k8s.example created',
+        `apiVersion: game.k8s.example/v1alpha1\nkind: Dungeon\nmetadata:\n  name: ${name}\nspec:\n  monsters: ${monsters}\n  difficulty: ${difficulty}\n  heroClass: ${heroClass}`)
       navigate(`/dungeon/${activeNs}/${name}`)
     } catch (e: any) { setError(e.message) }
   }
@@ -133,7 +134,8 @@ export default function App() {
       }
 
       await submitAttack(selected.ns, selected.name, target, damage)
-      addK8s(`kubectl apply -f attack.yaml  # target: ${target}`, 'attack.game.k8s.example created')
+      addK8s(`kubectl apply -f attack.yaml`, 'attack.game.k8s.example created',
+        `apiVersion: game.k8s.example/v1alpha1\nkind: Attack\nmetadata:\n  name: ${selected.name}-${target}-${Date.now() % 100000}\nspec:\n  dungeonName: ${selected.name}\n  dungeonNamespace: ${selected.ns}\n  target: ${target}\n  damage: ${damage}`)
 
       // Poll for CR update
       let updated = detail!
@@ -141,7 +143,8 @@ export default function App() {
         const fetched = await getDungeon(selected.ns, selected.name)
         if (fetched.spec.lastHeroAction !== detail?.spec.lastHeroAction) {
           updated = fetched
-          addK8s(`kubectl get dungeon ${selected.name} -o jsonpath='{.spec}'`, `heroHP:${fetched.spec.heroHP} bossHP:${fetched.spec.bossHP} monsterHP:${JSON.stringify(fetched.spec.monsterHP)}`)
+          addK8s(`kubectl get dungeon ${selected.name} -o json`, `heroHP:${fetched.spec.heroHP} bossHP:${fetched.spec.bossHP}`,
+            JSON.stringify({ spec: fetched.spec, status: fetched.status }, null, 2))
           break
         }
         await new Promise(r => setTimeout(r, 1000))
@@ -357,14 +360,23 @@ function DungeonList({ dungeons, onSelect, onDelete, deleting }: {
 
 
 
-function EventLogTabs({ events, k8sLog }: { events: WSEvent[]; k8sLog: { ts: string; cmd: string; res: string }[] }) {
+function EventLogTabs({ events, k8sLog }: { events: WSEvent[]; k8sLog: { ts: string; cmd: string; res: string; yaml?: string }[] }) {
   const [tab, setTab] = useState<'game' | 'k8s'>('game')
+  const [yamlModal, setYamlModal] = useState<string | null>(null)
   return (
     <div style={{ marginTop: 16 }}>
       <div className="log-tabs">
         <button className={`log-tab${tab === 'game' ? ' active' : ''}`} onClick={() => setTab('game')}>Game Log</button>
         <button className={`log-tab${tab === 'k8s' ? ' active' : ''}`} onClick={() => setTab('k8s')}>K8s Log</button>
       </div>
+      {yamlModal && (
+        <div className="modal-overlay" onClick={() => setYamlModal(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 500, textAlign: 'left' }}>
+            <pre className="yaml-view">{yamlModal}</pre>
+            <button className="btn btn-gold" style={{ marginTop: 8 }} onClick={() => setYamlModal(null)}>Close</button>
+          </div>
+        </div>
+      )}
       {tab === 'game' ? (
         <div className="event-log">
           {events.length === 0 && <div className="event-entry">Waiting for events...</div>}
@@ -379,7 +391,7 @@ function EventLogTabs({ events, k8sLog }: { events: WSEvent[]; k8sLog: { ts: str
         <div className="event-log k8s-log">
           {k8sLog.length === 0 && <div className="event-entry">No K8s operations yet...</div>}
           {k8sLog.map((e, i) => (
-            <div key={i} className="k8s-entry">
+            <div key={i} className={`k8s-entry${e.yaml ? ' clickable' : ''}`} onClick={() => e.yaml && setYamlModal(e.yaml)}>
               <span className="k8s-ts">{e.ts}</span>
               <span className="k8s-cmd">$ {e.cmd}</span>
               <span className="k8s-res">{e.res}</span>
@@ -503,7 +515,7 @@ function HelpModal({ onClose }: { onClose: () => void }) {
   )
 }
 function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoot, onCloseLoot, currentTurn, turnRound, attackPhase, animPhase, attackTarget, showHelp, onToggleHelp, floatingDmg, combatModal, onDismissCombat, lootDrop, onDismissLoot }: {
-  cr: DungeonCR; onBack: () => void; onAttack: (t: string, d: number) => void; events: WSEvent[]; k8sLog: { ts: string; cmd: string; res: string }[]
+  cr: DungeonCR; onBack: () => void; onAttack: (t: string, d: number) => void; events: WSEvent[]; k8sLog: { ts: string; cmd: string; res: string; yaml?: string }[]
   showLoot: boolean; onOpenLoot: () => void; onCloseLoot: () => void
   currentTurn: string; turnRound: number; attackPhase: string | null
   animPhase: string; attackTarget: string | null
