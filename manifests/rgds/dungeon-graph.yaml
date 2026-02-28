@@ -29,12 +29,14 @@ spec:
       stunTurns: integer | default=0
       lastHeroAction: string | default=""
       lastEnemyAction: string | default=""
+      treasureOpened: integer | default=0
     status:
       livingMonsters: "${size(monsterCRs.filter(m, m.status.?entityState.orValue('alive') == 'alive'))}"
       bossState: "${bossCR.status.?entityState.orValue('pending')}"
       victory: "${bossCR.status.?entityState.orValue('pending') == 'defeated'}"
       defeat: "${heroCR.status.?entityState.orValue('alive') == 'defeated'}"
       loot: "${treasureCR.status.?loot.orValue('')}"
+      treasureState: "${schema.spec.treasureOpened == 1 ? 'opened' : (bossCR.status.?entityState.orValue('pending') == 'defeated' ? 'unopened' : 'locked')}"
       modifier: "${modifierCR.status.?effect.orValue('No modifier')}"
       modifierType: "${modifierCR.status.?modifierType.orValue('none')}"
       maxHeroHP: "${heroCR.status.?maxHP.orValue('100')}"
@@ -110,6 +112,7 @@ spec:
           namespace: ${ns.metadata.name}
         spec:
           dungeonName: ${schema.metadata.name}
+          opened: ${schema.spec.treasureOpened}
 
     # --- Modifier CR (conditional: only created when modifier is not "none") ---
     - id: modifierCR

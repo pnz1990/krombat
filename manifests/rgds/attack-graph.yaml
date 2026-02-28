@@ -138,6 +138,19 @@ spec:
                           echo "Conflict, retrying ($i/5)..."; sleep $i; continue
                         fi
 
+                        # === OPEN TREASURE ===
+                        if [ "$TARGET" = "open-treasure" ]; then
+                          BOSS_HP=$(echo "$DUNGEON_JSON" | jq -r '.spec.bossHP // 1')
+                          if [ "$BOSS_HP" -gt 0 ]; then
+                            echo "Boss not defeated yet"; exit 1
+                          fi
+                          PATCH="{\"spec\":{\"treasureOpened\":1,\"lastHeroAction\":\"Treasure opened!\",\"lastEnemyAction\":\"\"}}"
+                          if kubectl patch dungeon "$DUNGEON" -n "$DUNGEON_NS" --type=merge -p "$PATCH" 2>&1; then
+                            echo "Treasure opened!"; exit 0
+                          fi
+                          echo "Conflict, retrying ($i/5)..."; sleep $i; continue
+                        fi
+
                         # === EQUIP ITEM ===
                         if echo "$TARGET" | grep -q "^equip-"; then
                           ITEM_TYPE=$(echo "$TARGET" | sed 's/^equip-//')

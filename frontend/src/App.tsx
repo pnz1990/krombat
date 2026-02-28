@@ -430,18 +430,21 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
 
       {status?.victory && (
         <div className="victory-banner">
-          <h2>🏆 VICTORY! 🏆</h2>
+          <h2>★ VICTORY! ★</h2>
           <p className="loot">The dungeon has been conquered!</p>
-          <button className="btn btn-gold" style={{ marginTop: 12 }} onClick={onOpenLoot}>
-            🗝️ Open Treasure
-          </button>
+          {status?.treasureState !== 'opened' && (
+            <button className="btn btn-gold" style={{ marginTop: 12 }} disabled={!!attackPhase}
+              onClick={() => onAttack('open-treasure', 0)}>
+              Open Treasure
+            </button>
+          )}
         </div>
       )}
 
-      {showLoot && (
+      {status?.treasureState === 'opened' && status?.loot && (
         <div className="modal-overlay" onClick={onCloseLoot}>
           <div className="modal" onClick={e => e.stopPropagation()}>
-            <div style={{ fontSize: 48, marginBottom: 12 }}>🏆</div>
+            <div style={{ fontSize: 48, marginBottom: 12 }}>★</div>
             <h2 style={{ color: 'var(--gold)', fontSize: 14, marginBottom: 12 }}>TREASURE UNLOCKED</h2>
             <div className="loot-content">{status?.loot || 'The treasure awaits...'}</div>
             <button className="btn btn-gold" style={{ marginTop: 16 }} onClick={onCloseLoot}>Close</button>
