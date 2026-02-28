@@ -575,3 +575,151 @@ body {
 .k8s-entry.clickable { cursor: pointer; }
 .k8s-entry.clickable:hover { background: #1a1a2e; }
 .yaml-view { font-family: 'Courier New', monospace; font-size: 8px; color: #4ec9b0; background: #0a0a15; padding: 12px; border-radius: 4px; white-space: pre-wrap; word-break: break-all; max-height: 400px; overflow-y: auto; }
+
+/* ===== DUNGEON ARENA ===== */
+.dungeon-arena {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4/3;
+  border-radius: 50% / 45%;
+  overflow: hidden;
+  background: #0d0d15;
+}
+
+/* Stone floor — layered radial gradients for depth */
+.arena-floor {
+  position: absolute; inset: 0;
+  border-radius: inherit;
+  background:
+    radial-gradient(ellipse at 50% 80%, rgba(40,35,30,0.8) 0%, transparent 60%),
+    radial-gradient(ellipse at 50% 50%, #1a1714 0%, #0d0b09 50%, #050404 100%);
+  /* Stone tile pattern */
+  background-size: 100% 100%, 100% 100%;
+}
+.arena-floor::after {
+  content: '';
+  position: absolute; inset: 0;
+  border-radius: inherit;
+  background:
+    repeating-conic-gradient(rgba(255,255,255,0.015) 0% 25%, transparent 0% 50%) 0 0 / 40px 40px,
+    repeating-linear-gradient(90deg, rgba(255,255,255,0.01) 0px, transparent 1px, transparent 39px, rgba(255,255,255,0.01) 40px) 0 0 / 40px 40px,
+    repeating-linear-gradient(0deg, rgba(255,255,255,0.01) 0px, transparent 1px, transparent 39px, rgba(255,255,255,0.01) 40px) 0 0 / 40px 40px;
+  opacity: 0.6;
+}
+
+/* Subtle torch glow from edges */
+.arena-glow {
+  position: absolute; inset: 0;
+  border-radius: inherit;
+  background:
+    radial-gradient(circle at 10% 30%, rgba(255,150,50,0.06) 0%, transparent 30%),
+    radial-gradient(circle at 90% 30%, rgba(255,150,50,0.06) 0%, transparent 30%),
+    radial-gradient(circle at 50% 5%, rgba(255,100,50,0.04) 0%, transparent 25%);
+  pointer-events: none;
+}
+
+/* Arena border — stone rim */
+.dungeon-arena::before {
+  content: '';
+  position: absolute; inset: 0;
+  border-radius: inherit;
+  border: 3px solid rgba(60,50,40,0.6);
+  box-shadow:
+    inset 0 0 30px rgba(0,0,0,0.8),
+    inset 0 0 60px rgba(0,0,0,0.4),
+    0 0 20px rgba(0,0,0,0.6);
+  pointer-events: none;
+  z-index: 5;
+}
+
+/* Entity positioning */
+.arena-entity {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* Shadow under sprites */
+.arena-shadow {
+  width: 50px;
+  height: 10px;
+  background: radial-gradient(ellipse, rgba(0,0,0,0.5) 0%, transparent 70%);
+  margin-top: -6px;
+}
+
+/* Dead entities */
+.arena-entity.dead { opacity: 0.4; filter: grayscale(0.5); }
+
+/* Boss entrance animation */
+.boss-entity { animation: bossEntrance 0.8s ease-out; z-index: 3; }
+@keyframes bossEntrance {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.3); }
+  100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+/* Hero entity */
+.hero-entity { z-index: 3; }
+
+/* Hover UI — hidden by default, shown on hover */
+.arena-hover-ui {
+  opacity: 0;
+  transition: opacity 0.2s;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  position: absolute;
+  top: -30px;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  pointer-events: none;
+}
+.arena-entity:hover .arena-hover-ui {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Arena HP bar */
+.arena-hp-bar {
+  width: 60px;
+  height: 4px;
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 2px;
+  overflow: hidden;
+}
+.arena-hp-fill { height: 100%; transition: width 0.3s; }
+.arena-hp-fill.high { background: #2ecc71; }
+.arena-hp-fill.mid { background: #f39c12; }
+.arena-hp-fill.low { background: #e74c3c; }
+
+.arena-name { font-size: 7px; color: #aaa; text-shadow: 1px 1px 2px #000; }
+
+/* Attack buttons on hover */
+.arena-actions { display: flex; gap: 3px; margin-top: 2px; }
+.arena-atk-btn { font-size: 7px !important; padding: 2px 6px !important; }
+
+/* Victory glow overlay */
+.arena-victory-glow {
+  position: absolute; inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(ellipse at 50% 60%, rgba(245,197,24,0.15) 0%, transparent 60%);
+  animation: victoryPulse 2s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 4;
+}
+@keyframes victoryPulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
+/* Floating damage in arena */
+.arena-entity .floating-dmg {
+  position: absolute;
+  top: -20px;
+  z-index: 10;
+}

@@ -638,44 +638,93 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
       </div>
 
       <div className="game-layout">
-        {/* LEFT PANEL — Monsters, Boss, Events (70%) */}
+        {/* LEFT PANEL — Dungeon Arena */}
         <div className="left-panel">
-          <h3 style={{ fontSize: '10px', marginBottom: 8, color: '#888' }}>MONSTERS</h3>
-          <div className="monster-grid">
+          <div className="dungeon-arena">
+            {/* Stone floor texture layers */}
+            <div className="arena-floor" />
+            <div className="arena-glow" />
+
+            {/* Boss — only visible when ready or defeated */}
+            {bossState !== 'pending' && (() => {
+              let bAction: SpriteAction = bossState === 'defeated' ? 'dead' : 'idle'
+              if (attackTarget?.includes('boss') && animPhase === 'hero-attack') bAction = 'hurt'
+              if (bossState === 'ready' && animPhase === 'enemy-attack' && attackTarget?.includes('boss')) bAction = 'attack'
+              if (status?.victory) bAction = 'dead'
+              const bossName = `${dungeonName}-boss`
+              return (
+                <div className={`arena-entity boss-entity ${bossState === 'defeated' ? 'dead' : ''}`}
+                  style={{ top: '8%', left: '50%' }}>
+                  {floatingDmg?.target?.includes('boss') && <div className="floating-dmg" style={{ color: '#e94560' }}>{floatingDmg.amount}</div>}
+                  <Sprite spriteType="dragon" action={bAction} size={96} />
+                  <div className="arena-shadow" style={{ width: 80 }} />
+                  <div className="arena-hover-ui">
+                    <div className="arena-hp-bar"><div className={`arena-hp-fill ${spec.bossHP > 0 ? 'high' : 'low'}`} style={{ width: `${Math.min((spec.bossHP / maxBossHP) * 100, 100)}%` }} /></div>
+                    <div className="arena-name">Boss · {spec.bossHP}/{maxBossHP}</div>
+                    {bossState === 'ready' && !gameOver && !attackPhase && (
+                      <div className="arena-actions">
+                        <button className="btn btn-primary arena-atk-btn" onClick={() => onAttack(bossName, 0)}>🎲 {status?.diceFormula || '2d10+8'}</button>
+                        {spec.heroClass === 'rogue' && (spec.backstabCooldown ?? 0) === 0 && (
+                          <button className="btn btn-ability arena-atk-btn" onClick={() => onAttack(bossName + '-backstab', 0)}>Backstab</button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
+            })()}
+
+            {/* Monsters in semicircle */}
             {(spec.monsterHP || []).map((hp, idx) => {
+              const count = spec.monsterHP.length
               const state = hp > 0 ? 'alive' : 'dead'
               const mName = `${dungeonName}-monster-${idx}`
               const mSprite = getMonsterSprite(idx)
               let mAction: SpriteAction = state === 'dead' ? 'dead' : 'idle'
               if (attackTarget === mName && animPhase === 'hero-attack') mAction = 'hurt'
               if (state === 'alive' && animPhase === 'enemy-attack') mAction = 'attack'
+
+              // Position in semicircle (top arc around hero)
+              const angle = count === 1 ? Math.PI / 2 : (Math.PI * 0.2) + (Math.PI * 0.6 / (count - 1)) * idx
+              const radiusX = 38 // % from center
+              const radiusY = 30
+              const cx = 50 + Math.cos(angle) * radiusX
+              const cy = 45 - Math.sin(angle) * radiusY
+              const facingRight = cx < 50
+
               return (
-                <EntityCard key={mName} name={mName} entity="monster"
-                  state={state} hp={hp} maxHP={maxMonsterHP} diceFormula={status?.diceFormula || "2d10+8"} onAttack={onAttack} disabled={gameOver || !!attackPhase}
-                  spriteType={mSprite} spriteAction={mAction}
-                  floatingDmg={floatingDmg?.target === mName ? floatingDmg.amount : null}
-                  heroClass={spec.heroClass} backstabCooldown={spec.backstabCooldown}
-                  tooltip={`${mSprite} · HP: ${hp}/${maxMonsterHP} · Counter: ${status?.monsterCounter || '?'} dmg/monster`} />
+                <div key={mName} className={`arena-entity monster-entity ${state}`}
+                  style={{ left: `${cx}%`, top: `${cy}%` }}>
+                  {floatingDmg?.target === mName && <div className="floating-dmg" style={{ color: '#e94560' }}>{floatingDmg.amount}</div>}
+                  <Sprite spriteType={mSprite} action={mAction} size={72} flip={!facingRight} />
+                  <div className="arena-shadow" />
+                  <div className="arena-hover-ui">
+                    <div className="arena-hp-bar"><div className={`arena-hp-fill ${hp > maxMonsterHP * 0.6 ? 'high' : hp > maxMonsterHP * 0.3 ? 'mid' : 'low'}`} style={{ width: `${Math.min((hp / maxMonsterHP) * 100, 100)}%` }} /></div>
+                    <div className="arena-name">{mSprite} · {hp}/{maxMonsterHP}</div>
+                    {state === 'alive' && !gameOver && !attackPhase && (
+                      <div className="arena-actions">
+                        <button className="btn btn-primary arena-atk-btn" onClick={() => onAttack(mName, 0)}>🎲 {status?.diceFormula || '2d10+8'}</button>
+                        {spec.heroClass === 'rogue' && (spec.backstabCooldown ?? 0) === 0 && (
+                          <button className="btn btn-ability arena-atk-btn" onClick={() => onAttack(mName + '-backstab', 0)}>Backstab</button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
               )
             })}
-          </div>
 
-          <h3 style={{ fontSize: '10px', marginBottom: 8, color: '#888' }}>BOSS</h3>
-          <div style={{ maxWidth: 200 }}>
-          {(() => {
-            let bAction: SpriteAction = bossState === 'defeated' ? 'dead' : 'idle'
-            if (attackTarget?.includes('boss') && animPhase === 'hero-attack') bAction = 'hurt'
-            if (bossState === 'ready' && animPhase === 'enemy-attack' && attackTarget?.includes('boss')) bAction = 'attack'
-            if (status?.victory) bAction = 'dead'
-            return <EntityCard name={`${dungeonName}-boss`} entity="boss"
-              state={bossState} hp={spec.bossHP} maxHP={maxBossHP} diceFormula={status?.diceFormula || "2d10+8"} onAttack={onAttack} disabled={gameOver || !!attackPhase}
-              spriteType="dragon" spriteAction={bAction}
-              floatingDmg={floatingDmg?.target?.includes('boss') ? floatingDmg.amount : null}
-              heroClass={spec.heroClass} backstabCooldown={spec.backstabCooldown}
-              tooltip={`Dragon · HP: ${spec.bossHP}/${maxBossHP} · ${bossState === 'pending' ? 'Kill all monsters to unlock' : bossState === 'ready' ? 'Ready to fight!' : 'Defeated'} · Counter: ${status?.bossCounter || '?'} dmg`} />
-          })()}
-          </div>
+            {/* Hero in center */}
+            <div className="arena-entity hero-entity" style={{ left: '50%', top: '70%' }}>
+              {floatingDmg?.target === 'hero' && <div className="floating-dmg" style={{ color: floatingDmg.color }}>{floatingDmg.amount}</div>}
+              <Sprite spriteType={spec.heroClass || 'warrior'} size={80}
+                action={isDefeated ? 'dead' : status?.victory ? 'victory' : animPhase === 'hero-attack' ? 'attack' : animPhase === 'enemy-attack' ? 'hurt' : 'idle'} />
+              <div className="arena-shadow" style={{ width: 60 }} />
+            </div>
 
+            {/* Victory glow */}
+            {status?.victory && <div className="arena-victory-glow" />}
+          </div>
         </div>
 
         {/* RIGHT PANEL */}
