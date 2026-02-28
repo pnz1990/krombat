@@ -1,48 +1,43 @@
 import { useState, useEffect, useRef } from 'react'
 
-// Sprite sheets: heroes 7 frames (5472x768), monsters 6 frames (5088x832), boss 7 frames (5472x768)
-const SPRITE_CONFIG: Record<string, { frames: number; sheetW: number; sheetH: number; file: string }> = {
-  warrior:  { frames: 7, sheetW: 5472, sheetH: 768, file: '/sprites/warrior.png' },
-  mage:     { frames: 7, sheetW: 5472, sheetH: 768, file: '/sprites/mage.png' },
-  rogue:    { frames: 7, sheetW: 5472, sheetH: 768, file: '/sprites/rogue.png' },
-  goblin:   { frames: 6, sheetW: 5088, sheetH: 832, file: '/sprites/goblin.png' },
-  skeleton: { frames: 6, sheetW: 5088, sheetH: 832, file: '/sprites/skeleton.png' },
-  dragon:   { frames: 7, sheetW: 5536, sheetH: 768, file: '/sprites/dragon.png' },
+// Individual frame images: /sprites/{type}/{1-7}.png
+// Heroes/boss: 7 frames, monsters: 6 frames
+// Frame mapping: 1=idle, 2=walk1, 3=walk2, 4=attack1, 5=attack2, 6=hurt, 7=victory/dead
+const FRAME_COUNT: Record<string, number> = {
+  warrior: 7, mage: 7, rogue: 7, dragon: 7, goblin: 6, skeleton: 6,
 }
 
-// Frame indices: 0=idle, 1=walk1, 2=walk2, 3=attack1, 4=attack2, 5=hurt, 6=victory/dead (heroes/boss have 7, monsters have 6)
 export type SpriteAction = 'idle' | 'attack' | 'hurt' | 'dead' | 'victory'
 
+// Map actions to frame numbers (1-indexed file names)
 const ACTION_FRAMES: Record<SpriteAction, number[]> = {
-  idle:    [0],
-  attack:  [3, 4],
-  hurt:    [5],
-  dead:    [5],
+  idle:    [1],
+  attack:  [4, 5],
+  hurt:    [6],
+  dead:    [6],
+  victory: [7],
+}
+
+const MONSTER_ACTION_FRAMES: Record<SpriteAction, number[]> = {
+  idle:    [1],
+  attack:  [4, 5],
+  hurt:    [6],
+  dead:    [6],
   victory: [6],
 }
 
-// For monsters with 6 frames, victory/dead uses frame 5 (hurt)
-const MONSTER_ACTION_FRAMES: Record<SpriteAction, number[]> = {
-  idle:    [0],
-  attack:  [3, 4],
-  hurt:    [5],
-  dead:    [5],
-  victory: [5],
-}
-
 interface SpriteProps {
-  spriteType: string  // warrior, mage, rogue, goblin, skeleton, dragon
+  spriteType: string
   action: SpriteAction
-  size?: number       // display size in px
-  flip?: boolean      // mirror horizontally (for enemies facing left)
+  size?: number
+  flip?: boolean
 }
 
 export function Sprite({ spriteType, action, size = 64, flip = false }: SpriteProps) {
   const [frameIdx, setFrameIdx] = useState(0)
   const intervalRef = useRef<ReturnType<typeof setInterval>>(undefined)
-  const config = SPRITE_CONFIG[spriteType]
 
-  if (!config) return <div style={{ width: size, height: size, fontSize: size * 0.6, textAlign: 'center' }}>👹</div>
+  if (!FRAME_COUNT[spriteType]) return <div style={{ width: size, height: size, fontSize: size * 0.6, textAlign: 'center' }}>👹</div>
 
   const isMonster = spriteType === 'goblin' || spriteType === 'skeleton'
   const frames = isMonster ? MONSTER_ACTION_FRAMES[action] : ACTION_FRAMES[action]
@@ -60,25 +55,20 @@ export function Sprite({ spriteType, action, size = 64, flip = false }: SpritePr
   }, [action, spriteType])
 
   const frame = frames[frameIdx] ?? frames[0]
-
-  // Use percentage-based positioning to avoid sub-pixel rounding issues
-  // background-size: (N * 100)% 100% makes each frame exactly the container width
-  // background-position-x: frame / (N-1) * 100% selects the frame
-  const n = config.frames
-  const posX = n > 1 ? (frame / (n - 1)) * 100 : 0
+  const src = `/sprites/${spriteType}/${frame}.png`
 
   return (
-    <div style={{
-      width: size,
-      height: size,
-      overflow: 'hidden',
-      imageRendering: 'pixelated' as any,
-      transform: flip ? 'scaleX(-1)' : undefined,
-      backgroundImage: `url(${config.file})`,
-      backgroundSize: `${n * 100}% 100%`,
-      backgroundPosition: `${posX}% 0%`,
-      backgroundRepeat: 'no-repeat',
-    }} />
+    <img
+      src={src}
+      alt={spriteType}
+      style={{
+        width: size,
+        height: size,
+        objectFit: 'contain',
+        imageRendering: 'pixelated' as any,
+        transform: flip ? 'scaleX(-1)' : undefined,
+      }}
+    />
   )
 }
 
