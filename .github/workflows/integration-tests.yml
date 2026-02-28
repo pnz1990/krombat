@@ -3,8 +3,6 @@ name: Integration Tests
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
 
 permissions:
   id-token: write
@@ -49,9 +47,6 @@ jobs:
             echo "  Waiting... (sync=$SYNC, rev=${REVISION:0:8}, want=${{ github.sha }})"
             sleep 5
           done
-
-      - name: Ensure tests namespace
-        run: kubectl create ns tests --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Run integration tests
         run: ./tests/run.sh
