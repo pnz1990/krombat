@@ -32,6 +32,11 @@ export default function App() {
   const [dungeons, setDungeons] = useState<DungeonSummary[]>([])
   const [detail, setDetail] = useState<DungeonCR | null>(null)
   const [events, setEvents] = useState<WSEvent[]>([])
+  const [k8sLog, setK8sLog] = useState<{ ts: string; cmd: string; res: string }[]>([])
+  const addK8s = (cmd: string, res: string) => {
+    const ts = new Date().toLocaleTimeString()
+    setK8sLog(prev => [{ ts, cmd, res }, ...prev].slice(0, 50))
+  }
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [showLoot, setShowLoot] = useState(false)
@@ -61,7 +66,7 @@ export default function App() {
   }, [])
 
   // Refresh on WebSocket events — only refresh data, don't add to event log
-  useEffect(() => { if (lastEvent) { refresh() } }, [lastEvent, refresh])
+  useEffect(() => { if (lastEvent) { addK8s(`watch: ${lastEvent.type}`, `${lastEvent.action} ${lastEvent.name}`); refresh() } }, [lastEvent, refresh])
 
   // Initial load + load dungeon detail when URL changes
   useEffect(() => {
@@ -97,6 +102,7 @@ export default function App() {
     setError('')
     try {
       await createDungeon(name, monsters, difficulty, heroClass, activeNs)
+      addK8s(`kubectl apply -f dungeon.yaml  # ${name}, ${monsters} monsters, ${difficulty}, ${heroClass}`, 'dungeon.game.k8s.example created')
       navigate(`/dungeon/${activeNs}/${name}`)
     } catch (e: any) { setError(e.message) }
   }
@@ -127,6 +133,7 @@ export default function App() {
       }
 
       await submitAttack(selected.ns, selected.name, target, damage)
+      addK8s(`kubectl apply -f attack.yaml  # target: ${target}`, 'attack.game.k8s.example created')
 
       // Poll for CR update
       let updated = detail!
@@ -134,6 +141,7 @@ export default function App() {
         const fetched = await getDungeon(selected.ns, selected.name)
         if (fetched.spec.lastHeroAction !== detail?.spec.lastHeroAction) {
           updated = fetched
+          addK8s(`kubectl get dungeon ${selected.name} -o jsonpath='{.spec}'`, `heroHP:${fetched.spec.heroHP} bossHP:${fetched.spec.bossHP} monsterHP:${JSON.stringify(fetched.spec.monsterHP)}`)
           break
         }
         await new Promise(r => setTimeout(r, 1000))
@@ -277,6 +285,7 @@ export default function App() {
           lootDrop={lootDrop}
           onDismissLoot={() => { setLootDrop(null); prevInventoryRef.current = detail?.spec.inventory || '' }}
           events={events}
+          k8sLog={k8sLog}
           showLoot={showLoot}
           onOpenLoot={() => setShowLoot(true)}
           onCloseLoot={() => setShowLoot(false)}
@@ -347,6 +356,40 @@ function DungeonList({ dungeons, onSelect, onDelete, deleting }: {
 }
 
 
+
+function EventLogTabs({ events, k8sLog }: { events: WSEvent[]; k8sLog: { ts: string; cmd: string; res: string }[] }) {
+  const [tab, setTab] = useState<'game' | 'k8s'>('game')
+  return (
+    <div style={{ marginTop: 16 }}>
+      <div className="log-tabs">
+        <button className={`log-tab${tab === 'game' ? ' active' : ''}`} onClick={() => setTab('game')}>Game Log</button>
+        <button className={`log-tab${tab === 'k8s' ? ' active' : ''}`} onClick={() => setTab('k8s')}>K8s Log</button>
+      </div>
+      {tab === 'game' ? (
+        <div className="event-log">
+          {events.length === 0 && <div className="event-entry">Waiting for events...</div>}
+          {events.map((e, i) => (
+            <div key={i} className="event-entry">
+              <span className="event-icon">{e.action}</span>
+              <span className="event-msg">{e.name}</span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="event-log k8s-log">
+          {k8sLog.length === 0 && <div className="event-entry">No K8s operations yet...</div>}
+          {k8sLog.map((e, i) => (
+            <div key={i} className="k8s-entry">
+              <span className="k8s-ts">{e.ts}</span>
+              <span className="k8s-cmd">$ {e.cmd}</span>
+              <span className="k8s-res">{e.res}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 function HelpModal({ onClose }: { onClose: () => void }) {
   const [page, setPage] = useState(0)
   const pages = [
@@ -460,7 +503,7 @@ function HelpModal({ onClose }: { onClose: () => void }) {
   )
 }
 function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onCloseLoot, currentTurn, turnRound, attackPhase, animPhase, attackTarget, showHelp, onToggleHelp, floatingDmg, combatModal, onDismissCombat, lootDrop, onDismissLoot }: {
-  cr: DungeonCR; onBack: () => void; onAttack: (t: string, d: number) => void; events: WSEvent[]
+  cr: DungeonCR; onBack: () => void; onAttack: (t: string, d: number) => void; events: WSEvent[]; k8sLog: { ts: string; cmd: string; res: string }[]
   showLoot: boolean; onOpenLoot: () => void; onCloseLoot: () => void
   currentTurn: string; turnRound: number; attackPhase: string | null
   animPhase: string; attackTarget: string | null
@@ -621,16 +664,7 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
           })()}
           </div>
 
-          <h3 style={{ fontSize: '10px', margin: '16px 0 8px', color: '#888' }}>EVENT LOG</h3>
-          <div className="event-log">
-            {events.length === 0 && <div className="event-entry">Waiting for events...</div>}
-            {events.map((e, i) => (
-              <div key={i} className="event-entry">
-                <span className="event-icon">{e.action}</span>
-                <span className="event-msg">{e.name}</span>
-              </div>
-            ))}
-          </div>
+          <EventLogTabs events={events} k8sLog={k8sLog} />
         </div>
 
         {/* RIGHT PANEL — Hero, Equipment, Abilities (30%) */}

@@ -571,3 +571,13 @@ body {
 .help-nav { display: flex; gap: 8px; justify-content: center; margin-top: 12px; }
 .help-nav .btn { font-size: 8px; padding: 4px 12px; }
 .help-nav .btn:disabled { opacity: 0.3; }
+
+/* Log tabs */
+.log-tabs { display: flex; gap: 0; margin-bottom: 0; }
+.log-tab { font-size: 8px; padding: 4px 12px; background: #0a0a1a; border: 1px solid #1a1a2e; border-bottom: none; border-radius: 4px 4px 0 0; cursor: pointer; color: #555; font-family: inherit; }
+.log-tab.active { background: #1a1a2e; color: var(--gold); border-color: #333; }
+.k8s-log { font-family: 'Courier New', monospace; }
+.k8s-entry { display: flex; flex-direction: column; gap: 1px; padding: 3px 6px; border-bottom: 1px solid #111; }
+.k8s-ts { font-size: 6px; color: #444; }
+.k8s-cmd { font-size: 7px; color: #4ec9b0; }
+.k8s-res { font-size: 7px; color: #888; }
