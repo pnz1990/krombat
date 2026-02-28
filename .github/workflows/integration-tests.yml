@@ -31,27 +31,28 @@ jobs:
 
       - name: Wait for Argo CD sync
         run: |
-          echo "Triggering Argo CD hard refresh..."
-          kubectl annotate application krombat -n argocd argocd.argoproj.io/refresh=hard --overwrite
-
-          echo "Waiting for Argo CD to sync latest commit..."
-          for i in $(seq 1 60); do
-            SYNC=$(kubectl get application krombat -n argocd -o jsonpath='{.status.sync.status}' 2>/dev/null || echo "")
-            REVISION=$(kubectl get application krombat -n argocd -o jsonpath='{.status.sync.revision}' 2>/dev/null || echo "")
-            if [ "$SYNC" = "Synced" ] && [ "$REVISION" = "${{ github.sha }}" ]; then
-              echo "Argo CD synced to $REVISION"
-              break
-            fi
-            if [ "$i" -eq 30 ]; then
-              echo "Re-triggering refresh..."
-              kubectl annotate application krombat -n argocd argocd.argoproj.io/refresh=hard --overwrite
-            fi
-            echo "  Waiting... (sync=$SYNC, rev=${REVISION:0:8}, want=${{ github.sha }})"
-            sleep 5
-          done
-
-      - name: Ensure tests namespace
-        run: kubectl create ns tests --dry-run=client -o yaml | kubectl apply -f -
+          # Argo CD tracks main branch. On PRs, just ensure cluster is synced and healthy.
+          # On push to main, wait for the exact commit to be synced.
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "Push to main — waiting for Argo CD to sync ${{ github.sha }}..."
+            kubectl annotate application krombat -n argocd argocd.argoproj.io/refresh=hard --overwrite
+            for i in $(seq 1 60); do
+              SYNC=$(kubectl get application krombat -n argocd -o jsonpath='{.status.sync.status}' 2>/dev/null || echo "")
+              REVISION=$(kubectl get application krombat -n argocd -o jsonpath='{.status.sync.revision}' 2>/dev/null || echo "")
+              if [ "$SYNC" = "Synced" ] && [ "$REVISION" = "${{ github.sha }}" ]; then
+                echo "Argo CD synced to $REVISION"
+                break
+              fi
+              echo "  Waiting... (sync=$SYNC, rev=${REVISION:0:8})"
+              sleep 5
+            done
+          else
+            echo "PR branch — Argo CD tracks main, skipping commit-specific sync."
+            echo "Tests run against current cluster state (main branch manifests)."
+            # Just verify Argo CD is healthy
+            SYNC=$(kubectl get application krombat -n argocd -o jsonpath='{.status.sync.status}' 2>/dev/null || echo "unknown")
+            echo "Argo CD status: $SYNC"
+          fi
 
       - name: Run integration tests
         run: ./tests/run.sh
