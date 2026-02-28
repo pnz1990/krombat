@@ -113,7 +113,8 @@ export default function App() {
     if (!selected || attackPhase) return
     setError('')
     const isAbility = target === 'hero' || target === 'activate-taunt'
-    const shortTarget = isAbility ? target : target.replace(/-backstab$/, '').split('-').slice(-2).join('-')
+    const isItem = target.startsWith('use-') || target.startsWith('equip-')
+    const shortTarget = (isAbility || isItem) ? target : target.replace(/-backstab$/, '').split('-').slice(-2).join('-')
     try {
       setAttackTarget(target.replace(/-backstab$/, ''))
       setAnimPhase('hero-attack')
@@ -121,7 +122,7 @@ export default function App() {
       const oldHP = detail?.spec.heroHP ?? 100
       const formula = detail?.status?.diceFormula || '2d10+8'
 
-      if (!isAbility) {
+      if (!isAbility && !isItem) {
         setCombatModal({ phase: 'rolling', formula, heroAction: '', enemyAction: '', spec: detail?.spec, oldHP })
       }
 
@@ -142,10 +143,15 @@ export default function App() {
       const heroAction = updated.spec.lastHeroAction || ''
       const enemyAction = updated.spec.lastEnemyAction || ''
 
-      if (!isAbility) {
+      if (!isAbility && !isItem) {
         // Show resolved combat breakdown
         setCombatModal({ phase: 'resolved', formula, heroAction, enemyAction, spec: updated.spec, oldHP })
         setAnimPhase('enemy-attack')
+      } else if (isItem) {
+        // Brief item feedback — no combat modal
+        setAttackPhase(null)
+        setAnimPhase('idle')
+        setAttackTarget(null)
       } else {
         const healMatch = heroAction.match(/heals for (\d+)/)
         if (healMatch) setCombatModal({ phase: 'resolved', formula: '', heroAction, enemyAction: 'No counter-attack during ability', spec: updated.spec, oldHP })
