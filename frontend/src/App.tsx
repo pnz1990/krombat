@@ -612,25 +612,29 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
             return (
               <div className="equip-panel">
                 <div className="equip-grid">
-                  <div className="equip-row"><div className="equip-slot empty" title="Helmet"><PixelIcon name="lock" size={14} /></div></div>
+                  <div className="equip-row"><Tooltip text="Helmet — coming soon"><div className="equip-slot empty"><PixelIcon name="lock" size={14} /></div></Tooltip></div>
                   <div className="equip-row">
-                    <div className="equip-slot empty" title="Shield"><PixelIcon name="lock" size={14} /></div>
-                    <div className={`equip-slot${ab > 0 ? ' filled' : ' empty'}`} title={ab > 0 ? `+${ab}% def` : 'Armor'}>
-                      {ab > 0 ? <><ItemSprite id="armor-common" size={22} /><span className="slot-stat">+{ab}%</span></> : <PixelIcon name="shield" size={14} color="#333" />}
-                    </div>
-                    <div className={`equip-slot${wb > 0 ? ' filled' : ' empty'}`} title={wb > 0 ? `+${wb} dmg (${wu})` : 'Weapon'}>
-                      {wb > 0 ? <><ItemSprite id="weapon-common" size={22} /><span className="slot-stat">+{wb}</span></> : <PixelIcon name="sword" size={14} color="#333" />}
-                    </div>
+                    <Tooltip text="Shield — coming soon"><div className="equip-slot empty"><PixelIcon name="lock" size={14} /></div></Tooltip>
+                    <Tooltip text={ab > 0 ? `Armor equipped: +${ab}% damage reduction on counter-attacks` : 'Armor — none equipped'}>
+                      <div className={`equip-slot${ab > 0 ? ' filled' : ' empty'}`}>
+                        {ab > 0 ? <><ItemSprite id="armor-common" size={22} /><span className="slot-stat">+{ab}%</span></> : <PixelIcon name="shield" size={14} color="#333" />}
+                      </div>
+                    </Tooltip>
+                    <Tooltip text={wb > 0 ? `Weapon equipped: +${wb} bonus damage, ${wu} uses remaining` : 'Weapon — none equipped'}>
+                      <div className={`equip-slot${wb > 0 ? ' filled' : ' empty'}`}>
+                        {wb > 0 ? <><ItemSprite id="weapon-common" size={22} /><span className="slot-stat">+{wb}</span></> : <PixelIcon name="sword" size={14} color="#333" />}
+                      </div>
+                    </Tooltip>
                   </div>
-                  <div className="equip-row"><div className="equip-slot empty" title="Pants"><PixelIcon name="lock" size={14} /></div></div>
-                  <div className="equip-row"><div className="equip-slot empty" title="Boots"><PixelIcon name="lock" size={14} /></div></div>
+                  <div className="equip-row"><Tooltip text="Pants — coming soon"><div className="equip-slot empty"><PixelIcon name="lock" size={14} /></div></Tooltip></div>
+                  <div className="equip-row"><Tooltip text="Boots — coming soon"><div className="equip-slot empty"><PixelIcon name="lock" size={14} /></div></Tooltip></div>
                 </div>
 
                 <div className="status-row">
-                  {modifier !== 'none' && <div className={`status-badge ${modifier.startsWith('curse') ? 'curse' : 'blessing'}`} title={status?.modifier || modifier}><ItemSprite id={modifier} size={18} /></div>}
-                  {poison > 0 && <div className="status-badge effect" title={`Poison ${poison}t`}><PixelIcon name="poison" size={12} /><span>{poison}</span></div>}
-                  {burn > 0 && <div className="status-badge effect" title={`Burn ${burn}t`}><PixelIcon name="fire" size={12} /><span>{burn}</span></div>}
-                  {stun > 0 && <div className="status-badge effect" title={`Stun ${stun}t`}><PixelIcon name="lightning" size={12} /><span>{stun}</span></div>}
+                  {modifier !== 'none' && <Tooltip text={`${modifier.startsWith('curse') ? 'Curse' : 'Blessing'}: ${status?.modifier || modifier}`}><div className={`status-badge ${modifier.startsWith('curse') ? 'curse' : 'blessing'}`}><ItemSprite id={modifier} size={18} /></div></Tooltip>}
+                  {poison > 0 && <Tooltip text={`Poison: -5 HP per turn, ${poison} turns remaining`}><div className="status-badge effect"><PixelIcon name="poison" size={12} /><span>{poison}</span></div></Tooltip>}
+                  {burn > 0 && <Tooltip text={`Burn: -8 HP per turn, ${burn} turns remaining`}><div className="status-badge effect"><PixelIcon name="fire" size={12} /><span>{burn}</span></div></Tooltip>}
+                  {stun > 0 && <Tooltip text={`Stun: skip next attack, ${stun} turns remaining`}><div className="status-badge effect"><PixelIcon name="lightning" size={12} /><span>{stun}</span></div></Tooltip>}
                 </div>
 
                 {items.length > 0 && (
@@ -640,13 +644,18 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
                       {items.map((item, i) => {
                         const rarity = item.split('-').pop()!
                         const isPotion = item.includes('potion')
+                        const desc = item.includes('weapon') ? `Weapon (${rarity}) — click to equip, +damage for 3 attacks` :
+                          item.includes('armor') ? `Armor (${rarity}) — click to equip, +defense for dungeon` :
+                          item.includes('hppotion') ? `HP Potion (${rarity}) — click to restore HP` :
+                          item.includes('manapotion') ? `Mana Potion (${rarity}) — click to restore mana` : item
                         return (
-                          <button key={i} className="backpack-slot" disabled={gameOver || !!attackPhase}
-                            style={{ borderColor: RARITY_COLOR[rarity] || '#555' }}
-                            title={item.replace(/-/g, ' ')}
-                            onClick={() => onAttack(isPotion ? `use-${item}` : `equip-${item}`, 0)}>
-                            <ItemSprite id={item} size={22} />
-                          </button>
+                          <Tooltip key={i} text={desc}>
+                            <button className="backpack-slot" disabled={gameOver || !!attackPhase}
+                              style={{ borderColor: RARITY_COLOR[rarity] || '#555' }}
+                              onClick={() => onAttack(isPotion ? `use-${item}` : `equip-${item}`, 0)}>
+                              <ItemSprite id={item} size={22} />
+                            </button>
+                          </Tooltip>
                         )
                       })}
                     </div>
