@@ -10,8 +10,9 @@ const FRAME_COUNT: Record<string, number> = {
 export type SpriteAction = 'idle' | 'attack' | 'hurt' | 'dead' | 'victory'
 
 // Map actions to frame numbers (1-indexed file names)
+// 1=idle, 2=walk1, 3=walk2, 4=attack1, 5=attack2, 6=hurt, 7=victory/dead
 const ACTION_FRAMES: Record<SpriteAction, number[]> = {
-  idle:    [1],
+  idle:    [1, 2, 3, 2],   // breathing/shifting animation loop
   attack:  [4, 5],
   hurt:    [6],
   dead:    [6],
@@ -19,7 +20,7 @@ const ACTION_FRAMES: Record<SpriteAction, number[]> = {
 }
 
 const MONSTER_ACTION_FRAMES: Record<SpriteAction, number[]> = {
-  idle:    [1],
+  idle:    [1, 2, 3, 2],   // breathing/shifting animation loop
   attack:  [4, 5],
   hurt:    [6],
   dead:    [6],
@@ -46,10 +47,11 @@ export function Sprite({ spriteType, action, size = 64, flip = false }: SpritePr
     setFrameIdx(0)
     if (frames.length > 1) {
       let idx = 0
+      const speed = action === 'idle' ? 400 : 200  // idle slower, attack faster
       intervalRef.current = setInterval(() => {
         idx = (idx + 1) % frames.length
         setFrameIdx(idx)
-      }, 200)
+      }, speed)
       return () => clearInterval(intervalRef.current)
     }
   }, [action, spriteType])
