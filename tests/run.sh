@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Parallel integration test runner
 # Runs 4 test groups concurrently, waits for all, reports combined results
-set -euo pipefail
+set -uo pipefail  # no -e: we handle failures from wait_group manually
 
 DIR="$(dirname "$0")"
 chmod +x "$DIR"/test-core.sh "$DIR"/test-abilities.sh "$DIR"/test-features.sh "$DIR"/test-infra.sh "$DIR"/helpers.sh
