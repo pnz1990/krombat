@@ -157,13 +157,17 @@ spec:
                             armor-common) ARMOR_VAL=10 ;; armor-rare) ARMOR_VAL=20 ;; armor-epic) ARMOR_VAL=30 ;;
                             *) echo "Cannot equip $ITEM_TYPE"; exit 1 ;;
                           esac
-                          WEAPON_CHECK=0
-                          if [ -n "$WEAPON_VAL" ]; then WEAPON_CHECK=$WEAPON_VAL; fi
-                          if [ "$WEAPON_VAL_VAL" -gt 0 ]; then
+                          IS_WEAPON=false
+                          case "$ITEM_TYPE" in
+                            weapon-common) WEAPON_VAL=5; WEAPON_USES_VAL=3; IS_WEAPON=true ;; weapon-rare) WEAPON_VAL=10; WEAPON_USES_VAL=3; IS_WEAPON=true ;; weapon-epic) WEAPON_VAL=20; WEAPON_USES_VAL=3; IS_WEAPON=true ;;
+                            armor-common) ARMOR_VAL=10 ;; armor-rare) ARMOR_VAL=20 ;; armor-epic) ARMOR_VAL=30 ;;
+                            *) echo "Cannot equip $ITEM_TYPE"; exit 1 ;;
+                          esac
+                          if [ "$IS_WEAPON" = "true" ]; then
                             HERO_ACTION="Equipped $ITEM_TYPE! +$WEAPON_VAL damage for $WEAPON_USES_VAL attacks"
                             PATCH="{\"spec\":{\"weaponBonus\":$WEAPON_VAL,\"weaponUses\":$WEAPON_USES_VAL,\"inventory\":\"$NEW_INV\",\"backstabCooldown\":$BACKSTAB_CD,\"lastHeroAction\":\"$HERO_ACTION\",\"lastEnemyAction\":\"Item equipped\"}}"
                           else
-                            HERO_ACTION="Equipped $ITEM_TYPE! Armor +$ARMOR_VAL pct defense"
+                            HERO_ACTION="Equipped $ITEM_TYPE! +$ARMOR_VAL pct defense"
                             PATCH="{\"spec\":{\"armorBonus\":$ARMOR_VAL,\"inventory\":\"$NEW_INV\",\"backstabCooldown\":$BACKSTAB_CD,\"lastHeroAction\":\"$HERO_ACTION\",\"lastEnemyAction\":\"Item equipped\"}}"
                           fi
                           echo "$HERO_ACTION"
