@@ -516,3 +516,34 @@ body {
 .combat-breakdown { display: flex; flex-direction: column; gap: 6px; text-align: left; }
 .combat-line { display: flex; align-items: center; gap: 8px; font-size: 9px; padding: 4px 8px; background: rgba(255,255,255,0.03); border-radius: 4px; }
 .combat-icon { font-size: 14px; flex-shrink: 0; width: 20px; text-align: center; }
+
+/* Tibia-style equipment panel */
+.equip-panel { display: flex; gap: 12px; align-items: flex-start; margin: 8px 0; flex-wrap: wrap; }
+.equip-grid { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.equip-row { display: flex; gap: 2px; justify-content: center; }
+.equip-slot {
+  width: 36px; height: 36px; border: 1px solid #333; border-radius: 3px;
+  display: flex; align-items: center; justify-content: center; flex-direction: column;
+  background: #0a0a1a; position: relative;
+}
+.equip-slot.filled { border-color: var(--gold); background: #1a1a0a; }
+.equip-slot.empty { opacity: 0.4; }
+.slot-stat { font-size: 6px; color: var(--gold); position: absolute; bottom: 1px; right: 2px; }
+
+.status-row { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; align-self: center; }
+.status-badge { width: 28px; height: 28px; border-radius: 3px; display: flex; align-items: center; justify-content: center; gap: 2px; font-size: 7px; }
+.status-badge.curse { background: #1a0a0a; border: 1px solid #8b0000; }
+.status-badge.blessing { background: #0a1a0a; border: 1px solid #ffd700; }
+.status-badge.effect { background: #0a0a1a; border: 1px solid #555; flex-direction: column; }
+.status-badge.effect span { font-size: 6px; color: #aaa; }
+
+.backpack { align-self: center; }
+.backpack-label { font-size: 7px; color: #555; margin-bottom: 2px; text-align: center; }
+.backpack-grid { display: flex; gap: 2px; flex-wrap: wrap; }
+.backpack-slot {
+  width: 32px; height: 32px; border: 1px solid #333; border-radius: 3px;
+  background: #0a0a1a; display: flex; align-items: center; justify-content: center;
+  cursor: pointer; padding: 0;
+}
+.backpack-slot:hover:not(:disabled) { border-color: var(--gold); background: #1a1a2a; }
+.backpack-slot:disabled { opacity: 0.4; cursor: not-allowed; }
