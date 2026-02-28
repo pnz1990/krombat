@@ -175,13 +175,10 @@ export default function App() {
       await new Promise(r => setTimeout(r, 100))
 
       // Read combat log from Dungeon CR
-      const heroAction = updated.spec.lastHeroAction
       const enemyAction = updated.spec.lastEnemyAction
       if (heroAction) {
-        // Parse action for better icons
         const icon = heroAction.includes('heals') ? '💚' : heroAction.includes('Taunt') ? '🛡️' : heroAction.includes('Backstab') ? '🗡️' : heroAction.includes('STUNNED') ? '🟡' : '⚔️'
         addEvent(icon, heroAction)
-        // Loot drop
         if (heroAction.includes('Dropped')) addEvent('🎁', heroAction.split('Dropped')[1]?.trim() || 'Loot dropped!')
         // Kill
         if (heroAction.includes('-> 0)')) {
