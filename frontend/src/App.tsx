@@ -106,6 +106,8 @@ export default function App() {
 
   const [floatingDmg, setFloatingDmg] = useState<{ target: string; amount: string; color: string } | null>(null)
 
+  const [combatModal, setCombatModal] = useState<{ phase: 'rolling' | 'resolved'; formula: string; heroAction: string; enemyAction: string; spec: any; oldHP: number } | null>(null)
+
   const handleAttack = async (target: string, damage: number) => {
     if (!selected || attackPhase) return
     setError('')
@@ -114,10 +116,17 @@ export default function App() {
     try {
       setAttackTarget(target.replace(/-backstab$/, ''))
       setAnimPhase('hero-attack')
-      setAttackPhase(isAbility ? (target === 'hero' ? '💚 Healing...' : '🛡️ Taunting...') : `🎲 Rolling dice...`)
+      setAttackPhase('attacking')
+      const oldHP = detail?.spec.heroHP ?? 100
+      const formula = detail?.status?.diceFormula || '2d10+8'
+
+      if (!isAbility) {
+        setCombatModal({ phase: 'rolling', formula, heroAction: '', enemyAction: '', spec: detail?.spec, oldHP })
+      }
+
       await submitAttack(selected.ns, selected.name, target, damage)
 
-      // Poll for CR update while showing dice animation
+      // Poll for CR update
       let updated = detail!
       for (let attempt = 0; attempt < 20; attempt++) {
         const fetched = await getDungeon(selected.ns, selected.name)
@@ -129,37 +138,17 @@ export default function App() {
       }
       setDetail(updated)
 
-      // Parse real damage from CR
       const heroAction = updated.spec.lastHeroAction || ''
-      const dmgMatch = heroAction.match(/deals (\d+) damage/)
-      const realDmg = dmgMatch ? dmgMatch[1] : null
+      const enemyAction = updated.spec.lastEnemyAction || ''
 
-      if (!isAbility && realDmg) {
-        // Reveal damage with big splash on target
-        setAttackPhase(`💥 ${realDmg} DAMAGE!`)
-        setFloatingDmg({ target: target.replace(/-backstab$/, ''), amount: `-${realDmg}`, color: '#e94560' })
-        await new Promise(r => setTimeout(r, 1500))
-        setFloatingDmg(null)
-
-        // Counter-attack phase
+      if (!isAbility) {
+        // Show resolved combat breakdown
+        setCombatModal({ phase: 'resolved', formula, heroAction, enemyAction, spec: updated.spec, oldHP })
         setAnimPhase('enemy-attack')
-        const oldHP = detail?.spec.heroHP ?? 100
-        const newHP = updated.spec.heroHP ?? 100
-        const hpLost = oldHP - newHP
-        if (hpLost > 0) {
-          setAttackPhase(`💀 Counter-attack! -${hpLost} HP`)
-          setFloatingDmg({ target: 'hero', amount: `-${hpLost}`, color: '#e94560' })
-        } else {
-          setAttackPhase('💀 Enemies counter-attack!')
-        }
-        await new Promise(r => setTimeout(r, 1500))
-        setFloatingDmg(null)
-      } else if (isAbility) {
-        // Brief ability feedback
+      } else {
         const healMatch = heroAction.match(/heals for (\d+)/)
-        if (healMatch) setAttackPhase(`💚 +${healMatch[1]} HP!`)
-        else if (heroAction.includes('Taunt')) setAttackPhase('🛡️ Taunt active!')
-        await new Promise(r => setTimeout(r, 1000))
+        if (healMatch) setCombatModal({ phase: 'resolved', formula: '', heroAction, enemyAction: 'No counter-attack during ability', spec: updated.spec, oldHP })
+        else setCombatModal({ phase: 'resolved', formula: '', heroAction, enemyAction, spec: updated.spec, oldHP })
       }
 
       // Detect loot drops
@@ -195,16 +184,22 @@ export default function App() {
       else if (s?.bossState === 'ready') addEvent('🐉', 'Boss unlocked! All monsters slain!')
       else if ((updated.spec.heroHP ?? 100) <= 0) addEvent('💀', 'Hero has fallen...')
 
-      setAttackPhase(null)
+      // Don't clear attackPhase — user must dismiss combat modal
       setAnimPhase('idle')
       setAttackTarget(null)
     } catch (e: any) {
       setError(e.message)
+      setCombatModal(null)
       setAttackPhase(null)
       setAnimPhase('idle')
       setAttackTarget(null)
       setFloatingDmg(null)
     }
+  }
+
+  const dismissCombat = () => {
+    setCombatModal(null)
+    setAttackPhase(null)
   }
 
   const handleSelect = (ns: string, name: string) => {
@@ -271,6 +266,8 @@ export default function App() {
           animPhase={animPhase}
           attackTarget={attackTarget}
           floatingDmg={floatingDmg}
+          combatModal={combatModal}
+          onDismissCombat={dismissCombat}
           lootDrop={lootDrop}
           onDismissLoot={() => { setLootDrop(null); prevInventoryRef.current = detail?.spec.inventory || '' }}
           events={events}
@@ -350,6 +347,8 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
   animPhase: string; attackTarget: string | null
   showHelp: boolean; onToggleHelp: () => void
   floatingDmg: { target: string; amount: string; color: string } | null
+  combatModal: { phase: string; formula: string; heroAction: string; enemyAction: string; spec: any; oldHP: number } | null
+  onDismissCombat: () => void
   lootDrop: string | null; onDismissLoot: () => void
 }) {
   if (!cr?.metadata?.name) return <div className="loading">Loading dungeon</div>
@@ -427,13 +426,30 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
         </div>
       )}
 
-      {!gameOver && (
-        <div className={`turn-bar ${attackPhase ? 'attacking' : ''}`}>
-          {attackPhase?.includes('Rolling') ? (
-            <DiceRoller formula={status?.diceFormula || '2d10+8'} />
-          ) : (
-            <span className={`turn-indicator${attackPhase?.includes('DAMAGE') ? ' damage-reveal' : ''}`}>{attackPhase || '⚔️ Ready to attack!'}</span>
-          )}
+      {combatModal && (
+        <div className="modal-overlay">
+          <div className="modal combat-modal" onClick={e => e.stopPropagation()}>
+            {combatModal.phase === 'rolling' ? (
+              <>
+                <h2 style={{ color: 'var(--gold)', fontSize: 14, marginBottom: 16 }}>⚔️ COMBAT</h2>
+                <DiceRoller formula={combatModal.formula} />
+                <p style={{ fontSize: 8, color: '#888', marginTop: 12 }}>Waiting for attack to resolve...</p>
+              </>
+            ) : (
+              <>
+                <button className="modal-close" onClick={onDismissCombat}>✕</button>
+                <h2 style={{ color: 'var(--gold)', fontSize: 14, marginBottom: 12 }}>⚔️ COMBAT RESULTS</h2>
+                <CombatBreakdown heroAction={combatModal.heroAction} enemyAction={combatModal.enemyAction} spec={combatModal.spec} oldHP={combatModal.oldHP} />
+                <button className="btn btn-gold" style={{ marginTop: 16 }} onClick={onDismissCombat}>Continue</button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {!gameOver && !combatModal && (
+        <div className="turn-bar">
+          <span className="turn-indicator">⚔️ Ready to attack!</span>
         </div>
       )}
 
@@ -641,6 +657,74 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
 }
 
 // Parse dice formula from CR status (e.g. "2d8+5" -> {count:2, sides:8, mod:5})
+function CombatBreakdown({ heroAction, enemyAction, spec, oldHP }: { heroAction: string; enemyAction: string; spec: any; oldHP: number }) {
+  const lines: { icon: string; text: string; color?: string }[] = []
+
+  // DoT effects
+  if (heroAction.includes('Poison')) lines.push({ icon: '🟢', text: 'Poison: -5 HP', color: '#2ecc71' })
+  if (heroAction.includes('Burn')) lines.push({ icon: '🔴', text: 'Burn: -8 HP', color: '#e74c3c' })
+  if (heroAction.includes('STUNNED')) lines.push({ icon: '🟡', text: 'STUNNED! No damage dealt', color: '#f1c40f' })
+
+  // Hero attack
+  const dmgMatch = heroAction.match(/deals (\d+) damage.*\(HP: (\d+) -> (\d+)\)/)
+  if (dmgMatch) lines.push({ icon: '⚔️', text: `Dealt ${dmgMatch[1]} damage (${dmgMatch[2]} → ${dmgMatch[3]} HP)` })
+  if (heroAction.includes('heals')) {
+    const healMatch = heroAction.match(/heals for (\d+)/)
+    if (healMatch) lines.push({ icon: '💚', text: `Healed ${healMatch[1]} HP` })
+  }
+  if (heroAction.includes('Taunt')) lines.push({ icon: '🛡️', text: 'Taunt activated! 60% damage reduction' })
+
+  // Modifiers
+  if (heroAction.includes('Blessing')) { const m = heroAction.match(/\[Blessing:[^\]]+\]/); if (m) lines.push({ icon: '🟢', text: m[0], color: '#2ecc71' }) }
+  if (heroAction.includes('Curse')) { const m = heroAction.match(/\[Curse:[^\]]+\]/); if (m) lines.push({ icon: '🔴', text: m[0], color: '#e74c3c' }) }
+  if (heroAction.includes('CRIT')) lines.push({ icon: '⭐', text: 'CRITICAL HIT! 2x damage', color: '#f5c518' })
+
+  // Class bonuses
+  if (heroAction.includes('Backstab 3x')) lines.push({ icon: '🗡️', text: 'Backstab: 3x damage multiplier' })
+  if (heroAction.includes('Mage critical')) lines.push({ icon: '🔮', text: 'Mage: 1.5x boss damage' })
+  if (heroAction.includes('Rogue precision')) lines.push({ icon: '🗡️', text: 'Rogue: 1.2x damage' })
+  if (heroAction.includes('No mana')) lines.push({ icon: '🔮', text: 'No mana! Half damage', color: '#e74c3c' })
+
+  // Weapon bonus
+  if (heroAction.includes('+') && heroAction.includes('wpn')) lines.push({ icon: '🗡️', text: 'Weapon bonus applied' })
+
+  // Loot
+  if (heroAction.includes('Dropped')) { const m = heroAction.match(/Dropped (.+?)!/); if (m) lines.push({ icon: '🎁', text: `Loot: ${m[1]}`, color: '#f5c518' }) }
+  if (heroAction.includes('mana!')) lines.push({ icon: '🔮', text: '+1 mana (monster kill)', color: '#9b59b6' })
+
+  // Enemy action
+  if (enemyAction) {
+    const counterMatch = enemyAction.match(/(\d+) (?:total )?damage/)
+    if (counterMatch) {
+      const hpLost = oldHP - (spec.heroHP ?? 0)
+      lines.push({ icon: '💀', text: enemyAction })
+      if (heroAction.includes('Rogue dodged')) lines.push({ icon: '✨', text: 'Rogue dodged the counter-attack!', color: '#2ecc71' })
+    } else {
+      lines.push({ icon: '💀', text: enemyAction })
+    }
+  }
+
+  // Status effects applied
+  if (enemyAction.includes('POISON')) lines.push({ icon: '🟢', text: 'Poisoned! -5 HP/turn for 3 turns', color: '#2ecc71' })
+  if (enemyAction.includes('BURN')) lines.push({ icon: '🔴', text: 'Burning! -8 HP/turn for 2 turns', color: '#e74c3c' })
+  if (enemyAction.includes('STUN')) lines.push({ icon: '🟡', text: 'Stunned! Skip next attack', color: '#f1c40f' })
+
+  // Kill / victory
+  if (dmgMatch && dmgMatch[3] === '0') lines.push({ icon: '💀', text: 'Target slain!', color: '#f5c518' })
+  if (enemyAction.includes('defeated')) lines.push({ icon: '👑', text: 'BOSS DEFEATED!', color: '#f5c518' })
+
+  return (
+    <div className="combat-breakdown">
+      {lines.map((l, i) => (
+        <div key={i} className="combat-line" style={{ color: l.color }}>
+          <span className="combat-icon">{l.icon}</span>
+          <span>{l.text}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function DiceRoller({ formula }: { formula: string }) {
   const d = parseDice(formula)
   const [faces, setFaces] = useState<number[]>(() => rollDice(d.count, d.sides))

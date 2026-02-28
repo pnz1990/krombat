@@ -508,3 +508,11 @@ body {
 .dice-faces .die { font-size: 14px; background: #1a1a2e; border: 1px solid var(--gold); border-radius: 3px; padding: 2px 5px; min-width: 20px; text-align: center; }
 .dice-faces .die.rolling { animation: dieShake 0.1s infinite; }
 @keyframes dieShake { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
+
+/* Combat modal */
+.combat-modal { max-width: 400px; width: 90%; position: relative; }
+.combat-modal .modal-close { position: absolute; top: 8px; right: 12px; background: none; border: none; color: #888; font-size: 16px; cursor: pointer; font-family: inherit; }
+.combat-modal .modal-close:hover { color: #fff; }
+.combat-breakdown { display: flex; flex-direction: column; gap: 6px; text-align: left; }
+.combat-line { display: flex; align-items: center; gap: 8px; font-size: 9px; padding: 4px 8px; background: rgba(255,255,255,0.03); border-radius: 4px; }
+.combat-icon { font-size: 14px; flex-shrink: 0; width: 20px; text-align: center; }
