@@ -346,6 +346,119 @@ function DungeonList({ dungeons, onSelect, onDelete, deleting }: {
   )
 }
 
+
+function HelpModal({ onClose }: { onClose: () => void }) {
+  const [page, setPage] = useState(0)
+  const pages = [
+    { title: 'Combat Basics', content: (
+      <>
+        <p>Click a monster or boss to roll dice and attack. Damage is computed server-side based on difficulty.</p>
+        <p>After your attack, all alive enemies counter-attack automatically. Kill all monsters to unlock the boss. Defeat the boss to win!</p>
+        <table className="help-table">
+          <thead><tr><th>Difficulty</th><th>Monster HP</th><th>Boss HP</th><th>Dice</th><th>Counter/Mon</th><th>Boss Counter</th></tr></thead>
+          <tbody>
+            <tr><td className="tag-easy">Easy</td><td>30</td><td>200</td><td>2d8+5</td><td>2</td><td>2</td></tr>
+            <tr><td className="tag-normal">Normal</td><td>50</td><td>400</td><td>2d10+8</td><td>4</td><td>10</td></tr>
+            <tr><td className="tag-hard">Hard</td><td>80</td><td>800</td><td>3d10+10</td><td>6</td><td>15</td></tr>
+          </tbody>
+        </table>
+      </>
+    )},
+    { title: 'Hero Classes', content: (
+      <>
+        <table className="help-table">
+          <thead><tr><th>Class</th><th>HP</th><th>Damage</th><th>Passive</th></tr></thead>
+          <tbody>
+            <tr><td><PixelIcon name="sword" size={10} /> Warrior</td><td>150</td><td>1.0x</td><td>20% damage reduction on all counter-attacks</td></tr>
+            <tr><td><PixelIcon name="mana" size={10} /> Mage</td><td>80</td><td>1.5x boss</td><td>5 mana (1/attack). Half damage at 0 mana</td></tr>
+            <tr><td><PixelIcon name="dagger" size={10} /> Rogue</td><td>100</td><td>1.2x</td><td>30% chance to dodge counter-attacks entirely</td></tr>
+          </tbody>
+        </table>
+      </>
+    )},
+    { title: 'Hero Abilities', content: (
+      <>
+        <table className="help-table">
+          <thead><tr><th>Class</th><th>Ability</th><th>Cost</th><th>Effect</th></tr></thead>
+          <tbody>
+            <tr><td><PixelIcon name="shield" size={10} /> Warrior</td><td>Taunt</td><td>1 turn</td><td>60% damage reduction for 1 round (50% taunt + 20% passive). Enemies still counter-attack.</td></tr>
+            <tr><td><PixelIcon name="heal" size={10} /> Mage</td><td>Heal</td><td>2 mana</td><td>Restore 30 HP (capped at 80). +1 mana regen when killing a monster.</td></tr>
+            <tr><td><PixelIcon name="dagger" size={10} /> Rogue</td><td>Backstab</td><td>3-turn CD</td><td>3x damage multiplier. Cooldown decrements each turn.</td></tr>
+          </tbody>
+        </table>
+      </>
+    )},
+    { title: 'Dungeon Modifiers', content: (
+      <>
+        <p>Each dungeon spawns with a random modifier (80% chance).</p>
+        <table className="help-table">
+          <thead><tr><th>Modifier</th><th>Type</th><th>Effect</th></tr></thead>
+          <tbody>
+            <tr><td>Fortitude</td><td style={{color:'#e74c3c'}}>Curse</td><td>Monsters +50% HP</td></tr>
+            <tr><td>Fury</td><td style={{color:'#e74c3c'}}>Curse</td><td>Boss counter-attack 2x damage</td></tr>
+            <tr><td>Darkness</td><td style={{color:'#e74c3c'}}>Curse</td><td>Hero damage -25%</td></tr>
+            <tr><td>Strength</td><td style={{color:'#2ecc71'}}>Blessing</td><td>Hero damage +50%</td></tr>
+            <tr><td>Resilience</td><td style={{color:'#2ecc71'}}>Blessing</td><td>Counter-attack damage halved</td></tr>
+            <tr><td>Fortune</td><td style={{color:'#2ecc71'}}>Blessing</td><td>20% chance to crit (2x damage)</td></tr>
+          </tbody>
+        </table>
+      </>
+    )},
+    { title: 'Loot & Items', content: (
+      <>
+        <p>Monsters drop items on death. Boss always drops rare/epic loot. Click items in backpack to use or equip.</p>
+        <table className="help-table">
+          <thead><tr><th>Item</th><th>Common</th><th>Rare</th><th>Epic</th></tr></thead>
+          <tbody>
+            <tr><td><PixelIcon name="sword" size={10} /> Weapon</td><td>+5 dmg (3 uses)</td><td>+10 dmg</td><td>+20 dmg</td></tr>
+            <tr><td><PixelIcon name="shield" size={10} /> Armor</td><td>+10% def</td><td>+20% def</td><td>+30% def</td></tr>
+            <tr><td><PixelIcon name="heart" size={10} /> HP Potion</td><td>+20 HP</td><td>+40 HP</td><td>Full heal</td></tr>
+            <tr><td><PixelIcon name="mana" size={10} /> Mana Potion</td><td>+2 mana</td><td>+3 mana</td><td>+5 mana</td></tr>
+          </tbody>
+        </table>
+        <p>Drop chance: Easy 60%, Normal 45%, Hard 35%</p>
+      </>
+    )},
+    { title: 'Status Effects', content: (
+      <>
+        <p>Enemies can inflict status effects during counter-attacks. Effects apply at the start of your next turn.</p>
+        <table className="help-table">
+          <thead><tr><th>Effect</th><th>Source</th><th>Duration</th><th>Damage</th></tr></thead>
+          <tbody>
+            <tr><td><PixelIcon name="poison" size={10} /> Poison</td><td>Monsters (20%)</td><td>3 turns</td><td>-5 HP/turn</td></tr>
+            <tr><td><PixelIcon name="fire" size={10} /> Burn</td><td>Boss (25%)</td><td>2 turns</td><td>-8 HP/turn</td></tr>
+            <tr><td><PixelIcon name="lightning" size={10} /> Stun</td><td>Boss (15%)</td><td>1 turn</td><td>Skip attack</td></tr>
+          </tbody>
+        </table>
+        <p>Effects don't stack — new application is blocked while active.</p>
+      </>
+    )},
+    { title: 'Tips & Strategy', content: (
+      <>
+        <p><b>General:</b> Kill monsters first to reduce counter-attack damage before engaging the boss.</p>
+        <p><b>Warrior:</b> Best for beginners. High HP lets you survive many hits. Use Taunt before big boss attacks.</p>
+        <p><b>Mage:</b> Glass cannon. Rush the boss with 1.5x damage. Heal when low. Mana regens on monster kills.</p>
+        <p><b>Rogue:</b> High risk/reward. Dodge procs can save you. Save Backstab (3x) for the boss.</p>
+        <p><b>Items:</b> Equip weapons before attacking the boss. Use potions freely — they don't cost a turn.</p>
+        <p><b>Modifiers:</b> Blessing of Fortune (20% crit) is the strongest. Curse of Fury makes boss fights brutal.</p>
+      </>
+    )},
+  ]
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal help-modal" onClick={e => e.stopPropagation()}>
+        <h2 style={{ color: 'var(--gold)', fontSize: 12, marginBottom: 4 }}>📖 {pages[page].title}</h2>
+        <div className="help-page-indicator">{page + 1} / {pages.length}</div>
+        <div className="help-section">{pages[page].content}</div>
+        <div className="help-nav">
+          <button className="btn btn-gold" disabled={page === 0} onClick={() => setPage(p => p - 1)}>← Prev</button>
+          <button className="btn btn-gold" onClick={onClose}>Close</button>
+          <button className="btn btn-gold" disabled={page === pages.length - 1} onClick={() => setPage(p => p + 1)}>Next →</button>
+        </div>
+      </div>
+    </div>
+  )
+}
 function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onCloseLoot, currentTurn, turnRound, attackPhase, animPhase, attackTarget, showHelp, onToggleHelp, floatingDmg, combatModal, onDismissCombat, lootDrop, onDismissLoot }: {
   cr: DungeonCR; onBack: () => void; onAttack: (t: string, d: number) => void; events: WSEvent[]
   showLoot: boolean; onOpenLoot: () => void; onCloseLoot: () => void
@@ -389,48 +502,7 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
         </div>
       </div>
 
-      {showHelp && (
-        <div className="modal-overlay" onClick={onToggleHelp}>
-          <div className="modal help-modal" onClick={e => e.stopPropagation()}>
-            <h2 style={{ color: 'var(--gold)', fontSize: 12, marginBottom: 12 }}>📖 HOW TO PLAY</h2>
-            <div className="help-section">
-              <h3><PixelIcon name="sword" size={10} /> Combat</h3>
-              <p>Click a monster or boss to roll dice and attack. After your attack, all alive enemies counter-attack automatically.</p>
-              <p>Kill all monsters to unlock the boss. Defeat the boss to win!</p>
-            </div>
-            <div className="help-section">
-              <h3>⊞ Dice by Difficulty</h3>
-              <table className="help-table">
-                <thead><tr><th>Diff</th><th>Monster HP</th><th>Boss HP</th><th>Dice</th></tr></thead>
-                <tbody>
-                  <tr><td className="tag-easy">Easy</td><td>30</td><td>200</td><td>2d8+5</td></tr>
-                  <tr><td className="tag-normal">Normal</td><td>50</td><td>400</td><td>2d10+8</td></tr>
-                  <tr><td className="tag-hard">Hard</td><td>80</td><td>800</td><td>3d10+10</td></tr>
-                </tbody>
-              </table>
-            </div>
-            <div className="help-section">
-              <h3><PixelIcon name="shield" size={10} /> Hero Classes</h3>
-              <table className="help-table">
-                <thead><tr><th>Class</th><th>HP</th><th>Special</th></tr></thead>
-                <tbody>
-                  <tr><td>⚔️ Warrior</td><td>150</td><td>20% damage reduction on counter-attacks</td></tr>
-                  <tr><td>🔮 Mage</td><td>80</td><td>1.5x boss damage. 5 mana (1/attack, half dmg at 0)</td></tr>
-                  <tr><td>🗡️ Rogue</td><td>100</td><td>1.2x damage. 30% dodge on counter-attacks</td></tr>
-                </tbody>
-              </table>
-            </div>
-            <div className="help-section">
-              <h3>💡 Tips</h3>
-              <p>• Kill monsters first to reduce counter-attack damage</p>
-              <p>• Warrior: tank through with high HP</p>
-              <p>• Mage: rush the boss with 1.5x damage before mana runs out</p>
-              <p>• Rogue: pray for dodge procs</p>
-            </div>
-            <button className="btn btn-gold" style={{ marginTop: 12 }} onClick={onToggleHelp}>Got it!</button>
-          </div>
-        </div>
-      )}
+      {showHelp && <HelpModal onClose={onToggleHelp} />}
 
       {combatModal && (
         <div className="modal-overlay">

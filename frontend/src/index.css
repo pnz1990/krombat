@@ -565,3 +565,9 @@ body {
 
 /* Right panel equip panel */
 .right-panel .equip-panel { flex-direction: column; align-items: center; gap: 8px; }
+
+/* Help modal pagination */
+.help-page-indicator { font-size: 7px; color: #555; margin-bottom: 8px; }
+.help-nav { display: flex; gap: 8px; justify-content: center; margin-top: 12px; }
+.help-nav .btn { font-size: 8px; padding: 4px 12px; }
+.help-nav .btn:disabled { opacity: 0.3; }
