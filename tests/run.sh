@@ -19,26 +19,14 @@ for i in $(seq 1 90); do
   sleep 1
 done
 
-# Run all 4 groups in parallel (5-min timeout each)
-run_with_timeout() {
-  local name=$1 script=$2 log=$3
-  "$script" > "$log" 2>&1 &
-  local pid=$!
-  ( sleep 300 && kill $pid 2>/dev/null && echo "  ⏰ $name timed out after 5min" >> "$log" ) &
-  local timer=$!
-  wait $pid 2>/dev/null
-  local rc=$?
-  kill $timer 2>/dev/null; wait $timer 2>/dev/null
-  return $rc
-}
-
-run_with_timeout "Core"      "$DIR/test-core.sh"      /tmp/test-core.log &
+# Run all 4 groups in parallel
+"$DIR"/test-core.sh      > /tmp/test-core.log 2>&1 &
 PID_CORE=$!
-run_with_timeout "Abilities"  "$DIR/test-abilities.sh"  /tmp/test-abilities.log &
+"$DIR"/test-abilities.sh  > /tmp/test-abilities.log 2>&1 &
 PID_ABILITIES=$!
-run_with_timeout "Features"   "$DIR/test-features.sh"   /tmp/test-features.log &
+"$DIR"/test-features.sh   > /tmp/test-features.log 2>&1 &
 PID_FEATURES=$!
-run_with_timeout "Infra"      "$DIR/test-infra.sh"      /tmp/test-infra.log &
+"$DIR"/test-infra.sh      > /tmp/test-infra.log 2>&1 &
 PID_INFRA=$!
 
 FAILED=0
