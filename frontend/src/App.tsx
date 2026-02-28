@@ -114,20 +114,10 @@ export default function App() {
     try {
       setAttackTarget(target.replace(/-backstab$/, ''))
       setAnimPhase('hero-attack')
-      setAttackPhase(isAbility ? (target === 'hero' ? '💚 Healing...' : '🛡️ Taunting...') : `⚔️ Attacking ${shortTarget}...`)
-      if (!isAbility) setFloatingDmg({ target: target.replace(/-backstab$/, ''), amount: '⚔️', color: '#e94560' })
+      setAttackPhase(isAbility ? (target === 'hero' ? '💚 Healing...' : '🛡️ Taunting...') : `🎲 Rolling dice...`)
       await submitAttack(selected.ns, selected.name, target, damage)
-      await new Promise(r => setTimeout(r, 1500))
-      setFloatingDmg(null)
 
-      if (!isAbility) {
-        setAnimPhase('enemy-attack')
-        setAttackPhase('💀 Enemies counter-attack!')
-        await new Promise(r => setTimeout(r, 1500))
-      }
-
-      // Phase 3: Resolve — poll until state reflects the attack
-      setAttackPhase('⏳ Resolving...')
+      // Poll for CR update while showing dice animation
       let updated = detail!
       for (let attempt = 0; attempt < 20; attempt++) {
         const fetched = await getDungeon(selected.ns, selected.name)
@@ -138,7 +128,41 @@ export default function App() {
         await new Promise(r => setTimeout(r, 1000))
       }
       setDetail(updated)
-      // Detect new loot drops
+
+      // Parse real damage from CR
+      const heroAction = updated.spec.lastHeroAction || ''
+      const dmgMatch = heroAction.match(/deals (\d+) damage/)
+      const realDmg = dmgMatch ? dmgMatch[1] : null
+
+      if (!isAbility && realDmg) {
+        // Reveal damage with big splash on target
+        setAttackPhase(`💥 ${realDmg} DAMAGE!`)
+        setFloatingDmg({ target: target.replace(/-backstab$/, ''), amount: `-${realDmg}`, color: '#e94560' })
+        await new Promise(r => setTimeout(r, 1500))
+        setFloatingDmg(null)
+
+        // Counter-attack phase
+        setAnimPhase('enemy-attack')
+        const oldHP = detail?.spec.heroHP ?? 100
+        const newHP = updated.spec.heroHP ?? 100
+        const hpLost = oldHP - newHP
+        if (hpLost > 0) {
+          setAttackPhase(`💀 Counter-attack! -${hpLost} HP`)
+          setFloatingDmg({ target: 'hero', amount: `-${hpLost}`, color: '#e94560' })
+        } else {
+          setAttackPhase('💀 Enemies counter-attack!')
+        }
+        await new Promise(r => setTimeout(r, 1500))
+        setFloatingDmg(null)
+      } else if (isAbility) {
+        // Brief ability feedback
+        const healMatch = heroAction.match(/heals for (\d+)/)
+        if (healMatch) setAttackPhase(`💚 +${healMatch[1]} HP!`)
+        else if (heroAction.includes('Taunt')) setAttackPhase('🛡️ Taunt active!')
+        await new Promise(r => setTimeout(r, 1000))
+      }
+
+      // Detect loot drops
       const oldInv = prevInventoryRef.current
       const newInv = updated.spec.inventory || ''
       if (newInv && newInv !== oldInv) {
@@ -149,15 +173,6 @@ export default function App() {
       }
       prevInventoryRef.current = newInv
       await new Promise(r => setTimeout(r, 100))
-
-      // Show counter-attack damage on hero
-      const oldHP = detail?.spec.heroHP ?? 100
-      const newHP = updated.spec.heroHP ?? 100
-      const hpLost = oldHP - newHP
-      if (hpLost > 0) {
-        setFloatingDmg({ target: 'hero', amount: `-${hpLost}`, color: '#e94560' })
-        setTimeout(() => setFloatingDmg(null), 1000)
-      }
 
       // Read combat log from Dungeon CR
       const heroAction = updated.spec.lastHeroAction
@@ -417,7 +432,7 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
 
       {!gameOver && (
         <div className={`turn-bar ${attackPhase ? 'attacking' : ''}`}>
-          <span className="turn-indicator">{attackPhase || '⚔️ Ready to attack!'}</span>
+          <span className={`turn-indicator${attackPhase?.includes('DAMAGE') ? ' damage-reveal' : ''}`}>{attackPhase || '⚔️ Ready to attack!'}</span>
         </div>
       )}
 
