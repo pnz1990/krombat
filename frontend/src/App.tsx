@@ -344,10 +344,10 @@ function DungeonView({ cr, onBack, onAttack, events, showLoot, onOpenLoot, onClo
   const spec = cr.spec || { monsters: 0, difficulty: 'normal', monsterHP: [], bossHP: 0, heroHP: 100, currentTurn: 'hero', turnRound: 1 }
   const status = cr.status
   const dungeonName = cr.metadata.name
-  const maxMonsterHP = Number(status?.maxMonsterHP) || Math.max(...(spec.monsterHP || [0]))
-  const maxBossHP = Number(status?.maxBossHP) || spec.bossHP || 400
+  const maxMonsterHP = Number(status?.maxMonsterHP) || Math.max(...(spec.monsterHP || [1]))
+  const maxBossHP = Number(status?.maxBossHP) || spec.bossHP
   const heroHP = spec.heroHP ?? 100
-  const maxHeroHP = Number(status?.maxHeroHP) || Math.max(heroHP, 100)
+  const maxHeroHP = Number(status?.maxHeroHP) || heroHP
   const isDefeated = status?.defeated || heroHP <= 0
   const bossState = status?.bossState || 'pending'
   const isHeroTurn = !currentTurn || currentTurn === 'hero'
