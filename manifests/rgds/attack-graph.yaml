@@ -49,6 +49,13 @@ spec:
                       for i in 1 2 3 4 5; do
                         DUNGEON_JSON=$(kubectl get dungeon "$DUNGEON" -n "$DUNGEON_NS" -o json)
                         HERO_HP=$(echo "$DUNGEON_JSON" | jq -r '.spec.heroHP // 100')
+
+                        # Reject actions on finished dungeons
+                        BOSS_HP_CHK=$(echo "$DUNGEON_JSON" | jq -r '.spec.bossHP // 1')
+                        ALIVE_CHK=$(echo "$DUNGEON_JSON" | jq '[.spec.monsterHP[] | select(. > 0)] | length')
+                        if [ "$HERO_HP" -le 0 ]; then echo "Dungeon over: hero defeated"; exit 0; fi
+                        if [ "$BOSS_HP_CHK" -le 0 ] && [ "$ALIVE_CHK" -eq 0 ]; then echo "Dungeon over: victory"; exit 0; fi
+
                         HERO_CLASS=$(echo "$DUNGEON_JSON" | jq -r '.spec.heroClass // "warrior"')
                         HERO_MANA=$(echo "$DUNGEON_JSON" | jq -r '.spec.heroMana // 0')
                         DIFFICULTY=$(echo "$DUNGEON_JSON" | jq -r '.spec.difficulty // "normal"')
