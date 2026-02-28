@@ -206,8 +206,6 @@ export default function App() {
   const dismissCombat = () => {
     setCombatModal(null)
     setAttackPhase(null)
-    // Rapid poll to catch boss unlock, loot, status changes faster
-    for (let i = 1; i <= 5; i++) setTimeout(refresh, i * 2000)
   }
 
   const handleSelect = (ns: string, name: string) => {
