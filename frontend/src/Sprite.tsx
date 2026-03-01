@@ -7,24 +7,35 @@ const FRAME_COUNT: Record<string, number> = {
   warrior: 7, mage: 7, rogue: 7, dragon: 7, goblin: 6, skeleton: 6,
 }
 
-export type SpriteAction = 'idle' | 'attack' | 'hurt' | 'dead' | 'victory'
+export type SpriteAction = 'idle' | 'attack' | 'hurt' | 'dead' | 'victory' | 'itemUse'
 
 // Map actions to frame numbers (1-indexed file names)
 // 1=idle, 2=walk1, 3=walk2, 4=attack1, 5=attack2, 6=hurt, 7=victory/dead
 const ACTION_FRAMES: Record<SpriteAction, number[]> = {
-  idle:    [1, 2, 3, 2],   // breathing/shifting animation loop
+  idle:    [1, 2, 3, 2],
   attack:  [3, 4, 5, 4],
   hurt:    [6],
   dead:    [6],
   victory: [7],
+  itemUse: [1, 2, 7, 2],
 }
 
 const MONSTER_ACTION_FRAMES: Record<SpriteAction, number[]> = {
-  idle:    [1, 2, 3, 2],   // breathing/shifting animation loop
+  idle:    [1, 2, 3, 2],
   attack:  [3, 4, 5, 4],
   hurt:    [6],
   dead:    [6],
   victory: [6],
+  itemUse: [1],
+}
+
+const BOSS_ACTION_FRAMES: Record<SpriteAction, number[]> = {
+  idle:    [1, 2, 3, 2],
+  attack:  [4, 5, 6, 5],
+  hurt:    [6],
+  dead:    [6],
+  victory: [7],
+  itemUse: [1],
 }
 
 interface SpriteProps {
@@ -40,8 +51,9 @@ export function Sprite({ spriteType, action, size = 64, flip = false }: SpritePr
 
   if (!FRAME_COUNT[spriteType]) return <div style={{ width: size, height: size, fontSize: size * 0.6, textAlign: 'center' }}>👹</div>
 
+  const isBoss = spriteType === 'dragon'
   const isMonster = spriteType === 'goblin' || spriteType === 'skeleton'
-  const frames = isMonster ? MONSTER_ACTION_FRAMES[action] : ACTION_FRAMES[action]
+  const frames = isBoss ? BOSS_ACTION_FRAMES[action] : isMonster ? MONSTER_ACTION_FRAMES[action] : ACTION_FRAMES[action]
 
   useEffect(() => {
     setFrameIdx(0)

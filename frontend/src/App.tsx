@@ -48,7 +48,7 @@ export default function App() {
   const [activeNs, setActiveNs] = useState('default')
   const prevInventoryRef = useRef('')
   const [attackTarget, setAttackTarget] = useState<string | null>(null)
-  const [animPhase, setAnimPhase] = useState<'idle' | 'hero-attack' | 'enemy-attack' | 'done'>('idle')
+  const [animPhase, setAnimPhase] = useState<'idle' | 'hero-attack' | 'enemy-attack' | 'item-use' | 'done'>('idle')
 
   const { connected, lastEvent } = useWebSocket(selected?.ns, selected?.name)
   const selectedRef = useRef(selected)
@@ -125,7 +125,7 @@ export default function App() {
     const shortTarget = (isAbility || isItem) ? target : target.replace(/-backstab$/, '').split('-').slice(-2).join('-')
     try {
       setAttackTarget(target.replace(/-backstab$/, ''))
-      setAnimPhase('hero-attack')
+      setAnimPhase(isItem ? 'item-use' : 'hero-attack')
       setAttackPhase('attacking')
       const oldHP = detail?.spec.heroHP ?? 100
       const formula = detail?.status?.diceFormula || '2d12+4'
@@ -860,7 +860,7 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
             <div className="arena-entity hero-entity" style={{ left: '50%', top: '70%' }}>
               {floatingDmg?.target === 'hero' && <div className="floating-dmg" style={{ color: floatingDmg.color }}>{floatingDmg.amount}</div>}
               <Sprite spriteType={spec.heroClass || 'warrior'} size={80}
-                action={isDefeated ? 'dead' : status?.victory ? 'victory' : animPhase === 'hero-attack' ? 'attack' : animPhase === 'enemy-attack' ? 'hurt' : 'idle'} />
+                action={isDefeated ? 'dead' : status?.victory ? 'victory' : animPhase === 'hero-attack' ? 'attack' : animPhase === 'enemy-attack' ? 'hurt' : animPhase === 'item-use' ? 'itemUse' : 'idle'} />
               <div className="arena-shadow" style={{ width: 60 }} />
             </div>
 
@@ -876,7 +876,7 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
         <div className="right-panel">
           <div className="hero-section">
             <Sprite spriteType={spec.heroClass || 'warrior'} size={80}
-              action={isDefeated ? 'dead' : status?.victory ? 'victory' : animPhase === 'hero-attack' ? 'attack' : animPhase === 'enemy-attack' ? 'hurt' : 'idle'} />
+              action={isDefeated ? 'dead' : status?.victory ? 'victory' : animPhase === 'hero-attack' ? 'attack' : animPhase === 'enemy-attack' ? 'hurt' : animPhase === 'item-use' ? 'itemUse' : 'idle'} />
             <div className="hero-label">{(spec.heroClass || 'warrior').toUpperCase()}</div>
             <div className="hp-bar-bg">
               <div className={`hp-bar-fill ${heroHP > 60 ? 'high' : heroHP > 30 ? 'mid' : 'low'}`}
