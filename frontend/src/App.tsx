@@ -360,6 +360,56 @@ function DungeonList({ dungeons, onSelect, onDelete, deleting }: {
 
 
 
+
+function DungeonBats() {
+  const [bats, setBats] = useState<{ id: number; startX: number; startY: number; endX: number; endY: number; dur: number; delay: number }[]>([])
+  const nextId = useRef(0)
+  useEffect(() => {
+    const spawn = () => {
+      // 40% chance to spawn a bat every 3-6 seconds
+      if (Math.random() < 0.4) {
+        const fromLeft = Math.random() > 0.5
+        setBats(prev => [...prev, {
+          id: nextId.current++,
+          startX: fromLeft ? -5 : 105,
+          startY: 10 + Math.random() * 40,
+          endX: fromLeft ? 105 : -5,
+          endY: 10 + Math.random() * 40,
+          dur: 3 + Math.random() * 3,
+          delay: 0,
+        }].slice(-3)) // max 3 bats at once
+      }
+    }
+    const id = setInterval(spawn, 3000 + Math.random() * 3000)
+    return () => clearInterval(id)
+  }, [])
+
+  return <>
+    {bats.map(b => <FlyingBat key={b.id} {...b} onDone={() => setBats(prev => prev.filter(x => x.id !== b.id))} />)}
+  </>
+}
+
+function FlyingBat({ startX, startY, endX, endY, dur, onDone }: { startX: number; startY: number; endX: number; endY: number; dur: number; delay: number; onDone: () => void }) {
+  const [frame, setFrame] = useState(1)
+  const [pos, setPos] = useState({ x: startX, y: startY })
+  const startTime = useRef(Date.now())
+
+  useEffect(() => {
+    const anim = setInterval(() => setFrame(f => (f % 3) + 1), 150)
+    const move = setInterval(() => {
+      const elapsed = (Date.now() - startTime.current) / 1000
+      const t = Math.min(elapsed / dur, 1)
+      setPos({ x: startX + (endX - startX) * t, y: startY + (endY - startY) * t + Math.sin(t * Math.PI * 4) * 5 })
+      if (t >= 1) onDone()
+    }, 50)
+    return () => { clearInterval(anim); clearInterval(move) }
+  }, [])
+
+  return (
+    <img src={`/sprites/dungeon/bat-${frame}.png`} alt="" className="flying-bat"
+      style={{ left: `${pos.x}%`, top: `${pos.y}%`, transform: `translate(-50%,-50%) scaleX(${endX > startX ? 1 : -1})` }} />
+  )
+}
 function EventLogTabs({ events, k8sLog }: { events: WSEvent[]; k8sLog: { ts: string; cmd: string; res: string; yaml?: string }[] }) {
   const [tab, setTab] = useState<'game' | 'k8s'>('game')
   const [yamlModal, setYamlModal] = useState<string | null>(null)
@@ -740,6 +790,9 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
             </div>
 
             {/* Victory glow */}
+            {/* Flying bats */}
+            <DungeonBats />
+
             {status?.victory && <div className="arena-victory-glow" />}
           </div>
         </div>

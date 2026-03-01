@@ -735,3 +735,15 @@ body {
   pointer-events: none;
   filter: brightness(0.6);
 }
+
+/* Flying bats */
+.flying-bat {
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  z-index: 4;
+  opacity: 0.5;
+  image-rendering: pixelated;
+  pointer-events: none;
+  filter: brightness(0.4);
+}
