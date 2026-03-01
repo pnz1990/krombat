@@ -536,7 +536,8 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
   const isDefeated = status?.defeated || heroHP <= 0
   const bossState = status?.bossState || 'pending'
   const isHeroTurn = !currentTurn || currentTurn === 'hero'
-  const gameOver = isDefeated || status?.victory
+  const allMonstersDead = (spec.monsterHP || []).every((hp: number) => hp <= 0)
+  const gameOver = isDefeated || status?.victory || (spec.bossHP <= 0 && allMonstersDead)
 
   // Build turn order for display
   const turnOrder: { id: string; label: string; alive: boolean }[] = [{ id: 'hero', label: '🛡️ Hero', alive: !isDefeated }]
@@ -647,10 +648,10 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
 
             {/* Boss — only visible when ready or defeated */}
             {bossState !== 'pending' && (() => {
-              let bAction: SpriteAction = bossState === 'defeated' ? 'dead' : 'idle'
+              let bAction: SpriteAction = (bossState === 'defeated' || spec.bossHP <= 0) ? 'dead' : 'idle'
               if (attackTarget?.includes('boss') && animPhase === 'hero-attack') bAction = 'hurt'
               if (bossState === 'ready' && animPhase === 'enemy-attack' && attackTarget?.includes('boss')) bAction = 'attack'
-              if (status?.victory) bAction = 'dead'
+              if (status?.victory || spec.bossHP <= 0) bAction = 'dead'
               const bossName = `${dungeonName}-boss`
               return (
                 <div className={`arena-entity boss-entity ${bossState === 'defeated' ? 'dead' : ''}`}
