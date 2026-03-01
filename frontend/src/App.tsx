@@ -781,8 +781,8 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
                 style={{ left: `${p.x}%`, top: `${p.y}%`, width: p.size, transform: `translate(-50%,-50%) rotate(${p.rot}deg)` }} />
             ))}
 
-            {/* Boss — only visible when ready or defeated */}
-            {bossState !== 'pending' && (() => {
+            {/* Boss — visible when all monsters dead or status says ready/defeated */}
+            {(bossState !== 'pending' || allMonstersDead) && (() => {
               let bAction: SpriteAction = (bossState === 'defeated' || spec.bossHP <= 0) ? 'dead' : 'idle'
               if (attackTarget?.includes('boss') && animPhase === 'hero-attack') bAction = 'hurt'
               if (bossState === 'ready' && animPhase === 'enemy-attack' && attackTarget?.includes('boss')) bAction = 'attack'
@@ -797,7 +797,7 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
                   <div className="arena-hover-ui">
                     <div className="arena-hp-bar"><div className={`arena-hp-fill ${spec.bossHP > 0 ? 'high' : 'low'}`} style={{ width: `${Math.min((spec.bossHP / maxBossHP) * 100, 100)}%` }} /></div>
                     <div className="arena-name">Boss · {spec.bossHP}/{maxBossHP}</div>
-                    {bossState === 'ready' && !gameOver && !attackPhase && (
+                    {(bossState === 'ready' || (allMonstersDead && spec.bossHP > 0)) && !gameOver && !attackPhase && (
                       <div className="arena-actions">
                         <button className="btn btn-primary arena-atk-btn" onClick={() => onAttack(bossName, 0)}>🎲 {status?.diceFormula || '2d12+4'}</button>
                         {spec.heroClass === 'rogue' && (spec.backstabCooldown ?? 0) === 0 && (
