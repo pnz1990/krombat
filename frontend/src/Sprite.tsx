@@ -13,7 +13,7 @@ export type SpriteAction = 'idle' | 'attack' | 'hurt' | 'dead' | 'victory'
 // 1=idle, 2=walk1, 3=walk2, 4=attack1, 5=attack2, 6=hurt, 7=victory/dead
 const ACTION_FRAMES: Record<SpriteAction, number[]> = {
   idle:    [1, 2, 3, 2],   // breathing/shifting animation loop
-  attack:  [4, 5],
+  attack:  [3, 4, 5, 4],
   hurt:    [6],
   dead:    [6],
   victory: [7],
@@ -21,7 +21,7 @@ const ACTION_FRAMES: Record<SpriteAction, number[]> = {
 
 const MONSTER_ACTION_FRAMES: Record<SpriteAction, number[]> = {
   idle:    [1, 2, 3, 2],   // breathing/shifting animation loop
-  attack:  [4, 5],
+  attack:  [3, 4, 5, 4],
   hurt:    [6],
   dead:    [6],
   victory: [6],
@@ -84,8 +84,6 @@ const ITEM_STRIP: Record<string, { frames: number; frameW: number; frameH: numbe
   weapons:   { frames: 6, frameW: 853, frameH: 832, file: '/sprites/items/weapons.png' },
   armor:     { frames: 6, frameW: 848, frameH: 832, file: '/sprites/items/armor.png' },
   potions:   { frames: 6, frameW: 848, frameH: 832, file: '/sprites/items/potions.png' },
-  curses:    { frames: 6, frameW: 848, frameH: 832, file: '/sprites/icons/curses.png' },
-  blessings: { frames: 6, frameW: 848, frameH: 832, file: '/sprites/icons/blessings.png' },
 }
 
 // Map item type+rarity to strip and index
@@ -107,13 +105,13 @@ const ITEM_MAP: Record<string, { strip: string; index: number }> = {
   'manapotion-epic':   { strip: 'potions', index: 5 },
 }
 
-const MODIFIER_MAP: Record<string, { strip: string; index: number }> = {
-  'curse-fortitude':      { strip: 'curses', index: 0 },
-  'curse-fury':           { strip: 'curses', index: 1 },
-  'curse-darkness':       { strip: 'curses', index: 2 },
-  'blessing-strength':    { strip: 'blessings', index: 0 },
-  'blessing-resilience':  { strip: 'blessings', index: 1 },
-  'blessing-fortune':     { strip: 'blessings', index: 2 },
+const MODIFIER_MAP: Record<string, { file: string }> = {
+  'curse-fortitude':      { file: '/sprites/icons/curses/fortitude.png' },
+  'curse-fury':           { file: '/sprites/icons/curses/fury.png' },
+  'curse-darkness':       { file: '/sprites/icons/curses/darkness.png' },
+  'blessing-strength':    { file: '/sprites/icons/blessings/strength.png' },
+  'blessing-resilience':  { file: '/sprites/icons/blessings/resilience.png' },
+  'blessing-fortune':     { file: '/sprites/icons/blessings/fortune.png' },
 }
 
 export function ItemSprite({ id, size = 24 }: { id: string; size?: number }) {
