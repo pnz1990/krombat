@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# Pre-push hook: runs all integration tests locally before allowing push.
+# If any test fails, push is blocked.
+set -uo pipefail
+
+echo "🔒 Pre-push hook: running integration tests..."
+echo ""
+
+FAILED=0
+
+# 1. Integration tests (parallel)
+echo "=== Integration Tests ==="
+./tests/run.sh
+if [ $? -ne 0 ]; then
+  echo "❌ Integration tests failed"
+  FAILED=1
+else
+  echo "✅ Integration tests passed"
+fi
+
+# 2. Guardrail tests
+echo ""
+echo "=== Guardrail Tests ==="
+./tests/guardrails.sh
+if [ $? -ne 0 ]; then
+  echo "❌ Guardrail tests failed"
+  FAILED=1
+else
+  echo "✅ Guardrail tests passed"
+fi
+
+# 3. Backend API tests
+echo ""
+echo "=== Backend API Tests ==="
+kubectl port-forward svc/rpg-backend -n rpg-system 8080:8080 > /dev/null 2>&1 &
+PF_PID=$!
+sleep 3
+./tests/backend-api.sh
+RESULT=$?
+kill $PF_PID 2>/dev/null
+if [ $RESULT -ne 0 ]; then
+  echo "❌ Backend API tests failed"
+  FAILED=1
+else
+  echo "✅ Backend API tests passed"
+fi
+
+echo ""
+if [ $FAILED -ne 0 ]; then
+  echo "🚫 Push blocked — fix failing tests first"
+  exit 1
+else
+  echo "✅ All tests passed — pushing"
+  exit 0
+fi

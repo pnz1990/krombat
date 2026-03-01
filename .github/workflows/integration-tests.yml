@@ -1,8 +1,7 @@
 name: Integration Tests
 
 on:
-  push:
-    branches: [main]
+  workflow_dispatch:  # manual only — tests run locally via pre-push hook
 
 permissions:
   id-token: write
