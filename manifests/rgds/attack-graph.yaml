@@ -257,7 +257,7 @@ spec:
                             hard)   DICE_COUNT=3; DICE_SIDES=20; DICE_MOD=5 ;;
                             *)      DICE_COUNT=2; DICE_SIDES=12; DICE_MOD=4 ;;
                           esac
-                          if true; then
+                          if echo "$REAL_TARGET" | grep -q "boss"; then
                             DICE_COUNT=$((DICE_COUNT + 1))
                             DICE_SIDES=$((DICE_SIDES))
                             DICE_MOD=$((DICE_MOD + 3))
@@ -280,7 +280,6 @@ spec:
                               CLASS_NOTE=" (Mage power!)"
                             fi
                             HERO_MANA=$((HERO_MANA - 1))
-                            if [ "$HERO_MANA" -lt 8 ]; then HERO_MANA=$((HERO_MANA + 1)); fi
                             MANA_PATCH=",\"heroMana\":$HERO_MANA"
                           else
                             CLASS_NOTE=""
@@ -334,7 +333,7 @@ spec:
                         fi
 
                         # Calculate hero's attack on target
-                        if true; then
+                        if echo "$REAL_TARGET" | grep -q "boss"; then
                           OLD_HP=$(echo "$DUNGEON_JSON" | jq -r '.spec.bossHP')
                           NEW_HP=$((OLD_HP - EFFECTIVE_DAMAGE))
                           if [ "$NEW_HP" -lt 0 ]; then NEW_HP=0; fi
@@ -481,7 +480,7 @@ spec:
 
                         # Roll for status effects from counter-attacks
                         EFFECT_NOTE=""
-                        if true; then
+                        if echo "$REAL_TARGET" | grep -q "boss"; then
                           if [ "$NEW_HP" -gt 0 ]; then
                             # Boss can inflict stun (15%) or burn (25%) — only if not already active
                             EFFECT_ROLL=$((RANDOM % 100))
@@ -509,7 +508,7 @@ spec:
 
                         HERO_ACTION="$DOT_NOTE""Hero ($HERO_CLASS) deals $EFFECTIVE_DAMAGE damage to $REAL_TARGET (HP: $OLD_HP -> $NEW_HP)$CLASS_NOTE"
 
-                        if true; then
+                        if echo "$REAL_TARGET" | grep -q "boss"; then
                           if [ "$NEW_HP" -gt 0 ]; then
                             ENEMY_ACTION="Boss strikes back for $COUNTER damage! (Hero HP: $HERO_HP)"
                           else
