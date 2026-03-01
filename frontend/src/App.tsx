@@ -611,7 +611,7 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
       {showHelp && <HelpModal onClose={onToggleHelp} />}
 
       {combatModal && (
-        <div className="modal-overlay">
+        <div className="modal-overlay combat-overlay">
           <div className="modal combat-modal" onClick={e => e.stopPropagation()}>
             {combatModal.phase === 'rolling' ? (
               <>

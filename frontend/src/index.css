@@ -738,3 +738,6 @@ body {
   image-rendering: pixelated;
   pointer-events: none;
 }
+
+/* Combat modal — more transparent to see animations behind */
+.combat-overlay { background: rgba(0, 0, 0, 0.4) !important; }
