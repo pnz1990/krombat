@@ -372,6 +372,16 @@ spec:
                             if [ -n "$INVENTORY" ]; then INVENTORY="$INVENTORY,$ITEM"; else INVENTORY="$ITEM"; fi
                             INVENTORY_PATCH=",\"inventory\":\"$INVENTORY\""
                             CLASS_NOTE="$CLASS_NOTE Boss dropped $ITEM!"
+                            # Create Loot CR → Secret
+                            ITEM_TYPE=$(echo "$ITEM" | sed 's/-[^-]*$//')
+                            STAT=0
+                            case "$ITEM" in
+                              weapon-rare) STAT=10 ;; weapon-epic) STAT=20 ;;
+                              armor-rare) STAT=20 ;; armor-epic) STAT=30 ;;
+                              hppotion-rare) STAT=40 ;; hppotion-epic) STAT=999 ;;
+                            esac
+                            LOOT_NAME="$DUNGEON-boss-loot-$((RANDOM % 99999))"
+                            echo '{"apiVersion":"game.k8s.example/v1alpha1","kind":"Loot","metadata":{"name":"'$LOOT_NAME'","namespace":"'$DUNGEON'"},"spec":{"dungeonName":"'$DUNGEON'","itemType":"'$ITEM_TYPE'","rarity":"'$RARITY'","stat":'$STAT'}}' | kubectl apply -f - 2>/dev/null || true
                           fi
                         else
                           IDX=$(echo "$REAL_TARGET" | grep -oE '[0-9]+$')
@@ -405,6 +415,17 @@ spec:
                               if [ -n "$INVENTORY" ]; then INVENTORY="$INVENTORY,$ITEM"; else INVENTORY="$ITEM"; fi
                               INVENTORY_PATCH=",\"inventory\":\"$INVENTORY\""
                               CLASS_NOTE="$CLASS_NOTE Dropped $ITEM!"
+                              # Create Loot CR → Secret via loot-graph RGD
+                              ITEM_TYPE=$(echo "$ITEM" | sed 's/-[^-]*$//')
+                              STAT=0
+                              case "$ITEM" in
+                                weapon-common) STAT=5 ;; weapon-rare) STAT=10 ;; weapon-epic) STAT=20 ;;
+                                armor-common) STAT=10 ;; armor-rare) STAT=20 ;; armor-epic) STAT=30 ;;
+                                hppotion-common) STAT=20 ;; hppotion-rare) STAT=40 ;; hppotion-epic) STAT=999 ;;
+                                manapotion-common) STAT=2 ;; manapotion-rare) STAT=3 ;; manapotion-epic) STAT=5 ;;
+                              esac
+                              LOOT_NAME="$DUNGEON-loot-$((RANDOM % 99999))"
+                              echo '{"apiVersion":"game.k8s.example/v1alpha1","kind":"Loot","metadata":{"name":"'$LOOT_NAME'","namespace":"'$DUNGEON'"},"spec":{"dungeonName":"'$DUNGEON'","itemType":"'$ITEM_TYPE'","rarity":"'$RARITY'","stat":'$STAT'}}' | kubectl apply -f - 2>/dev/null || true
                             fi
                           fi
                           # All alive monsters counter-attack

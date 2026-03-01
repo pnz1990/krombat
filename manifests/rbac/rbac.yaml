@@ -45,6 +45,9 @@ rules:
   - apiGroups: [game.k8s.example]
     resources: [dungeons]
     verbs: [get, patch]
+  - apiGroups: [game.k8s.example]
+    resources: [loots]
+    verbs: [create, get]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
