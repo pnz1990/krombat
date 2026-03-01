@@ -42,6 +42,7 @@ export default function App() {
   const [showLoot, setShowLoot] = useState(false)
   const [attackPhase, setAttackPhase] = useState<string | null>(null)
   const [showHelp, setShowHelp] = useState(false)
+  const [showCheat, setShowCheat] = useState(false)
   const [deleting, setDeleting] = useState<string | null>(null)
   const [lootDrop, setLootDrop] = useState<string | null>(null)
   const [activeNs, setActiveNs] = useState('default')
@@ -296,6 +297,8 @@ export default function App() {
           turnRound={1}
           showHelp={showHelp}
           onToggleHelp={() => setShowHelp(h => !h)}
+          showCheat={showCheat}
+          onToggleCheat={() => setShowCheat(c => !c)}
         />
       ) : null}
     </div>
@@ -452,8 +455,71 @@ function EventLogTabs({ events, k8sLog }: { events: WSEvent[]; k8sLog: { ts: str
     </div>
   )
 }
-function HelpModal({ onClose }: { onClose: () => void }) {
+
+function CheatModal({ onClose, onAction }: { onClose: () => void; onAction: (target: string) => void }) {
+  const sections = [
+    { title: 'Weapons', items: [
+      { id: 'equip-weapon-common', label: 'Common Sword', sprite: 'weapon-common' },
+      { id: 'equip-weapon-rare', label: 'Rare Sword', sprite: 'weapon-rare' },
+      { id: 'equip-weapon-epic', label: 'Epic Sword', sprite: 'weapon-epic' },
+    ]},
+    { title: 'Armor', items: [
+      { id: 'equip-armor-common', label: 'Common Armor', sprite: 'armor-common' },
+      { id: 'equip-armor-rare', label: 'Rare Armor', sprite: 'armor-rare' },
+      { id: 'equip-armor-epic', label: 'Epic Armor', sprite: 'armor-epic' },
+    ]},
+    { title: 'Shields', items: [
+      { id: 'equip-shield-common', label: 'Common Shield', sprite: 'shield-common' },
+      { id: 'equip-shield-rare', label: 'Rare Shield', sprite: 'shield-rare' },
+      { id: 'equip-shield-epic', label: 'Epic Shield', sprite: 'shield-epic' },
+    ]},
+    { title: 'HP Potions', items: [
+      { id: 'use-hppotion-common', label: '+20 HP', sprite: 'hppotion-common' },
+      { id: 'use-hppotion-rare', label: '+40 HP', sprite: 'hppotion-rare' },
+      { id: 'use-hppotion-epic', label: 'Full HP', sprite: 'hppotion-epic' },
+    ]},
+    { title: 'Mana Potions', items: [
+      { id: 'use-manapotion-common', label: '+2 Mana', sprite: 'manapotion-common' },
+      { id: 'use-manapotion-rare', label: '+3 Mana', sprite: 'manapotion-rare' },
+      { id: 'use-manapotion-epic', label: '+5 Mana', sprite: 'manapotion-epic' },
+    ]},
+  ]
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal help-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 500 }}>
+        <h2 style={{ color: '#e94560', fontSize: 12, marginBottom: 8 }}>🔧 CHEAT MODE</h2>
+        <p style={{ fontSize: 7, color: '#666', marginBottom: 12 }}>Items are added to inventory then used/equipped via Attack CR pipeline.</p>
+        {sections.map(s => (
+          <div key={s.title} style={{ marginBottom: 8 }}>
+            <div style={{ fontSize: 8, color: '#888', marginBottom: 4 }}>{s.title}</div>
+            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+              {s.items.map(item => (
+                <button key={item.id} className="backpack-slot" style={{ borderColor: item.sprite.includes('epic') ? '#9b59b6' : item.sprite.includes('rare') ? '#5dade2' : '#aaa', width: 48, height: 48 }}
+                  title={item.label}
+                  onClick={() => { onAction(item.id); }}>
+                  <ItemSprite id={item.sprite} size={32} />
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+        <button className="btn btn-gold" style={{ marginTop: 8 }} onClick={onClose}>Close</button>
+      </div>
+    </div>
+  )
+}
+function HelpModal({ onClose, onCheat }: { onClose: () => void; onCheat: () => void }) {
   const [page, setPage] = useState(0)
+  const bufRef = useRef('')
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      bufRef.current += e.key
+      if (bufRef.current.includes('999')) { bufRef.current = ''; onClose(); setTimeout(onCheat, 100) }
+      if (bufRef.current.length > 10) bufRef.current = bufRef.current.slice(-5)
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [onClose, onCheat])
   const pages = [
     { title: 'Combat Basics', content: (
       <>
@@ -564,12 +630,13 @@ function HelpModal({ onClose }: { onClose: () => void }) {
     </div>
   )
 }
-function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoot, onCloseLoot, currentTurn, turnRound, attackPhase, animPhase, attackTarget, showHelp, onToggleHelp, floatingDmg, combatModal, onDismissCombat, lootDrop, onDismissLoot }: {
+function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoot, onCloseLoot, currentTurn, turnRound, attackPhase, animPhase, attackTarget, showHelp, onToggleHelp, showCheat, onToggleCheat, floatingDmg, combatModal, onDismissCombat, lootDrop, onDismissLoot }: {
   cr: DungeonCR; onBack: () => void; onAttack: (t: string, d: number) => void; events: WSEvent[]; k8sLog: { ts: string; cmd: string; res: string; yaml?: string }[]
   showLoot: boolean; onOpenLoot: () => void; onCloseLoot: () => void
   currentTurn: string; turnRound: number; attackPhase: string | null
   animPhase: string; attackTarget: string | null
   showHelp: boolean; onToggleHelp: () => void
+  showCheat: boolean; onToggleCheat: () => void
   floatingDmg: { target: string; amount: string; color: string } | null
   combatModal: { phase: string; formula: string; heroAction: string; enemyAction: string; spec: any; oldHP: number } | null
   onDismissCombat: () => void
@@ -608,7 +675,9 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
         </div>
       </div>
 
-      {showHelp && <HelpModal onClose={onToggleHelp} />}
+      {showHelp && <HelpModal onClose={onToggleHelp} onCheat={onToggleCheat} />}
+
+      {showCheat && <CheatModal onClose={onToggleCheat} onAction={(target: string) => onAttack(target, 0)} />}
 
       {combatModal && (
         <div className="modal-overlay combat-overlay">
