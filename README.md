@@ -200,9 +200,9 @@ Click a monster or boss to attack. Damage is rolled using dice (shown in the UI)
 ### Difficulty Levels
 | Difficulty | Monster HP | Boss HP | Monster Counter | Boss Counter | Dice |
 |------------|-----------|---------|-----------------|--------------|------|
-| Easy       | 30        | 200     | 2 per monster   | 5            | 2d8+5 (7-21) |
-| Normal     | 50        | 400     | 4 per monster   | 10           | 2d10+8 (10-28) |
-| Hard       | 80        | 800     | 6 per monster   | 15           | 3d10+10 (13-40) |
+| Easy       | 30        | 200     | 2 per monster   | 2            | 1d20+2 (3-22) |
+| Normal     | 50        | 400     | 4 per monster   | 10           | 2d12+4 (6-28) |
+| Hard       | 80        | 800     | 6 per monster   | 15           | 3d20+5 (8-65) |
 
 ### Hero Classes
 | Class | HP | Damage | Special |
@@ -248,7 +248,7 @@ Monsters drop items on death. Boss always drops rare/epic loot.
 | ❤️ HP Potion | Instant heal | 20 HP | 40 HP | Full |
 | 💎 Mana Potion | Restore mana (Mage) | 2 | 3 | 5 |
 
-Drop chance: Easy 40%, Normal 30%, Hard 25%. Click items in inventory to use/equip.
+Drop chance: Easy 60%, Normal 45%, Hard 35%. Click items in inventory to use/equip.
 
 ### Status Effects
 Enemies can inflict status effects during counter-attacks:
