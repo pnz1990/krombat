@@ -263,15 +263,8 @@ export default function App() {
 
       {!selected ? (
         <>
-          <div className="ns-filter">
-            {['default', 'tests'].map(n => (
-              <button key={n} className={`btn ${activeNs === n ? 'btn-gold' : 'btn-blue'}`}
-                style={{ fontSize: '7px', padding: '4px 10px' }}
-                onClick={() => setActiveNs(n)}>{n}</button>
-            ))}
-          </div>
           <CreateForm onCreate={handleCreate} />
-          <DungeonList dungeons={dungeons.filter(d => d.namespace === activeNs)} onSelect={handleSelect} onDelete={handleDelete} deleting={deleting} />
+          <DungeonList dungeons={dungeons} onSelect={handleSelect} onDelete={handleDelete} deleting={deleting} />
         </>
       ) : loading ? (
         <div className="loading">Initializing dungeon</div>
@@ -345,7 +338,7 @@ function DungeonList({ dungeons, onSelect, onDelete, deleting }: {
             {deleting === d.name ? (
               <span style={{ fontSize: '7px', color: 'var(--accent)' }}>Deleting...</span>
             ) : (
-              <button className="tile-delete-btn" onClick={e => { e.stopPropagation(); onDelete(d.namespace, d.name) }}>✕</button>
+              <button className="tile-delete-btn" title="Delete dungeon" onClick={e => { e.stopPropagation(); onDelete(d.namespace, d.name) }}><PixelIcon name="damage" size={12} /></button>
             )}
           </div>
           <div className="stats">
