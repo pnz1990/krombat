@@ -586,25 +586,17 @@ body {
   background: #0d0d15;
 }
 
-/* Stone floor — layered radial gradients for depth */
+/* Stone floor — image background */
 .arena-floor {
   position: absolute; inset: 0;
   border-radius: inherit;
-  background:
-    radial-gradient(ellipse at 50% 80%, rgba(40,35,30,0.8) 0%, transparent 60%),
-    radial-gradient(ellipse at 50% 50%, #1a1714 0%, #0d0b09 50%, #050404 100%);
-  /* Stone tile pattern */
-  background-size: 100% 100%, 100% 100%;
+  background: url('/sprites/dungeon/floor.png') center/cover;
 }
 .arena-floor::after {
   content: '';
   position: absolute; inset: 0;
   border-radius: inherit;
-  background:
-    repeating-conic-gradient(rgba(255,255,255,0.015) 0% 25%, transparent 0% 50%) 0 0 / 40px 40px,
-    repeating-linear-gradient(90deg, rgba(255,255,255,0.01) 0px, transparent 1px, transparent 39px, rgba(255,255,255,0.01) 40px) 0 0 / 40px 40px,
-    repeating-linear-gradient(0deg, rgba(255,255,255,0.01) 0px, transparent 1px, transparent 39px, rgba(255,255,255,0.01) 40px) 0 0 / 40px 40px;
-  opacity: 0.6;
+  background: radial-gradient(ellipse at 50% 50%, transparent 40%, rgba(0,0,0,0.7) 100%);
 }
 
 /* Subtle torch glow from edges */
