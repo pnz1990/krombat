@@ -83,7 +83,6 @@ export function getMonsterSprite(index: number): string {
 const ITEM_STRIP: Record<string, { frames: number; frameW: number; frameH: number; file: string }> = {
   weapons:   { frames: 6, frameW: 853, frameH: 832, file: '/sprites/items/weapons.png' },
   armor:     { frames: 6, frameW: 848, frameH: 832, file: '/sprites/items/armor.png' },
-  potions:   { frames: 6, frameW: 848, frameH: 832, file: '/sprites/items/potions.png' },
 }
 
 // Map item type+rarity to strip and index
@@ -97,12 +96,12 @@ const ITEM_MAP: Record<string, { strip: string; index: number }> = {
   'shield-common':     { file: '/sprites/items/shield/1.png' },
   'shield-rare':       { file: '/sprites/items/shield/2.png' },
   'shield-epic':       { file: '/sprites/items/shield/3.png' },
-  'hppotion-common':   { strip: 'potions', index: 0 },
-  'hppotion-rare':     { strip: 'potions', index: 1 },
-  'hppotion-epic':     { strip: 'potions', index: 2 },
-  'manapotion-common': { strip: 'potions', index: 3 },
-  'manapotion-rare':   { strip: 'potions', index: 4 },
-  'manapotion-epic':   { strip: 'potions', index: 5 },
+  'hppotion-common':   { file: '/sprites/items/potions/hp-1.png' },
+  'hppotion-rare':     { file: '/sprites/items/potions/hp-2.png' },
+  'hppotion-epic':     { file: '/sprites/items/potions/hp-3.png' },
+  'manapotion-common': { file: '/sprites/items/potions/mana-1.png' },
+  'manapotion-rare':   { file: '/sprites/items/potions/mana-2.png' },
+  'manapotion-epic':   { file: '/sprites/items/potions/mana-3.png' },
 }
 
 const MODIFIER_MAP: Record<string, { file: string }> = {
