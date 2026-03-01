@@ -586,17 +586,18 @@ body {
   background: #0d0d15;
 }
 
-/* Stone floor — image background */
+/* Stone floor — tiled repeating background */
 .arena-floor {
   position: absolute; inset: 0;
   border-radius: inherit;
-  background: url('/sprites/dungeon/floor.png') center/cover;
+  background: url('/sprites/dungeon/floor.png') repeat center/150px;
+  image-rendering: pixelated;
 }
 .arena-floor::after {
   content: '';
   position: absolute; inset: 0;
   border-radius: inherit;
-  background: radial-gradient(ellipse at 50% 50%, transparent 40%, rgba(0,0,0,0.7) 100%);
+  background: radial-gradient(ellipse at 50% 50%, transparent 30%, rgba(0,0,0,0.8) 100%);
 }
 
 /* Subtle torch glow from edges */
@@ -722,10 +723,9 @@ body {
 .dungeon-prop {
   position: absolute;
   z-index: 1;
-  opacity: 0.3;
+  opacity: 0.9;
   image-rendering: pixelated;
   pointer-events: none;
-  filter: brightness(0.6);
 }
 
 /* Flying bats */
@@ -734,8 +734,7 @@ body {
   width: 24px;
   height: 24px;
   z-index: 4;
-  opacity: 0.5;
+  opacity: 0.85;
   image-rendering: pixelated;
   pointer-events: none;
-  filter: brightness(0.4);
 }
