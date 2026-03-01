@@ -11,7 +11,7 @@ apiVersion: game.k8s.example/v1alpha1
 kind: Dungeon
 metadata:
   name: test-heal-$TS
-spec: {monsters: 1, difficulty: easy, monsterHP: [30], bossHP: 200, heroHP: 50, heroClass: mage, heroMana: 5, modifier: none}
+spec: {monsters: 1, difficulty: easy, monsterHP: [30], bossHP: 200, heroHP: 50, heroClass: mage, heroMana: 8, modifier: none}
 ---
 apiVersion: game.k8s.example/v1alpha1
 kind: Dungeon
@@ -65,8 +65,8 @@ sleep 3
 # Verify heal
 HP=$(kubectl get dungeon "test-heal-$TS" -o jsonpath='{.spec.heroHP}')
 MANA=$(kubectl get dungeon "test-heal-$TS" -o jsonpath='{.spec.heroMana}')
-[ "$HP" = "80" ] && pass "Mage heal: HP 50->80" || fail "Heal HP=$HP"
-[ "$MANA" = "3" ] && pass "Mage heal: mana 5->3" || fail "Heal mana=$MANA"
+[ "$HP" = "90" ] && pass "Mage heal: HP 50->90" || fail "Heal HP=$HP"
+[ "$MANA" = "6" ] && pass "Mage heal: mana 8->6" || fail "Heal mana=$MANA"
 
 # Verify taunt
 wait_for "taunt" "[ \$(kubectl get dungeon test-taunt-$TS -o jsonpath='{.spec.tauntActive}' 2>/dev/null) = '1' ]" 15 \
