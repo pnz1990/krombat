@@ -66,6 +66,7 @@ spec:
                         WEAPON_BONUS=$(echo "$DUNGEON_JSON" | jq -r '.spec.weaponBonus // 0')
                         WEAPON_USES=$(echo "$DUNGEON_JSON" | jq -r '.spec.weaponUses // 0')
                         ARMOR_BONUS=$(echo "$DUNGEON_JSON" | jq -r '.spec.armorBonus // 0')
+                        SHIELD_BONUS=$(echo "$DUNGEON_JSON" | jq -r '.spec.shieldBonus // 0')
                         POISON_TURNS=$(echo "$DUNGEON_JSON" | jq -r '.spec.poisonTurns // 0')
                         BURN_TURNS=$(echo "$DUNGEON_JSON" | jq -r '.spec.burnTurns // 0')
                         STUN_TURNS=$(echo "$DUNGEON_JSON" | jq -r '.spec.stunTurns // 0')
@@ -158,14 +159,19 @@ spec:
                             *) echo "Cannot equip $ITEM_TYPE"; exit 1 ;;
                           esac
                           IS_WEAPON=false
+                          IS_SHIELD=false
                           case "$ITEM_TYPE" in
                             weapon-common) WEAPON_VAL=5; WEAPON_USES_VAL=3; IS_WEAPON=true ;; weapon-rare) WEAPON_VAL=10; WEAPON_USES_VAL=3; IS_WEAPON=true ;; weapon-epic) WEAPON_VAL=20; WEAPON_USES_VAL=3; IS_WEAPON=true ;;
                             armor-common) ARMOR_VAL=10 ;; armor-rare) ARMOR_VAL=20 ;; armor-epic) ARMOR_VAL=30 ;;
+                            shield-common) SHIELD_VAL=10; IS_SHIELD=true ;; shield-rare) SHIELD_VAL=15; IS_SHIELD=true ;; shield-epic) SHIELD_VAL=25; IS_SHIELD=true ;;
                             *) echo "Cannot equip $ITEM_TYPE"; exit 1 ;;
                           esac
                           if [ "$IS_WEAPON" = "true" ]; then
                             HERO_ACTION="Equipped $ITEM_TYPE! +$WEAPON_VAL damage for $WEAPON_USES_VAL attacks"
                             PATCH="{\"spec\":{\"weaponBonus\":$WEAPON_VAL,\"weaponUses\":$WEAPON_USES_VAL,\"inventory\":\"$NEW_INV\",\"backstabCooldown\":$BACKSTAB_CD,\"lastHeroAction\":\"$HERO_ACTION\",\"lastEnemyAction\":\"Item equipped\"}}"
+                          elif [ "$IS_SHIELD" = "true" ]; then
+                            HERO_ACTION="Equipped $ITEM_TYPE! +$SHIELD_VAL pct block chance"
+                            PATCH="{\"spec\":{\"shieldBonus\":$SHIELD_VAL,\"inventory\":\"$NEW_INV\",\"backstabCooldown\":$BACKSTAB_CD,\"lastHeroAction\":\"$HERO_ACTION\",\"lastEnemyAction\":\"Item equipped\"}}"
                           else
                             HERO_ACTION="Equipped $ITEM_TYPE! +$ARMOR_VAL pct defense"
                             PATCH="{\"spec\":{\"armorBonus\":$ARMOR_VAL,\"inventory\":\"$NEW_INV\",\"backstabCooldown\":$BACKSTAB_CD,\"lastHeroAction\":\"$HERO_ACTION\",\"lastEnemyAction\":\"Item equipped\"}}"
@@ -345,6 +351,13 @@ spec:
                             # Apply armor bonus
                             if [ "$ARMOR_BONUS" -gt 0 ]; then
                               COUNTER=$((COUNTER * (100 - ARMOR_BONUS) / 100))
+                            if [ "$SHIELD_BONUS" -gt 0 ]; then
+                              SHIELD_ROLL=$((RANDOM % 100))
+                              if [ "$SHIELD_ROLL" -lt "$SHIELD_BONUS" ]; then
+                                COUNTER=0
+                                CLASS_NOTE="$CLASS_NOTE Shield blocked!"
+                              fi
+                            fi
                             fi
                             if [ "$HERO_CLASS" = "warrior" ]; then
                               COUNTER=$((COUNTER * 4 / 5))
@@ -367,8 +380,8 @@ spec:
                           if [ "$NEW_HP" -eq 0 ]; then
                             RARITY_ROLL=$((RANDOM % 2))
                             if [ "$RARITY_ROLL" -eq 0 ]; then RARITY="rare"; else RARITY="epic"; fi
-                            TYPE_ROLL=$((RANDOM % 3))
-                            case "$TYPE_ROLL" in 0) ITEM="weapon-$RARITY" ;; 1) ITEM="armor-$RARITY" ;; 2) ITEM="hppotion-$RARITY" ;; esac
+                            TYPE_ROLL=$((RANDOM % 4))
+                            case "$TYPE_ROLL" in 0) ITEM="weapon-$RARITY" ;; 1) ITEM="armor-$RARITY" ;; 2) ITEM="hppotion-$RARITY" ;; 3) ITEM="shield-$RARITY" ;; esac
                             if [ -n "$INVENTORY" ]; then INVENTORY="$INVENTORY,$ITEM"; else INVENTORY="$ITEM"; fi
                             INVENTORY_PATCH=",\"inventory\":\"$INVENTORY\""
                             CLASS_NOTE="$CLASS_NOTE Boss dropped $ITEM!"
@@ -405,12 +418,13 @@ spec:
                               if [ "$RARITY_ROLL" -lt 60 ]; then RARITY="common"
                               elif [ "$RARITY_ROLL" -lt 90 ]; then RARITY="rare"
                               else RARITY="epic"; fi
-                              TYPE_ROLL=$((RANDOM % 4))
+                              TYPE_ROLL=$((RANDOM % 5))
                               case "$TYPE_ROLL" in
                                 0) ITEM="weapon-$RARITY" ;;
                                 1) ITEM="armor-$RARITY" ;;
                                 2) ITEM="hppotion-$RARITY" ;;
                                 3) if [ "$HERO_CLASS" = "mage" ]; then ITEM="manapotion-$RARITY"; else ITEM="hppotion-$RARITY"; fi ;;
+                                4) ITEM="shield-$RARITY" ;;
                               esac
                               if [ -n "$INVENTORY" ]; then INVENTORY="$INVENTORY,$ITEM"; else INVENTORY="$ITEM"; fi
                               INVENTORY_PATCH=",\"inventory\":\"$INVENTORY\""
@@ -423,6 +437,7 @@ spec:
                                 armor-common) STAT=10 ;; armor-rare) STAT=20 ;; armor-epic) STAT=30 ;;
                                 hppotion-common) STAT=20 ;; hppotion-rare) STAT=40 ;; hppotion-epic) STAT=999 ;;
                                 manapotion-common) STAT=2 ;; manapotion-rare) STAT=3 ;; manapotion-epic) STAT=5 ;;
+                                shield-common) STAT=10 ;; shield-rare) STAT=15 ;; shield-epic) STAT=25 ;;
                               esac
                               LOOT_NAME="$DUNGEON-loot-$((RANDOM % 99999))"
                               echo '{"apiVersion":"game.k8s.example/v1alpha1","kind":"Loot","metadata":{"name":"'$LOOT_NAME'","namespace":"'$DUNGEON'"},"spec":{"dungeonName":"'$DUNGEON'","itemType":"'$ITEM_TYPE'","rarity":"'$RARITY'","stat":'$STAT'}}' | kubectl apply -f - 2>/dev/null || true

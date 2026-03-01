@@ -93,9 +93,12 @@ const ITEM_MAP: Record<string, { strip: string; index: number }> = {
   'weapon-common':     { strip: 'weapons', index: 0 },
   'weapon-rare':       { strip: 'weapons', index: 1 },
   'weapon-epic':       { strip: 'weapons', index: 2 },
-  'armor-common':      { strip: 'armor', index: 0 },
-  'armor-rare':        { strip: 'armor', index: 1 },
-  'armor-epic':        { strip: 'armor', index: 2 },
+  'armor-common':      { file: '/sprites/items/armor/1.png' },
+  'armor-rare':        { file: '/sprites/items/armor/2.png' },
+  'armor-epic':        { file: '/sprites/items/armor/3.png' },
+  'shield-common':     { file: '/sprites/items/shield/1.png' },
+  'shield-rare':       { file: '/sprites/items/shield/2.png' },
+  'shield-epic':       { file: '/sprites/items/shield/3.png' },
   'hppotion-common':   { strip: 'potions', index: 0 },
   'hppotion-rare':     { strip: 'potions', index: 1 },
   'hppotion-epic':     { strip: 'potions', index: 2 },
@@ -114,8 +117,15 @@ const MODIFIER_MAP: Record<string, { strip: string; index: number }> = {
 }
 
 export function ItemSprite({ id, size = 24 }: { id: string; size?: number }) {
-  const mapping = ITEM_MAP[id] || MODIFIER_MAP[id]
+  const mapping: any = ITEM_MAP[id] || MODIFIER_MAP[id]
   if (!mapping) return <span style={{ fontSize: size * 0.6 }}>📦</span>
+
+  // Individual image file
+  if (mapping.file) {
+    return <img src={mapping.file} alt={id} style={{ width: size, height: size, objectFit: 'contain', imageRendering: 'pixelated' as any, display: 'inline-block' }} />
+  }
+
+  // Strip-based
   const strip = ITEM_STRIP[mapping.strip]
   if (!strip) return <span style={{ fontSize: size * 0.6 }}>📦</span>
   const scale = size / strip.frameH

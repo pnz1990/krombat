@@ -840,6 +840,7 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
             const wb = spec.weaponBonus || 0
             const wu = spec.weaponUses || 0
             const ab = spec.armorBonus || 0
+            const sb = spec.shieldBonus || 0
             const modifier = spec.modifier || 'none'
             const poison = spec.poisonTurns || 0
             const burn = spec.burnTurns || 0
@@ -850,7 +851,11 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
                 <div className="equip-grid">
                   <div className="equip-row"><Tooltip text="Helmet — coming soon"><div className="equip-slot empty"><PixelIcon name="lock" size={14} /></div></Tooltip></div>
                   <div className="equip-row">
-                    <Tooltip text="Shield — coming soon"><div className="equip-slot empty"><PixelIcon name="lock" size={14} /></div></Tooltip>
+                    <Tooltip text={sb > 0 ? `Shield equipped: ${sb}% chance to block counter-attacks` : 'Shield — none equipped'}>
+                      <div className={`equip-slot${sb > 0 ? ' filled' : ' empty'}`}>
+                        {sb > 0 ? <><ItemSprite id="shield-common" size={22} /><span className="slot-stat">{sb}%</span></> : <PixelIcon name="shield" size={14} color="#333" />}
+                      </div>
+                    </Tooltip>
                     <Tooltip text={ab > 0 ? `Armor equipped: +${ab}% damage reduction on counter-attacks` : 'Armor — none equipped'}>
                       <div className={`equip-slot${ab > 0 ? ' filled' : ' empty'}`}>
                         {ab > 0 ? <><ItemSprite id="armor-common" size={22} /><span className="slot-stat">+{ab}%</span></> : <PixelIcon name="shield" size={14} color="#333" />}
