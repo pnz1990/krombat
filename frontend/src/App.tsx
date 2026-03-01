@@ -127,7 +127,7 @@ export default function App() {
       setAnimPhase('hero-attack')
       setAttackPhase('attacking')
       const oldHP = detail?.spec.heroHP ?? 100
-      const formula = detail?.status?.diceFormula || '2d10+8'
+      const formula = detail?.status?.diceFormula || '2d12+4'
 
       if (!isAbility && !isItem) {
         setCombatModal({ phase: 'rolling', formula, heroAction: '', enemyAction: '', spec: detail?.spec, oldHP })
@@ -412,9 +412,9 @@ function HelpModal({ onClose }: { onClose: () => void }) {
         <table className="help-table">
           <thead><tr><th>Difficulty</th><th>Monster HP</th><th>Boss HP</th><th>Dice</th><th>Counter/Mon</th><th>Boss Counter</th></tr></thead>
           <tbody>
-            <tr><td className="tag-easy">Easy</td><td>30</td><td>200</td><td>2d8+5</td><td>2</td><td>2</td></tr>
-            <tr><td className="tag-normal">Normal</td><td>50</td><td>400</td><td>2d10+8</td><td>4</td><td>10</td></tr>
-            <tr><td className="tag-hard">Hard</td><td>80</td><td>800</td><td>3d10+10</td><td>6</td><td>15</td></tr>
+            <tr><td className="tag-easy">Easy</td><td>30</td><td>200</td><td>1d20+2</td><td>2</td><td>2</td></tr>
+            <tr><td className="tag-normal">Normal</td><td>50</td><td>400</td><td>2d12+4</td><td>4</td><td>10</td></tr>
+            <tr><td className="tag-hard">Hard</td><td>80</td><td>800</td><td>3d20+5</td><td>6</td><td>15</td></tr>
           </tbody>
         </table>
       </>
@@ -663,7 +663,7 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
                     <div className="arena-name">Boss · {spec.bossHP}/{maxBossHP}</div>
                     {bossState === 'ready' && !gameOver && !attackPhase && (
                       <div className="arena-actions">
-                        <button className="btn btn-primary arena-atk-btn" onClick={() => onAttack(bossName, 0)}>🎲 {status?.diceFormula || '2d10+8'}</button>
+                        <button className="btn btn-primary arena-atk-btn" onClick={() => onAttack(bossName, 0)}>🎲 {status?.diceFormula || '2d12+4'}</button>
                         {spec.heroClass === 'rogue' && (spec.backstabCooldown ?? 0) === 0 && (
                           <button className="btn btn-ability arena-atk-btn" onClick={() => onAttack(bossName + '-backstab', 0)}>Backstab</button>
                         )}
@@ -703,7 +703,7 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
                     <div className="arena-name">{mSprite} · {hp}/{maxMonsterHP}</div>
                     {state === 'alive' && !gameOver && !attackPhase && (
                       <div className="arena-actions">
-                        <button className="btn btn-primary arena-atk-btn" onClick={() => onAttack(mName, 0)}>🎲 {status?.diceFormula || '2d10+8'}</button>
+                        <button className="btn btn-primary arena-atk-btn" onClick={() => onAttack(mName, 0)}>🎲 {status?.diceFormula || '2d12+4'}</button>
                         {spec.heroClass === 'rogue' && (spec.backstabCooldown ?? 0) === 0 && (
                           <button className="btn btn-ability arena-atk-btn" onClick={() => onAttack(mName + '-backstab', 0)}>Backstab</button>
                         )}
@@ -838,7 +838,7 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
   )
 }
 
-// Parse dice formula from CR status (e.g. "2d8+5" -> {count:2, sides:8, mod:5})
+// Parse dice formula from CR status (e.g. "1d20+2" -> {count:2, sides:8, mod:5})
 function CombatBreakdown({ heroAction, enemyAction, spec, oldHP }: { heroAction: string; enemyAction: string; spec: any; oldHP: number }) {
   const lines: { icon: string; text: string; color?: string }[] = []
 

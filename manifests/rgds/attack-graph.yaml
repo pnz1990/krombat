@@ -247,14 +247,14 @@ spec:
                           BASE_DAMAGE=$DAMAGE
                         else
                           case "$DIFFICULTY" in
-                            easy)   DICE_COUNT=2; DICE_SIDES=8; DICE_MOD=5 ;;
-                            hard)   DICE_COUNT=3; DICE_SIDES=10; DICE_MOD=10 ;;
-                            *)      DICE_COUNT=2; DICE_SIDES=10; DICE_MOD=8 ;;
+                            easy)   DICE_COUNT=1; DICE_SIDES=20; DICE_MOD=2 ;;
+                            hard)   DICE_COUNT=3; DICE_SIDES=20; DICE_MOD=5 ;;
+                            *)      DICE_COUNT=2; DICE_SIDES=12; DICE_MOD=4 ;;
                           esac
                           if echo "$REAL_TARGET" | grep -q "boss"; then
                             DICE_COUNT=$((DICE_COUNT + 1))
-                            DICE_SIDES=$((DICE_SIDES + 2))
-                            DICE_MOD=$((DICE_MOD + 2))
+                            DICE_SIDES=$((DICE_SIDES))
+                            DICE_MOD=$((DICE_MOD + 3))
                           fi
                           BASE_DAMAGE=$DICE_MOD
                           for dc in $(seq 1 $DICE_COUNT); do
