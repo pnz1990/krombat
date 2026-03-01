@@ -52,3 +52,19 @@ jobs:
           docker tag krombat/frontend:test $REGISTRY/krombat/frontend:latest
           docker push $REGISTRY/krombat/frontend:${{ github.sha }}
           docker push $REGISTRY/krombat/frontend:latest
+
+  rollout:
+    if: github.event_name == 'push'
+    needs: [build-backend, build-frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: us-west-2
+      - uses: azure/setup-kubectl@v4
+      - run: aws eks update-kubeconfig --region us-west-2 --name krombat
+      - run: |
+          kubectl rollout restart deployment/rpg-backend deployment/rpg-frontend -n rpg-system
+          kubectl rollout status deployment/rpg-backend -n rpg-system --timeout=120s
+          kubectl rollout status deployment/rpg-frontend -n rpg-system --timeout=120s
