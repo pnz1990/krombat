@@ -646,6 +646,22 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
             <div className="arena-floor" />
             <div className="arena-glow" />
 
+            {/* Dungeon props — scattered decorations */}
+            {[
+              { src: 'bones', x: 12, y: 75, size: 32, rot: -15 },
+              { src: 'skull', x: 82, y: 80, size: 28, rot: 10 },
+              { src: 'rocks', x: 8, y: 35, size: 36, rot: 0 },
+              { src: 'broken-arrows', x: 88, y: 45, size: 30, rot: 20 },
+              { src: 'corner-web', x: 5, y: 5, size: 50, rot: 0 },
+              { src: 'corner-web', x: 95, y: 5, size: 50, rot: 90 },
+              { src: 'ghost-plants', x: 15, y: 55, size: 28, rot: 0 },
+              { src: 'broken-flask', x: 78, y: 70, size: 24, rot: -10 },
+              { src: 'rocks', x: 55, y: 88, size: 30, rot: 45 },
+            ].map((p, i) => (
+              <img key={i} src={`/sprites/dungeon/${p.src}.png`} alt="" className="dungeon-prop"
+                style={{ left: `${p.x}%`, top: `${p.y}%`, width: p.size, transform: `translate(-50%,-50%) rotate(${p.rot}deg)` }} />
+            ))}
+
             {/* Boss — only visible when ready or defeated */}
             {bossState !== 'pending' && (() => {
               let bAction: SpriteAction = (bossState === 'defeated' || spec.bossHP <= 0) ? 'dead' : 'idle'

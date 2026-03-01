@@ -663,10 +663,8 @@ body {
 /* Hero entity */
 .hero-entity { z-index: 3; }
 
-/* Hover UI — hidden by default, shown on hover */
+/* Hover UI — HP always visible, actions on hover only */
 .arena-hover-ui {
-  opacity: 0;
-  transition: opacity 0.2s;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -676,9 +674,13 @@ body {
   left: 50%;
   transform: translateX(-50%);
   white-space: nowrap;
+}
+.arena-actions {
+  opacity: 0;
+  transition: opacity 0.2s;
   pointer-events: none;
 }
-.arena-entity:hover .arena-hover-ui {
+.arena-entity:hover .arena-actions {
   opacity: 1;
   pointer-events: auto;
 }
@@ -722,4 +724,14 @@ body {
   position: absolute;
   top: -20px;
   z-index: 10;
+}
+
+/* Dungeon props */
+.dungeon-prop {
+  position: absolute;
+  z-index: 1;
+  opacity: 0.3;
+  image-rendering: pixelated;
+  pointer-events: none;
+  filter: brightness(0.6);
 }
