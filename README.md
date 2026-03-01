@@ -22,6 +22,8 @@ Kubernetes RPG demonstrates how [kro](https://kro.run) transforms Kubernetes int
 | Boss        | Custom Resource → Pod (via boss-graph RGD) |
 | Attack      | Custom Resource → Job (via attack-graph RGD) |
 | Treasure    | Custom Resource → Secret (via treasure-graph RGD) |
+| Loot        | Custom Resource → Secret (via loot-graph RGD) |
+| Shield      | Item — equippable for block chance |
 | Modifier    | Custom Resource → ConfigMap (via modifier-graph RGD) |
 
 Each dungeon instance gets its own Namespace for isolation and clean teardown.
@@ -58,13 +60,13 @@ The backend and frontend only interact with kro-generated CRs (Dungeon and Attac
 
 - **Frontend** — 8-bit D&D-inspired React SPA with pixel art styling. Nginx reverse-proxies `/api/` to the backend. All game state derived from the Dungeon CR
 - **Backend** — Stateless Go service. Only touches Dungeon and Attack CRs — never reads Pods, Secrets, or Jobs. Includes rate limiting (1 attack/s per dungeon) and Prometheus metrics on `/metrics`
-- **Kubernetes + kro** — Sole source of truth. Seven RGDs orchestrate the game via CR chaining: `dungeon-graph` (parent) spawns child CRs managed by `hero-graph`, `monster-graph`, `boss-graph`, `treasure-graph`, `modifier-graph`, and `attack-graph` (combat). kro runs as an [EKS Managed Capability](https://docs.aws.amazon.com/eks/latest/userguide/kro.html)
+- **Kubernetes + kro** — Sole source of truth. Eight RGDs orchestrate the game via CR chaining: `dungeon-graph` (parent) spawns child CRs managed by `hero-graph`, `monster-graph`, `boss-graph`, `treasure-graph`, `modifier-graph`, `loot-graph` (items as Secrets), and `attack-graph` (combat). kro runs as an [EKS Managed Capability](https://docs.aws.amazon.com/eks/latest/userguide/kro.html)
 - **Argo CD** — Runs as an [EKS Managed Capability](https://docs.aws.amazon.com/eks/latest/userguide/argocd.html). Continuously syncs all cluster manifests from this Git repo. GitHub webhook for ~6s sync latency
 - **Observability** — CloudWatch Container Insights for cluster/pod metrics, CloudWatch Logs for centralized log aggregation (JSON structured logs from backend, attack Job logs, kro controller logs), CloudWatch dashboard and alarms for operational monitoring
 
 ## Key Demonstrations
 
-- **Seven-RGD orchestration** — `dungeon-graph` manages game state, `attack-graph` handles combat, five child RGDs handle entities
+- **Eight-RGD orchestration** — `dungeon-graph` manages game state, `attack-graph` handles combat, six child RGDs handle entities
 - **RGD composition via CR chaining** — Parent RGD spawns child CRs (Hero, Monster, Boss, Treasure, Modifier), each reconciled by its own RGD into native K8s resources
 - **Dynamic resource generation** — Monster pod count driven by CEL expressions
 - **Cross-resource state derivation** — Boss readiness depends on aggregated monster HP values via CEL; Dungeon status reads Modifier CR status
@@ -88,7 +90,7 @@ The backend and frontend only interact with kro-generated CRs (Dungeon and Attac
 ├── manifests/               # Argo CD syncs this directory
 │   ├── apps/                # Argo CD Application
 │   ├── rbac/                # ServiceAccounts, Roles, Bindings
-│   ├── rgds/                # 7 kro ResourceGraphDefinitions
+│   ├── rgds/                # 8 kro ResourceGraphDefinitions
 │   └── system/              # Backend/frontend deployments, dungeon reaper
 ├── infra/                   # Terraform (EKS, capabilities, ECR, CI)
 ├── tests/                   # Integration test suites
@@ -208,8 +210,8 @@ Click a monster or boss to attack. Damage is rolled using dice (shown in the UI)
 | Class | HP | Damage | Special |
 |-------|-----|--------|---------|
 | ⚔️ Warrior | 200 | 1.0x | 25% damage reduction on all counter-attacks |
-| 🔮 Mage | 120 | 1.5x vs boss | 8 mana (1 per attack, regen +1 per attack) |
-| 🗡️ Rogue | 150 | 1.2x | 25% chance to dodge counter-attacks |
+| 🔮 Mage | 120 | 1.3x all | 8 mana (1 per attack, regen +1 per attack) |
+| 🗡️ Rogue | 150 | 1.1x | 25% chance to dodge counter-attacks |
 
 ### Tips
 - **Warrior**: Best for beginners. High HP lets you survive many counter-attacks
@@ -239,16 +241,17 @@ Each dungeon may spawn with a random modifier (30% curse, 30% blessing, 40% none
 | Blessing of Fortune | 🟢 Blessing | 20% chance to crit (2x damage) |
 
 ### Loot System
-Monsters drop items on death. Boss always drops rare/epic loot.
+Monsters drop items on death. Boss always drops rare/epic loot. Each drop creates a Loot CR → Secret via the loot-graph RGD.
 
 | Item | Effect | Common | Rare | Epic |
 |------|--------|--------|------|------|
 | 🗡️ Weapon | +damage for 3 attacks | +5 | +10 | +20 |
-| 🛡️ Armor | +defense for dungeon | 10% | 20% | 30% |
+| 🛡️ Armor | +defense (reduce counter dmg) | 10% | 20% | 30% |
+| 🛡️ Shield | Block chance (negate counter) | 10% | 15% | 25% |
 | ❤️ HP Potion | Instant heal | 20 HP | 40 HP | Full |
 | 💎 Mana Potion | Restore mana (Mage) | 2 | 3 | 5 |
 
-Drop chance: Easy 60%, Normal 45%, Hard 35%. Click items in inventory to use/equip.
+Drop chance: Easy 60%, Normal 45%, Hard 35%. Click items in backpack to use/equip. Items don't cost a turn.
 
 ### Status Effects
 Enemies can inflict status effects during counter-attacks:
