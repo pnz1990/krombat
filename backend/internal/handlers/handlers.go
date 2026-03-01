@@ -134,12 +134,12 @@ func (h *Handler) CreateDungeon(w http.ResponseWriter, r *http.Request) {
 	heroMana := int64(0)
 	switch heroClass {
 	case "warrior":
-		heroHP = 150
+		heroHP = 200
 	case "mage":
-		heroHP = 80
-		heroMana = 5
+		heroHP = 120
+		heroMana = 8
 	case "rogue":
-		heroHP = 100
+		heroHP = 150
 	default:
 		writeError(w, "heroClass must be warrior, mage, or rogue", http.StatusBadRequest)
 		return

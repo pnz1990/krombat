@@ -200,16 +200,16 @@ Click a monster or boss to attack. Damage is rolled using dice (shown in the UI)
 ### Difficulty Levels
 | Difficulty | Monster HP | Boss HP | Monster Counter | Boss Counter | Dice |
 |------------|-----------|---------|-----------------|--------------|------|
-| Easy       | 30        | 200     | 2 per monster   | 2            | 1d20+2 (3-22) |
-| Normal     | 50        | 400     | 4 per monster   | 10           | 2d12+4 (6-28) |
-| Hard       | 80        | 800     | 6 per monster   | 15           | 3d20+5 (8-65) |
+| Easy       | 30        | 200     | 1 per monster   | 3            | 1d20+2 (3-22) |
+| Normal     | 50        | 400     | 2 per monster   | 5           | 2d12+4 (6-28) |
+| Hard       | 80        | 800     | 3 per monster   | 8           | 3d20+5 (8-65) |
 
 ### Hero Classes
 | Class | HP | Damage | Special |
 |-------|-----|--------|---------|
-| ⚔️ Warrior | 150 | 1.0x | 20% damage reduction on all counter-attacks |
-| 🔮 Mage | 80 | 1.5x vs boss | 5 mana (1 per attack, half damage at 0 mana) |
-| 🗡️ Rogue | 100 | 1.2x | 30% chance to dodge counter-attacks entirely |
+| ⚔️ Warrior | 200 | 1.0x | 25% damage reduction on all counter-attacks |
+| 🔮 Mage | 120 | 1.5x vs boss | 8 mana (1 per attack, regen +1 per attack) |
+| 🗡️ Rogue | 150 | 1.2x | 25% chance to dodge counter-attacks |
 
 ### Tips
 - **Warrior**: Best for beginners. High HP lets you survive many counter-attacks
@@ -223,7 +223,7 @@ Each class has a unique active ability:
 | Class | Ability | Cost | Effect |
 |-------|---------|------|--------|
 | ⚔️ Warrior | 🛡️ Taunt | 1 turn (no damage) | 60% damage reduction for 1 round (50% taunt + 20% passive) |
-| 🔮 Mage | 💚 Heal | 2 mana | Restore 30 HP (capped at 80). +1 mana regen on monster kill |
+| 🔮 Mage | 💚 Heal | 2 mana | Restore 40 HP (capped at 120). Mana regens +1 per attack |
 | 🗡️ Rogue | 🗡️ Backstab | 3-turn cooldown | 3x damage multiplier. Cooldown decrements each turn |
 
 ### Dungeon Modifiers

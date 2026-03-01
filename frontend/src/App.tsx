@@ -521,9 +521,9 @@ function HelpModal({ onClose, onCheat }: { onClose: () => void; onCheat: () => v
         <table className="help-table">
           <thead><tr><th>Difficulty</th><th>Monster HP</th><th>Boss HP</th><th>Dice</th><th>Counter/Mon</th><th>Boss Counter</th></tr></thead>
           <tbody>
-            <tr><td className="tag-easy">Easy</td><td>30</td><td>200</td><td>1d20+2</td><td>2</td><td>2</td></tr>
-            <tr><td className="tag-normal">Normal</td><td>50</td><td>400</td><td>2d12+4</td><td>4</td><td>10</td></tr>
-            <tr><td className="tag-hard">Hard</td><td>80</td><td>800</td><td>3d20+5</td><td>6</td><td>15</td></tr>
+            <tr><td className="tag-easy">Easy</td><td>30</td><td>200</td><td>1d20+2</td><td>1</td><td>3</td></tr>
+            <tr><td className="tag-normal">Normal</td><td>50</td><td>400</td><td>2d12+4</td><td>2</td><td>5</td></tr>
+            <tr><td className="tag-hard">Hard</td><td>80</td><td>800</td><td>3d20+5</td><td>3</td><td>8</td></tr>
           </tbody>
         </table>
       </>
@@ -533,9 +533,9 @@ function HelpModal({ onClose, onCheat }: { onClose: () => void; onCheat: () => v
         <table className="help-table">
           <thead><tr><th>Class</th><th>HP</th><th>Damage</th><th>Passive</th></tr></thead>
           <tbody>
-            <tr><td><PixelIcon name="sword" size={10} /> Warrior</td><td>150</td><td>1.0x</td><td>20% damage reduction on all counter-attacks</td></tr>
-            <tr><td><PixelIcon name="mana" size={10} /> Mage</td><td>80</td><td>1.5x boss</td><td>5 mana (1/attack). Half damage at 0 mana</td></tr>
-            <tr><td><PixelIcon name="dagger" size={10} /> Rogue</td><td>100</td><td>1.2x</td><td>30% chance to dodge counter-attacks entirely</td></tr>
+            <tr><td><PixelIcon name="sword" size={10} /> Warrior</td><td>200</td><td>1.0x</td><td>25% damage reduction on all counter-attacks</td></tr>
+            <tr><td><PixelIcon name="mana" size={10} /> Mage</td><td>120</td><td>1.3x all</td><td>8 mana (1/attack). Half damage at 0 mana</td></tr>
+            <tr><td><PixelIcon name="dagger" size={10} /> Rogue</td><td>150</td><td>1.1x</td><td>25% chance to dodge counter-attacks entirely</td></tr>
           </tbody>
         </table>
       </>
@@ -546,7 +546,7 @@ function HelpModal({ onClose, onCheat }: { onClose: () => void; onCheat: () => v
           <thead><tr><th>Class</th><th>Ability</th><th>Cost</th><th>Effect</th></tr></thead>
           <tbody>
             <tr><td><PixelIcon name="shield" size={10} /> Warrior</td><td>Taunt</td><td>1 turn</td><td>60% damage reduction for 1 round (50% taunt + 20% passive). Enemies still counter-attack.</td></tr>
-            <tr><td><PixelIcon name="heal" size={10} /> Mage</td><td>Heal</td><td>2 mana</td><td>Restore 30 HP (capped at 80). +1 mana regen when killing a monster.</td></tr>
+            <tr><td><PixelIcon name="heal" size={10} /> Mage</td><td>Heal</td><td>2 mana</td><td>Restore 40 HP (capped at 120). +1 mana regen when killing a monster.</td></tr>
             <tr><td><PixelIcon name="dagger" size={10} /> Rogue</td><td>Backstab</td><td>3-turn CD</td><td>3x damage multiplier. Cooldown decrements each turn.</td></tr>
           </tbody>
         </table>
@@ -577,7 +577,7 @@ function HelpModal({ onClose, onCheat }: { onClose: () => void; onCheat: () => v
             <tr><td><PixelIcon name="sword" size={10} /> Weapon</td><td>+5 dmg (3 uses)</td><td>+10 dmg</td><td>+20 dmg</td></tr>
             <tr><td><PixelIcon name="shield" size={10} /> Armor</td><td>+10% def</td><td>+20% def</td><td>+30% def</td></tr>
             <tr><td><PixelIcon name="heart" size={10} /> HP Potion</td><td>+20 HP</td><td>+40 HP</td><td>Full heal</td></tr>
-            <tr><td><PixelIcon name="mana" size={10} /> Mana Potion</td><td>+2 mana</td><td>+3 mana</td><td>+5 mana</td></tr>
+            <tr><td><PixelIcon name="mana" size={10} /> Mana Potion</td><td>+2 mana</td><td>+3 mana</td><td>+8 mana</td></tr>
           </tbody>
         </table>
         <p>Drop chance: Easy 60%, Normal 45%, Hard 35%</p>
@@ -1013,7 +1013,7 @@ function CombatBreakdown({ heroAction, enemyAction, spec, oldHP }: { heroAction:
 
   // Class bonuses
   if (heroAction.includes('Backstab 3x')) lines.push({ icon: 'dagger', text: 'Backstab: 3x damage multiplier' })
-  if (heroAction.includes('Mage critical')) lines.push({ icon: 'mana', text: 'Mage: 1.5x boss damage' })
+  if (heroAction.includes('Mage critical')) lines.push({ icon: 'mana', text: 'Mage: 1.3x all damage' })
   if (heroAction.includes('Rogue precision')) lines.push({ icon: 'dagger', text: 'Rogue: 1.2x damage' })
   if (heroAction.includes('No mana')) lines.push({ icon: 'mana', text: 'No mana! Half damage', color: '#e74c3c' })
 

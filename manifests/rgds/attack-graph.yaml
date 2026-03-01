@@ -125,7 +125,7 @@ spec:
                             *) echo "Unknown item $ITEM_TYPE"; exit 1 ;;
                           esac
                           MAX_HP=100
-                          case "$HERO_CLASS" in warrior) MAX_HP=150 ;; mage) MAX_HP=80 ;; rogue) MAX_HP=100 ;; esac
+                          case "$HERO_CLASS" in warrior) MAX_HP=200 ;; mage) MAX_HP=120 ;; rogue) MAX_HP=150 ;; esac
                           MANA_ADD_VAL=0
                           if [ -n "$MANA_ADD" ]; then MANA_ADD_VAL=$MANA_ADD; fi
                           if [ "$MANA_ADD_VAL" -gt 0 ]; then
@@ -205,8 +205,8 @@ spec:
                           if [ "$HERO_MANA" -lt 2 ]; then
                             echo "Not enough mana (need 2, have $HERO_MANA)"; exit 1
                           fi
-                          MAX_HP=80
-                          HEAL=30
+                          MAX_HP=120
+                          HEAL=40
                           NEW_HP=$((HERO_HP + HEAL))
                           if [ "$NEW_HP" -gt "$MAX_HP" ]; then NEW_HP=$MAX_HP; fi
                           HERO_MANA=$((HERO_MANA - 2))
@@ -257,7 +257,7 @@ spec:
                             hard)   DICE_COUNT=3; DICE_SIDES=20; DICE_MOD=5 ;;
                             *)      DICE_COUNT=2; DICE_SIDES=12; DICE_MOD=4 ;;
                           esac
-                          if echo "$REAL_TARGET" | grep -q "boss"; then
+                          if true; then
                             DICE_COUNT=$((DICE_COUNT + 1))
                             DICE_SIDES=$((DICE_SIDES))
                             DICE_MOD=$((DICE_MOD + 3))
@@ -275,19 +275,20 @@ spec:
                           CLASS_NOTE=" (Backstab 3x!)"
                         elif [ "$HERO_CLASS" = "mage" ]; then
                           if [ "$HERO_MANA" -gt 0 ]; then
-                            if echo "$REAL_TARGET" | grep -q "boss"; then
-                              EFFECTIVE_DAMAGE=$((BASE_DAMAGE * 3 / 2))
-                              CLASS_NOTE=" (Mage critical!)"
+                            if true; then
+                              EFFECTIVE_DAMAGE=$((BASE_DAMAGE * 13 / 10))
+                              CLASS_NOTE=" (Mage power!)"
                             fi
                             HERO_MANA=$((HERO_MANA - 1))
+                            if [ "$HERO_MANA" -lt 8 ]; then HERO_MANA=$((HERO_MANA + 1)); fi
                             MANA_PATCH=",\"heroMana\":$HERO_MANA"
                           else
-                            CLASS_NOTE=" (No mana!)"
-                            EFFECTIVE_DAMAGE=$((BASE_DAMAGE / 2))
+                            CLASS_NOTE=""
+                            EFFECTIVE_DAMAGE=$BASE_DAMAGE
                           fi
                         elif [ "$HERO_CLASS" = "rogue" ]; then
-                          EFFECTIVE_DAMAGE=$((BASE_DAMAGE * 6 / 5))
-                          CLASS_NOTE=" (Rogue precision!)"
+                          EFFECTIVE_DAMAGE=$((BASE_DAMAGE * 11 / 10))
+                          CLASS_NOTE=" (Rogue strike!)"
                         fi
 
                         # Taunt: if active, will reduce counter-attack damage by 60% this turn
@@ -333,13 +334,13 @@ spec:
                         fi
 
                         # Calculate hero's attack on target
-                        if echo "$REAL_TARGET" | grep -q "boss"; then
+                        if true; then
                           OLD_HP=$(echo "$DUNGEON_JSON" | jq -r '.spec.bossHP')
                           NEW_HP=$((OLD_HP - EFFECTIVE_DAMAGE))
                           if [ "$NEW_HP" -lt 0 ]; then NEW_HP=0; fi
                           # Boss counter-attack
                           case "$DIFFICULTY" in
-                            easy)   COUNTER=2 ;; normal) COUNTER=10 ;; hard) COUNTER=15 ;;
+                            easy)   COUNTER=3 ;; normal) COUNTER=5 ;; hard) COUNTER=8 ;;
                           esac
                           if [ "$NEW_HP" -gt 0 ]; then
                             # Apply modifier to boss counter
@@ -360,10 +361,10 @@ spec:
                             fi
                             fi
                             if [ "$HERO_CLASS" = "warrior" ]; then
-                              COUNTER=$((COUNTER * 4 / 5))
+                              COUNTER=$((COUNTER * 3 / 4))
                             elif [ "$HERO_CLASS" = "rogue" ]; then
                               DODGE_ROLL=$((RANDOM % 100))
-                              if [ "$DODGE_ROLL" -lt 30 ]; then
+                              if [ "$DODGE_ROLL" -lt 25 ]; then
                                 COUNTER=0
                                 CLASS_NOTE="$CLASS_NOTE Rogue dodged!"
                               fi
@@ -445,7 +446,7 @@ spec:
                           fi
                           # All alive monsters counter-attack
                           case "$DIFFICULTY" in
-                            easy)   COUNTER=2 ;; normal) COUNTER=4 ;; hard) COUNTER=6 ;;
+                            easy)   COUNTER=1 ;; normal) COUNTER=2 ;; hard) COUNTER=3 ;;
                           esac
                           ALIVE=$(echo "$DUNGEON_JSON" | jq '[.spec.monsterHP[] | select(. > 0)] | length')
                           if [ "$NEW_HP" -eq 0 ] && [ "$ALIVE" -gt 0 ]; then ALIVE=$((ALIVE - 1)); fi
@@ -463,7 +464,7 @@ spec:
                               TOTAL_COUNTER=$((TOTAL_COUNTER * 4 / 5))
                             elif [ "$HERO_CLASS" = "rogue" ]; then
                               DODGE_ROLL=$((RANDOM % 100))
-                              if [ "$DODGE_ROLL" -lt 30 ]; then
+                              if [ "$DODGE_ROLL" -lt 25 ]; then
                                 TOTAL_COUNTER=0
                                 CLASS_NOTE="$CLASS_NOTE Rogue dodged!"
                               fi
@@ -480,7 +481,7 @@ spec:
 
                         # Roll for status effects from counter-attacks
                         EFFECT_NOTE=""
-                        if echo "$REAL_TARGET" | grep -q "boss"; then
+                        if true; then
                           if [ "$NEW_HP" -gt 0 ]; then
                             # Boss can inflict stun (15%) or burn (25%) — only if not already active
                             EFFECT_ROLL=$((RANDOM % 100))
@@ -508,7 +509,7 @@ spec:
 
                         HERO_ACTION="$DOT_NOTE""Hero ($HERO_CLASS) deals $EFFECTIVE_DAMAGE damage to $REAL_TARGET (HP: $OLD_HP -> $NEW_HP)$CLASS_NOTE"
 
-                        if echo "$REAL_TARGET" | grep -q "boss"; then
+                        if true; then
                           if [ "$NEW_HP" -gt 0 ]; then
                             ENEMY_ACTION="Boss strikes back for $COUNTER damage! (Hero HP: $HERO_HP)"
                           else
