@@ -182,6 +182,17 @@ assert 'loot' not in d or isinstance(d.get('loot'), str), 'loot at top level'
 kubectl delete dungeon "$TEST_NAME"  --ignore-not-found --wait=false &>/dev/null
 [ -n "$PF_PID" ] && kill "$PF_PID" 2>/dev/null
 
+# --- Loot guardrails ---
+echo "=== Loot guardrails"
+LOOT_GUARDS=$(grep -c 'OLD_HP.*-gt 0.*NEW_HP.*-eq 0' manifests/rgds/attack-graph.yaml)
+[ "$LOOT_GUARDS" -ge 2 ] && pass "Loot gated on OLD_HP>0 && NEW_HP==0 ($LOOT_GUARDS checks)" || fail "Missing kill-transition guard: $LOOT_GUARDS"
+
+NO_ITEM_LOOT=$(grep 'PATCH=.*Item used\|PATCH=.*Item equipped' manifests/rgds/attack-graph.yaml | grep -c 'lastLootDrop')
+ITEM_PATCHES=$(grep -c 'PATCH=.*Item used\|PATCH=.*Item equipped' manifests/rgds/attack-graph.yaml)
+[ "$NO_ITEM_LOOT" -eq "$ITEM_PATCHES" ] && pass "All item patches clear lastLootDrop" || fail "Item patches missing lastLootDrop clear: $NO_ITEM_LOOT/$ITEM_PATCHES"
+
+grep -q 'return.*Items done' frontend/src/App.tsx && pass "Item actions early-return (no loot fallthrough)" || fail "Item actions missing early return"
+
 # --- Summary ---
 
 echo ""
@@ -191,14 +202,3 @@ echo "========================================"
 for t in "${TESTS[@]}"; do echo "  $t"; done
 echo ""
 [ "$FAIL" -eq 0 ] && exit 0 || exit 1
-
-# Loot guardrails
-log "Loot only on kill transition"
-LOOT_GUARDS=$(grep -c 'OLD_HP.*-gt 0.*NEW_HP.*-eq 0' manifests/rgds/attack-graph.yaml)
-[ "$LOOT_GUARDS" -ge 2 ] && pass "Loot gated on OLD_HP>0 && NEW_HP==0 ($LOOT_GUARDS checks)" || fail "Missing kill-transition guard: $LOOT_GUARDS"
-
-NO_ITEM_LOOT=$(grep 'Item used\|Item equipped' manifests/rgds/attack-graph.yaml | grep -c 'lastLootDrop')
-ITEM_PATCHES=$(grep -c 'Item used\|Item equipped' manifests/rgds/attack-graph.yaml)
-[ "$NO_ITEM_LOOT" -eq "$ITEM_PATCHES" ] && pass "All item patches clear lastLootDrop" || fail "Item patches missing lastLootDrop clear: $NO_ITEM_LOOT/$ITEM_PATCHES"
-
-grep -q 'return.*Items done' frontend/src/App.tsx && pass "Item actions early-return (no loot fallthrough)" || fail "Item actions missing early return"
