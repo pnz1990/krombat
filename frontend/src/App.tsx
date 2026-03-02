@@ -866,7 +866,7 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
               const mSprite = getMonsterSprite(idx, spec.currentRoom || 1)
               let mAction: SpriteAction = state === 'dead' ? 'dead' : 'idle'
               if (attackTarget === mName && animPhase === 'hero-attack') mAction = 'hurt'
-              if (state === 'alive' && animPhase === 'enemy-attack') mAction = 'attack'
+              if (state === 'alive' && (animPhase === 'enemy-attack' || (combatModal && combatModal.phase === 'resolved'))) mAction = 'attack'
 
               // Position in semicircle (top arc around hero)
               const angle = count === 1 ? Math.PI / 2 : (Math.PI * 0.2) + (Math.PI * 0.6 / (count - 1)) * idx
