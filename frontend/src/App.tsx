@@ -63,7 +63,7 @@ export default function App() {
       if (sel) {
         const d = await getDungeon(sel.ns, sel.name)
         setDetail(d)
-        prevInventoryRef.current = d.spec.inventory || ''
+        if (!attackPhase) prevInventoryRef.current = d.spec.inventory || ''
       }
     } catch {}
   }, [])
@@ -75,7 +75,7 @@ export default function App() {
       const cr = lastEvent.payload as DungeonCR
       if (cr?.metadata?.name === selected.name) {
         setDetail(cr)
-        prevInventoryRef.current = cr.spec?.inventory || ''
+        if (!attackPhase) prevInventoryRef.current = cr.spec?.inventory || ''
       }
     }
     if (lastEvent) refresh()
@@ -203,12 +203,12 @@ export default function App() {
         else setCombatModal({ phase: 'resolved', formula: '', heroAction, enemyAction, spec: updated.spec, oldHP: detail?.spec.heroHP ?? 100 })
       }
 
-      // Detect loot drops — only if inventory actually grew
+      // Detect loot drops — only when heroAction says "Dropped"
       const newInv = updated.spec.inventory || ''
-      const oldItems = prevInventoryRef.current.split(',').filter(Boolean)
-      const newItems = newInv.split(',').filter(Boolean)
-      if (newItems.length > oldItems.length) {
-        const dropped = newItems.filter(item => !oldItems.includes(item))
+      if (heroAction.includes('Dropped')) {
+        const newItems = newInv.split(',').filter(Boolean)
+        const prevItems = prevInventoryRef.current.split(',').filter(Boolean)
+        const dropped = newItems.filter(item => !prevItems.includes(item))
         if (dropped.length > 0) setLootDrop(dropped[dropped.length - 1])
       }
       prevInventoryRef.current = newInv
