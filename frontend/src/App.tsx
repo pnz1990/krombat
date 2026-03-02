@@ -150,11 +150,11 @@ export default function App() {
       addK8s(`kubectl apply -f attack.yaml`, 'attack.game.k8s.example created',
         `apiVersion: game.k8s.example/v1alpha1\nkind: Attack\nmetadata:\n  name: ${selected.name}-${target}-${Date.now() % 100000}\nspec:\n  dungeonName: ${selected.name}\n  dungeonNamespace: ${selected.ns}\n  target: ${target}\n  damage: ${damage}`)
 
-      // Wait for CR update — poll with fallback
+      // Wait for CR update — initial delay for Job to run, then poll
       const prevAction = detail?.spec.lastHeroAction
       let updated = detail!
+      await new Promise(r => setTimeout(r, 3000)) // wait for Job to start + run
       for (let attempt = 0; attempt < 10; attempt++) {
-        await new Promise(r => setTimeout(r, 1500))
         const current = await getDungeon(selected.ns, selected.name)
         if (current.spec.lastHeroAction !== prevAction) {
           updated = current
@@ -162,6 +162,7 @@ export default function App() {
             JSON.stringify({ spec: current.spec, status: current.status }, null, 2))
           break
         }
+        await new Promise(r => setTimeout(r, 1500))
       }
       setDetail(updated)
 
