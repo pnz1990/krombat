@@ -33,6 +33,7 @@ spec:
               containers:
                 - name: attacker
                   image: bitnami/kubectl:latest
+                  imagePullPolicy: IfNotPresent
                   env:
                     - name: DUNGEON
                       value: ${schema.spec.dungeonName}

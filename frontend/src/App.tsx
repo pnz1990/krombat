@@ -154,7 +154,7 @@ export default function App() {
       if (isItem) {
         // Items: poll until spec changes (weapon/armor/shield/inventory/treasure/door)
         const prevSpec = JSON.stringify(detail?.spec)
-        for (let attempt = 0; attempt < 8; attempt++) {
+        for (let attempt = 0; attempt < 15; attempt++) {
           await new Promise(r => setTimeout(r, 2000))
           const current = await getDungeon(selected.ns, selected.name)
           if (JSON.stringify(current.spec) !== prevSpec) {
