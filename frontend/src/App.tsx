@@ -149,14 +149,16 @@ export default function App() {
       addK8s(`kubectl apply -f attack.yaml`, 'attack.game.k8s.example created',
         `apiVersion: game.k8s.example/v1alpha1\nkind: Attack\nmetadata:\n  name: ${selected.name}-${target}-${Date.now() % 100000}\nspec:\n  dungeonName: ${selected.name}\n  dungeonNamespace: ${selected.ns}\n  target: ${target}\n  damage: ${damage}`)
 
-      // Wait for CR update — WebSocket updates detail in real-time via ref
+      // Wait for CR update — poll with fallback
       const prevAction = detail?.spec.lastHeroAction
       let updated = detail!
-      for (let attempt = 0; attempt < 8; attempt++) {
+      for (let attempt = 0; attempt < 10; attempt++) {
         await new Promise(r => setTimeout(r, 1500))
-        // Check if WebSocket already delivered the update
-        if (detailRef.current?.spec.lastHeroAction !== prevAction) {
-          updated = detailRef.current!
+        const current = await getDungeon(selected.ns, selected.name)
+        if (current.spec.lastHeroAction !== prevAction) {
+          updated = current
+          addK8s(`kubectl get dungeon ${selected.name}`, `heroHP:${current.spec.heroHP} bossHP:${current.spec.bossHP}`,
+            JSON.stringify({ spec: current.spec, status: current.status }, null, 2))
           break
         }
       }
