@@ -152,10 +152,18 @@ export default function App() {
       const prevAction = detail?.spec.lastHeroAction
 
       if (isItem) {
-        // Items: short wait, single fetch, done
-        await new Promise(r => setTimeout(r, 3000))
-        updated = await getDungeon(selected.ns, selected.name)
+        // Items: poll until spec changes (weapon/armor/shield/inventory/treasure/door)
+        const prevSpec = JSON.stringify(detail?.spec)
+        for (let attempt = 0; attempt < 8; attempt++) {
+          await new Promise(r => setTimeout(r, 2000))
+          const current = await getDungeon(selected.ns, selected.name)
+          if (JSON.stringify(current.spec) !== prevSpec) {
+            updated = current
+            break
+          }
+        }
         setDetail(updated)
+        prevInventoryRef.current = updated.spec.inventory || ''
         setAttackPhase(null)
         setAnimPhase('idle')
         setAttackTarget(null)
