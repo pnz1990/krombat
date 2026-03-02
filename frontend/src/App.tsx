@@ -863,7 +863,7 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
             {/* Boss — visible when kro sets bossState to ready or defeated */}
             {bossState !== 'pending' && (() => {
               let bAction: SpriteAction = (bossState === 'defeated' || spec.bossHP <= 0) ? 'victory' : 'idle'
-              if (attackTarget?.includes('boss') && animPhase === 'hero-attack') bAction = 'hurt'
+              if (attackTarget?.includes('boss') && (animPhase === 'hero-attack' || (combatModal && combatModal.phase === 'rolling'))) bAction = 'hurt'
               if (bossState === 'ready' && animPhase === 'enemy-attack' && attackTarget?.includes('boss')) bAction = 'attack'
               if (status?.victory || spec.bossHP <= 0) bAction = 'victory'
               const bossName = `${dungeonName}-boss`
@@ -896,7 +896,7 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
               const mName = `${dungeonName}-monster-${idx}`
               const mSprite = getMonsterSprite(idx, spec.currentRoom || 1)
               let mAction: SpriteAction = state === 'dead' ? 'dead' : 'idle'
-              if (attackTarget === mName && animPhase === 'hero-attack') mAction = 'hurt'
+              if (attackTarget === mName && (animPhase === 'hero-attack' || (combatModal && combatModal.phase === 'rolling'))) mAction = 'hurt'
               if (state === 'alive' && (animPhase === 'enemy-attack' || (combatModal && combatModal.phase === 'resolved'))) mAction = 'attack'
 
               // Position in semicircle (top arc around hero)
@@ -933,7 +933,7 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
             <div className="arena-entity hero-entity" style={{ left: '50%', top: '70%' }}>
               {floatingDmg?.target === 'hero' && <div className="floating-dmg" style={{ color: floatingDmg.color }}>{floatingDmg.amount}</div>}
               <Sprite spriteType={spec.heroClass || 'warrior'} size={80}
-                action={isDefeated ? 'dead' : status?.victory ? 'victory' : animPhase === 'hero-attack' ? 'attack' : animPhase === 'enemy-attack' ? 'hurt' : animPhase === 'item-use' ? 'itemUse' : 'idle'} />
+                action={isDefeated ? 'dead' : status?.victory ? 'victory' : (animPhase === 'hero-attack' || (combatModal && combatModal.phase === 'rolling')) ? 'attack' : animPhase === 'enemy-attack' ? 'hurt' : animPhase === 'item-use' ? 'itemUse' : 'idle'} />
               <div className="arena-shadow" style={{ width: 60 }} />
             </div>
 
