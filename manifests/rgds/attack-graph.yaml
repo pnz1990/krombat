@@ -197,6 +197,44 @@ spec:
                           echo "Conflict, retrying ($i/5)..."; sleep $i; continue
                         fi
 
+                        # === UNLOCK DOOR ===
+                        if [ "$TARGET" = "unlock-door" ]; then
+                          TREASURE_OPENED=$(echo "$DUNGEON_JSON" | jq -r '.spec.treasureOpened // 0')
+                          if [ "$TREASURE_OPENED" -ne 1 ]; then
+                            echo "Open the treasure first to get the key"; exit 1
+                          fi
+                          EXPECTED_KEY="$DUNGEON-LOOT"
+                          if [ "$DAMAGE" -eq 0 ] 2>/dev/null; then
+                            echo "Provide the key as damage field"; exit 1
+                          fi
+                          PATCH="{\"spec\":{\"doorUnlocked\":1,\"lastHeroAction\":\"Door unlocked! A new room awaits...\",\"lastEnemyAction\":\"\"}}"
+                          if kubectl patch dungeon "$DUNGEON" -n "$DUNGEON_NS" --type=merge -p "$PATCH" 2>&1; then
+                            echo "Door unlocked!"; exit 0
+                          fi
+                          echo "Conflict, retrying ($i/5)..."; sleep $i; continue
+                        fi
+
+                        # === ENTER ROOM 2 ===
+                        if [ "$TARGET" = "enter-room-2" ]; then
+                          DOOR_UNLOCKED=$(echo "$DUNGEON_JSON" | jq -r '.spec.doorUnlocked // 0')
+                          if [ "$DOOR_UNLOCKED" -ne 1 ]; then
+                            echo "Unlock the door first"; exit 1
+                          fi
+                          # Initialize room 2: harder monsters + boss
+                          case "$DIFFICULTY" in
+                            easy)   R2_MHP=50; R2_BHP=400 ;;
+                            hard)   R2_MHP=120; R2_BHP=1200 ;;
+                            *)      R2_MHP=80; R2_BHP=800 ;;
+                          esac
+                          MONSTER_COUNT=$(echo "$DUNGEON_JSON" | jq '.spec.monsterHP | length')
+                          R2_ARRAY=$(python3 -c "print([$R2_MHP]*$MONSTER_COUNT)")
+                          PATCH="{\"spec\":{\"currentRoom\":2,\"monsterHP\":$R2_ARRAY,\"bossHP\":$R2_BHP,\"room2MonsterHP\":$R2_ARRAY,\"room2BossHP\":$R2_BHP,\"treasureOpened\":0,\"doorUnlocked\":0,\"lastHeroAction\":\"Entered Room 2! Stronger enemies await...\",\"lastEnemyAction\":\"\"}}"
+                          if kubectl patch dungeon "$DUNGEON" -n "$DUNGEON_NS" --type=merge -p "$PATCH" 2>&1; then
+                            echo "Entered Room 2!"; exit 0
+                          fi
+                          echo "Conflict, retrying ($i/5)..."; sleep $i; continue
+                        fi
+
                         # === MAGE HEAL ===
                         if [ "$TARGET" = "hero" ]; then
                           if [ "$HERO_CLASS" != "mage" ]; then

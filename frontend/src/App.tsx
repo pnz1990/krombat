@@ -121,7 +121,7 @@ export default function App() {
     if (!selected || attackPhase) return
     setError('')
     const isAbility = target === 'hero' || target === 'activate-taunt'
-    const isItem = target.startsWith('use-') || target.startsWith('equip-') || target === 'open-treasure'
+    const isItem = target.startsWith('use-') || target.startsWith('equip-') || target === 'open-treasure' || target === 'unlock-door' || target === 'enter-room-2'
     const shortTarget = (isAbility || isItem) ? target : target.replace(/-backstab$/, '').split('-').slice(-2).join('-')
     try {
       setAttackTarget(target.replace(/-backstab$/, ''))
@@ -748,6 +748,7 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
         <div><span className="label">Monsters alive:</span><span className="value">{status?.livingMonsters ?? '?'}</span></div>
         <div><span className="label">Boss:</span><span className="value">{bossState}</span></div>
         <div><span className="label">Difficulty:</span><span className="value">{spec.difficulty}</span></div>
+        <div><span className="label">Room:</span><span className="value">{spec.currentRoom || 1}</span></div>
       </div>
 
       <div className="game-layout">
@@ -787,6 +788,32 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
                 style={{ left: `${p.x}%`, top: `${p.y}%`, width: p.size, transform: `translate(-50%,-50%) rotate(${p.rot}deg)` }} />
             ))}
 
+            {/* Door at top of arena */}
+            <div className="arena-entity door-entity" style={{ top: '8%', left: '50%' }}>
+              <img src={`/sprites/dungeon/door-${(spec.doorUnlocked ?? 0) === 1 ? 'opened' : 'closed'}.png`}
+                alt="door" style={{ width: 64, height: 64, imageRendering: 'pixelated' as any }} />
+              {(spec.doorUnlocked ?? 0) === 1 && !gameOver && (
+                <button className="btn btn-gold arena-atk-btn" style={{ marginTop: 4, fontSize: '7px' }}
+                  onClick={() => onAttack('enter-room-2', 0)}>Enter Room 2</button>
+              )}
+              {(spec.treasureOpened ?? 0) === 1 && (spec.doorUnlocked ?? 0) === 0 && (
+                <button className="btn btn-ability arena-atk-btn" style={{ marginTop: 4, fontSize: '7px' }}
+                  onClick={() => onAttack('unlock-door', 0)}>Unlock Door</button>
+              )}
+            </div>
+
+            {/* Treasure chest — appears after boss defeated */}
+            {(spec.bossHP <= 0 && allMonstersDead) && (
+              <div className="arena-entity chest-entity" style={{ top: '40%', left: '50%' }}>
+                <img src={`/sprites/dungeon/chest-${(spec.treasureOpened ?? 0) === 1 ? 'opened' : 'closed'}.png`}
+                  alt="chest" style={{ width: 48, height: 48, imageRendering: 'pixelated' as any, cursor: (spec.treasureOpened ?? 0) === 0 ? 'pointer' : 'default' }}
+                  onClick={() => (spec.treasureOpened ?? 0) === 0 && onAttack('open-treasure', 0)} />
+                {(spec.treasureOpened ?? 0) === 1 && status?.loot && (
+                  <div style={{ fontSize: 7, color: 'var(--gold)', textAlign: 'center', marginTop: 4, textShadow: '1px 1px 2px #000' }}>🔑 {status.loot}</div>
+                )}
+              </div>
+            )}
+
             {/* Boss — visible when kro sets bossState to ready or defeated */}
             {bossState !== 'pending' && (() => {
               let bAction: SpriteAction = (bossState === 'defeated' || spec.bossHP <= 0) ? 'dead' : 'idle'
@@ -821,7 +848,7 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
               const count = spec.monsterHP.length
               const state = hp > 0 ? 'alive' : 'dead'
               const mName = `${dungeonName}-monster-${idx}`
-              const mSprite = getMonsterSprite(idx)
+              const mSprite = getMonsterSprite(idx, spec.currentRoom || 1)
               let mAction: SpriteAction = state === 'dead' ? 'dead' : 'idle'
               if (attackTarget === mName && animPhase === 'hero-attack') mAction = 'hurt'
               if (state === 'alive' && animPhase === 'enemy-attack') mAction = 'attack'
@@ -831,7 +858,7 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
               const radiusX = 38 // % from center
               const radiusY = 30
               const cx = 50 + Math.cos(angle) * radiusX
-              const cy = 45 - Math.sin(angle) * radiusY
+              const cy = 50 - Math.sin(angle) * radiusY
               const facingRight = cx < 50
 
               return (

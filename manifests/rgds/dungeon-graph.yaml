@@ -29,6 +29,10 @@ spec:
       burnTurns: integer | default=0
       stunTurns: integer | default=0
       treasureOpened: integer | default=0
+      currentRoom: integer | default=1
+      doorUnlocked: integer | default=0
+      room2MonsterHP: "[]integer"
+      room2BossHP: integer | default=0
       lastHeroAction: string | default=""
       lastEnemyAction: string | default=""
     status:

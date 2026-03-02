@@ -18,6 +18,7 @@ export interface DungeonCR {
     weaponBonus?: number; weaponUses?: number; armorBonus?: number; shieldBonus?: number
     poisonTurns?: number; burnTurns?: number; stunTurns?: number
     treasureOpened?: number
+    currentRoom?: number; doorUnlocked?: number
     lastHeroAction?: string; lastEnemyAction?: string
   }
   status?: {
