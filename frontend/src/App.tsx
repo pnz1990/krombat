@@ -863,10 +863,11 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
 
             {/* Boss — visible when kro sets bossState to ready or defeated */}
             {bossState !== 'pending' && (() => {
+              const inCombatB = combatModal && (combatModal.phase === 'rolling' || combatModal.phase === 'resolved')
               let bAction: SpriteAction = (bossState === 'defeated' || spec.bossHP <= 0) ? 'victory' : 'idle'
-              if (attackTarget?.includes('boss') && (animPhase === 'hero-attack' || (combatModal && combatModal.phase === 'rolling'))) bAction = 'hurt'
-              if (bossState === 'ready' && animPhase === 'enemy-attack' && attackTarget?.includes('boss')) bAction = 'attack'
-              if (status?.victory || spec.bossHP <= 0) bAction = 'victory'
+              if (attackTarget?.includes('boss') && inCombatB) bAction = 'hurt'
+              else if (bossState === 'ready' && inCombatB && !attackTarget?.includes('boss')) bAction = 'attack'
+              if (!inCombatB && (status?.victory || spec.bossHP <= 0)) bAction = 'victory'
               const bossName = `${dungeonName}-boss`
               return (
                 <div className={`arena-entity boss-entity`}
@@ -897,8 +898,9 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
               const mName = `${dungeonName}-monster-${idx}`
               const mSprite = getMonsterSprite(idx, spec.currentRoom || 1)
               let mAction: SpriteAction = state === 'dead' ? 'dead' : 'idle'
-              if (attackTarget === mName && (animPhase === 'hero-attack' || (combatModal && combatModal.phase === 'rolling'))) mAction = 'hurt'
-              if (state === 'alive' && (animPhase === 'enemy-attack' || (combatModal && combatModal.phase === 'resolved'))) mAction = 'attack'
+              const inCombat = combatModal && (combatModal.phase === 'rolling' || combatModal.phase === 'resolved')
+              if (attackTarget === mName && inCombat) mAction = 'hurt'
+              else if (state === 'alive' && inCombat) mAction = 'attack'
 
               // Position in semicircle (top arc around hero)
               const angle = count === 1 ? Math.PI / 2 : (Math.PI * 0.2) + (Math.PI * 0.6 / (count - 1)) * idx
