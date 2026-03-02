@@ -203,11 +203,11 @@ export default function App() {
         else setCombatModal({ phase: 'resolved', formula: '', heroAction, enemyAction, spec: updated.spec, oldHP: detail?.spec.heroHP ?? 100 })
       }
 
-      // Detect loot drops — only if heroAction mentions a drop
+      // Detect loot drops — only if inventory actually grew
       const newInv = updated.spec.inventory || ''
-      if (heroAction.includes('Dropped')) {
-        const oldItems = prevInventoryRef.current.split(',').filter(Boolean)
-        const newItems = newInv.split(',').filter(Boolean)
+      const oldItems = prevInventoryRef.current.split(',').filter(Boolean)
+      const newItems = newInv.split(',').filter(Boolean)
+      if (newItems.length > oldItems.length) {
         const dropped = newItems.filter(item => !oldItems.includes(item))
         if (dropped.length > 0) setLootDrop(dropped[dropped.length - 1])
       }
