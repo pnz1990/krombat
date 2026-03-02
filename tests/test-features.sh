@@ -47,11 +47,11 @@ metadata:
 spec: {dungeonName: "test-fx-$TS", dungeonNamespace: default, target: "test-fx-$TS-monster-0", damage: 10}
 ---
 apiVersion: game.k8s.example/v1alpha1
-kind: Attack
+kind: Action
 metadata:
   name: loot-use-$TS
   labels: {test-group: "features-$TS"}
-spec: {dungeonName: "test-loot-$TS", dungeonNamespace: default, target: "use-hppotion-rare", damage: 0}
+spec: {dungeonName: "test-loot-$TS", dungeonNamespace: default, action: "use-hppotion-rare"}
 EOF
 
 wait_job "fx-atk-$TS"

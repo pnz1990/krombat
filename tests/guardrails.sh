@@ -193,6 +193,15 @@ ITEM_PATCHES=$(grep -c 'PATCH=.*Item used\|PATCH=.*Item equipped' manifests/rgds
 
 grep -q 'return.*Items done' frontend/src/App.tsx && pass "Item actions early-return (no loot fallthrough)" || fail "Item actions missing early return"
 
+# --- Combat/Action separation guardrails ---
+echo "=== Combat/Action separation"
+! grep -q 'equip-\|use-.*potion\|open-treasure\|unlock-door\|enter-room-2' manifests/rgds/attack-graph.yaml 2>/dev/null && pass "attack-graph has no item/equip/door logic" || {
+  # Allow references in comments only
+  ITEM_REFS=$(grep -v '^\s*#' manifests/rgds/attack-graph.yaml | grep -c 'equip-\|use-.*potion\|open-treasure\|unlock-door\|enter-room-2' || true)
+  [ "$ITEM_REFS" -le 1 ] && pass "attack-graph has no item/equip/door logic ($ITEM_REFS refs)" || fail "attack-graph still has item logic: $ITEM_REFS refs"
+}
+! grep -q 'EFFECTIVE_DAMAGE\|monsterHP\[' manifests/rgds/action-graph.yaml && pass "action-graph has no combat logic" || fail "action-graph has combat logic"
+
 # --- Combat animation guardrails ---
 echo "=== Combat animation guardrails"
 grep -q "inCombat && attackTarget === mName) mAction = 'attack'" frontend/src/App.tsx && pass "Monster target uses attack anim during combat" || fail "Monster target not using attack anim"

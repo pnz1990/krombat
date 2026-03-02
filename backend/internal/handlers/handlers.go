@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"log/slog"
 	"math/rand"
 	"net/http"
@@ -269,20 +270,42 @@ func (h *Handler) CreateAttack(w http.ResponseWriter, r *http.Request) {
 
 	attackName := fmt.Sprintf("%s-%s-%d", name, req.Target, time.Now().UnixMilli()%100000)
 
-	attack := &unstructured.Unstructured{Object: map[string]interface{}{
-		"apiVersion": "game.k8s.example/v1alpha1",
-		"kind":       "Attack",
-		"metadata":   map[string]interface{}{"name": attackName},
-		"spec": map[string]interface{}{
-			"dungeonName":      name,
-			"dungeonNamespace": ns,
-			"target":           req.Target,
-			"damage":           req.Damage,
-		},
-	}}
+	// Route item/equip/treasure/door actions to Action CR, combat to Attack CR
+	isAction := strings.HasPrefix(req.Target, "use-") || strings.HasPrefix(req.Target, "equip-") ||
+		req.Target == "open-treasure" || req.Target == "unlock-door" || req.Target == "enter-room-2"
 
-	result, err := h.client.Dynamic.Resource(k8s.AttackGVR).Namespace("default").Create(
-		context.Background(), attack, metav1.CreateOptions{})
+	var result *unstructured.Unstructured
+	var err error
+
+	if isAction {
+		action := &unstructured.Unstructured{Object: map[string]interface{}{
+			"apiVersion": "game.k8s.example/v1alpha1",
+			"kind":       "Action",
+			"metadata":   map[string]interface{}{"name": attackName},
+			"spec": map[string]interface{}{
+				"dungeonName":      name,
+				"dungeonNamespace": ns,
+				"action":           req.Target,
+			},
+		}}
+		result, err = h.client.Dynamic.Resource(k8s.ActionGVR).Namespace("default").Create(
+			context.Background(), action, metav1.CreateOptions{})
+	} else {
+		attack := &unstructured.Unstructured{Object: map[string]interface{}{
+			"apiVersion": "game.k8s.example/v1alpha1",
+			"kind":       "Attack",
+			"metadata":   map[string]interface{}{"name": attackName},
+			"spec": map[string]interface{}{
+				"dungeonName":      name,
+				"dungeonNamespace": ns,
+				"target":           req.Target,
+				"damage":           req.Damage,
+			},
+		}}
+		result, err = h.client.Dynamic.Resource(k8s.AttackGVR).Namespace("default").Create(
+			context.Background(), attack, metav1.CreateOptions{})
+	}
+
 	if err != nil {
 		writeError(w, err.Error(), http.StatusInternalServerError)
 		return

@@ -15,6 +15,7 @@ import (
 var (
 	DungeonGVR = schema.GroupVersionResource{Group: "game.k8s.example", Version: "v1alpha1", Resource: "dungeons"}
 	AttackGVR  = schema.GroupVersionResource{Group: "game.k8s.example", Version: "v1alpha1", Resource: "attacks"}
+	ActionGVR  = schema.GroupVersionResource{Group: "game.k8s.example", Version: "v1alpha1", Resource: "actions"}
 )
 
 func StartWatchers(client *Client, hub *ws.Hub) {

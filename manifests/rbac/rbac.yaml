@@ -15,7 +15,7 @@ metadata:
   name: rpg-backend
 rules:
   - apiGroups: [game.k8s.example]
-    resources: [dungeons, dungeons/status, attacks, attacks/status]
+    resources: [dungeons, dungeons/status, attacks, attacks/status, actions, actions/status]
     verbs: [get, list, watch, create, update, patch, delete]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
