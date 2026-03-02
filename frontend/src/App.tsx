@@ -75,9 +75,10 @@ export default function App() {
       const cr = lastEvent.payload as DungeonCR
       if (cr?.metadata?.name === selected.name) {
         setDetail(cr)
+        prevInventoryRef.current = cr.spec?.inventory || ''
       }
     }
-    if (lastEvent) refresh() // still refresh list
+    if (lastEvent) refresh()
   }, [lastEvent])
 
   // Initial load + load dungeon detail when URL changes
