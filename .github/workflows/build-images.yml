@@ -65,6 +65,5 @@ jobs:
       - uses: azure/setup-kubectl@v4
       - run: aws eks update-kubeconfig --region us-west-2 --name krombat
       - run: |
-          kubectl rollout restart deployment/rpg-backend deployment/rpg-frontend -n rpg-system
+          kubectl rollout restart deployment/rpg-backend -n rpg-system
           kubectl rollout status deployment/rpg-backend -n rpg-system --timeout=120s
-          kubectl rollout status deployment/rpg-frontend -n rpg-system --timeout=120s
