@@ -14,7 +14,7 @@ export type SpriteAction = 'idle' | 'attack' | 'hurt' | 'dead' | 'victory' | 'it
 const ACTION_FRAMES: Record<SpriteAction, number[]> = {
   idle:    [1, 2, 3, 2],
   attack:  [3, 4, 5, 4],
-  hurt:    [6],
+  hurt:    [6, 1, 6],
   dead:    [6],
   victory: [7],
   itemUse: [1, 2, 7, 2],
@@ -23,7 +23,7 @@ const ACTION_FRAMES: Record<SpriteAction, number[]> = {
 const MONSTER_ACTION_FRAMES: Record<SpriteAction, number[]> = {
   idle:    [1, 2, 3, 2],
   attack:  [3, 4, 5, 4],
-  hurt:    [6],
+  hurt:    [6, 1, 6],
   dead:    [6],
   victory: [6],
   itemUse: [1],
@@ -32,7 +32,7 @@ const MONSTER_ACTION_FRAMES: Record<SpriteAction, number[]> = {
 const BOSS_ACTION_FRAMES: Record<SpriteAction, number[]> = {
   idle:    [1, 2, 3, 2],
   attack:  [4, 5, 6, 5],
-  hurt:    [6],
+  hurt:    [6, 1, 6],
   dead:    [6],
   victory: [7],
   itemUse: [1],
@@ -82,8 +82,6 @@ export function Sprite({ spriteType, action, size = 64, flip = false }: SpritePr
         imageRendering: 'pixelated' as any,
         transform: flip ? 'scaleX(-1)' : undefined,
         opacity: action === 'dead' ? 0.35 : 1,
-        filter: action === 'hurt' ? 'brightness(2) saturate(0.5)' : undefined,
-        animation: action === 'hurt' ? 'shake 0.2s infinite' : undefined,
       }}
     />
   )
