@@ -43,6 +43,7 @@ export default function App() {
   const [error, setError] = useState('')
   const [showLoot, setShowLoot] = useState(false)
   const [attackPhase, setAttackPhase] = useState<string | null>(null)
+  const [roomLoading, setRoomLoading] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
   const [showCheat, setShowCheat] = useState(false)
   const [deleting, setDeleting] = useState<string | null>(null)
@@ -160,7 +161,8 @@ export default function App() {
           return d.spec.lastHeroAction
         }
         const prevVal = checkField(detail)
-        for (let attempt = 0; attempt < 12; attempt++) {
+        if (target === 'enter-room-2') setRoomLoading(true)
+        for (let attempt = 0; attempt < 20; attempt++) {
           await new Promise(r => setTimeout(r, 1500))
           const current = await getDungeon(selected.ns, selected.name)
           if (checkField(current) !== prevVal) {
@@ -169,6 +171,7 @@ export default function App() {
           }
         }
         setDetail(updated)
+        setRoomLoading(false)
         setAttackPhase(null)
         setAnimPhase('idle')
         setAttackTarget(null)
@@ -305,6 +308,7 @@ export default function App() {
           onBack={() => { navigate('/'); refresh() }}
           onAttack={handleAttack}
           attackPhase={attackPhase}
+          roomLoading={roomLoading}
           animPhase={animPhase}
           attackTarget={attackTarget}
           floatingDmg={floatingDmg}
@@ -654,10 +658,10 @@ function HelpModal({ onClose, onCheat }: { onClose: () => void; onCheat: () => v
     </div>
   )
 }
-function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoot, onCloseLoot, currentTurn, turnRound, attackPhase, animPhase, attackTarget, showHelp, onToggleHelp, showCheat, onToggleCheat, floatingDmg, combatModal, onDismissCombat, lootDrop, onDismissLoot }: {
+function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoot, onCloseLoot, currentTurn, turnRound, attackPhase, roomLoading, animPhase, attackTarget, showHelp, onToggleHelp, showCheat, onToggleCheat, floatingDmg, combatModal, onDismissCombat, lootDrop, onDismissLoot }: {
   cr: DungeonCR; onBack: () => void; onAttack: (t: string, d: number) => void; events: WSEvent[]; k8sLog: { ts: string; cmd: string; res: string; yaml?: string }[]
   showLoot: boolean; onOpenLoot: () => void; onCloseLoot: () => void
-  currentTurn: string; turnRound: number; attackPhase: string | null
+  currentTurn: string; turnRound: number; attackPhase: string | null; roomLoading: boolean
   animPhase: string; attackTarget: string | null
   showHelp: boolean; onToggleHelp: () => void
   showCheat: boolean; onToggleCheat: () => void
@@ -946,6 +950,13 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
                 action={isDefeated ? 'dead' : status?.victory ? 'victory' : (animPhase === 'hero-attack' || (combatModal && combatModal.phase === 'rolling')) ? 'attack' : animPhase === 'enemy-attack' ? 'hurt' : animPhase === 'item-use' ? 'itemUse' : 'idle'} />
               <div className="arena-shadow" style={{ width: 60 }} />
             </div>
+
+            {/* Room transition loading */}
+            {roomLoading && (
+              <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 20, borderRadius: 12 }}>
+                <div style={{ textAlign: 'center', color: 'var(--gold)', fontSize: 12 }}>🚪 Entering Room 2...</div>
+              </div>
+            )}
 
             {/* Victory glow */}
             {/* Flying bats */}
