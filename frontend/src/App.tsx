@@ -876,8 +876,8 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
             {bossState !== 'pending' && (() => {
               const inCombatB = combatModal && (combatModal.phase === 'rolling' || combatModal.phase === 'resolved')
               let bAction: SpriteAction = (bossState === 'defeated' || spec.bossHP <= 0) ? 'victory' : 'idle'
-              if (attackTarget?.includes('boss') && inCombatB) bAction = 'hurt'
-              else if (bossState === 'ready' && inCombatB && !attackTarget?.includes('boss')) bAction = 'attack'
+              if (inCombatB && attackTarget?.includes('boss')) bAction = 'attack'
+              else if (inCombatB && bossState === 'ready') bAction = 'attack'
               if (!inCombatB && (status?.victory || spec.bossHP <= 0)) bAction = 'victory'
               const bossName = `${dungeonName}-boss`
               return (
@@ -910,8 +910,8 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
               const mSprite = getMonsterSprite(idx, spec.currentRoom || 1)
               let mAction: SpriteAction = state === 'dead' ? 'dead' : 'idle'
               const inCombat = combatModal && (combatModal.phase === 'rolling' || combatModal.phase === 'resolved')
-              if (attackTarget === mName && inCombat) mAction = 'hurt'
-              else if (state === 'alive' && inCombat) mAction = 'attack'
+              if (inCombat && state === 'alive') mAction = 'attack'
+              if (inCombat && attackTarget === mName) mAction = 'attack'
 
               // Position in semicircle (top arc around hero)
               const angle = count === 1 ? Math.PI / 2 : (Math.PI * 0.2) + (Math.PI * 0.6 / (count - 1)) * idx
