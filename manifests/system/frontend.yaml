@@ -36,9 +36,11 @@ metadata:
   namespace: rpg-system
   annotations:
     service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
+    service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: instance
 spec:
   type: LoadBalancer
   loadBalancerClass: eks.amazonaws.com/nlb
+  externalTrafficPolicy: Cluster
   selector:
     app: rpg-frontend
   ports:
