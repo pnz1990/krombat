@@ -34,9 +34,13 @@ kind: Service
 metadata:
   name: rpg-frontend
   namespace: rpg-system
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
 spec:
+  type: LoadBalancer
+  loadBalancerClass: eks.amazonaws.com/nlb
   selector:
     app: rpg-frontend
   ports:
-    - port: 3000
+    - port: 80
       targetPort: 3000
