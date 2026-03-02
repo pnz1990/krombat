@@ -149,7 +149,7 @@ export default function App() {
         `apiVersion: game.k8s.example/v1alpha1\nkind: Attack\nmetadata:\n  name: ${selected.name}-${target}-${Date.now() % 100000}\nspec:\n  dungeonName: ${selected.name}\n  dungeonNamespace: ${selected.ns}\n  target: ${target}\n  damage: ${damage}`)
 
       let updated = detail!
-      const prevAction = detail?.spec.lastHeroAction
+      const prevAction = detail?.spec.lastHeroAction || ''
 
       if (isItem) {
         // Items: poll until spec changes (weapon/armor/shield/inventory/treasure/door)
@@ -179,7 +179,7 @@ export default function App() {
         await new Promise(r => setTimeout(r, 3000))
         for (let attempt = 0; attempt < 10; attempt++) {
           const current = await getDungeon(selected.ns, selected.name)
-          if (current.spec.lastHeroAction !== prevAction) {
+          if (current.spec.lastHeroAction && current.spec.lastHeroAction !== prevAction) {
             updated = current
             addK8s(`kubectl get dungeon ${selected.name}`, `heroHP:${current.spec.heroHP} bossHP:${current.spec.bossHP}`,
               JSON.stringify({ spec: current.spec, status: current.status }, null, 2))
