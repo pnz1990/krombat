@@ -139,12 +139,12 @@ spec:
                             NEW_MANA=$((HERO_MANA + MANA_ADD))
                             if [ "$NEW_MANA" -gt 5 ]; then NEW_MANA=5; fi
                             HERO_ACTION="Used $ITEM_TYPE! Mana: $HERO_MANA -> $NEW_MANA"
-                            PATCH="{\"spec\":{\"heroMana\":$NEW_MANA,\"inventory\":\"$NEW_INV\",\"backstabCooldown\":$BACKSTAB_CD,\"lastHeroAction\":\"$HERO_ACTION\",\"lastEnemyAction\":\"Item used\"}}"
+                            PATCH="{\"spec\":{\"heroMana\":$NEW_MANA,\"inventory\":\"$NEW_INV\",\"backstabCooldown\":$BACKSTAB_CD,\"lastHeroAction\":\"$HERO_ACTION\",\"lastEnemyAction\":\"Item used\",\"lastLootDrop\":\"\"}}"
                           else
                             NEW_HP=$((HERO_HP + HEAL))
                             if [ "$NEW_HP" -gt "$MAX_HP" ]; then NEW_HP=$MAX_HP; fi
                             HERO_ACTION="Used $ITEM_TYPE! HP: $HERO_HP -> $NEW_HP"
-                            PATCH="{\"spec\":{\"heroHP\":$NEW_HP,\"inventory\":\"$NEW_INV\",\"backstabCooldown\":$BACKSTAB_CD,\"lastHeroAction\":\"$HERO_ACTION\",\"lastEnemyAction\":\"Item used\"}}"
+                            PATCH="{\"spec\":{\"heroHP\":$NEW_HP,\"inventory\":\"$NEW_INV\",\"backstabCooldown\":$BACKSTAB_CD,\"lastHeroAction\":\"$HERO_ACTION\",\"lastEnemyAction\":\"Item used\",\"lastLootDrop\":\"\"}}"
                           fi
                           echo "$HERO_ACTION"
                           if kubectl patch dungeon "$DUNGEON" -n "$DUNGEON_NS" --type=merge -p "$PATCH" 2>&1; then
@@ -175,13 +175,13 @@ spec:
                           esac
                           if [ "$IS_WEAPON" = "true" ]; then
                             HERO_ACTION="Equipped $ITEM_TYPE! +$WEAPON_VAL damage for $WEAPON_USES_VAL attacks"
-                            PATCH="{\"spec\":{\"weaponBonus\":$WEAPON_VAL,\"weaponUses\":$WEAPON_USES_VAL,\"inventory\":\"$NEW_INV\",\"backstabCooldown\":$BACKSTAB_CD,\"lastHeroAction\":\"$HERO_ACTION\",\"lastEnemyAction\":\"Item equipped\"}}"
+                            PATCH="{\"spec\":{\"weaponBonus\":$WEAPON_VAL,\"weaponUses\":$WEAPON_USES_VAL,\"inventory\":\"$NEW_INV\",\"backstabCooldown\":$BACKSTAB_CD,\"lastHeroAction\":\"$HERO_ACTION\",\"lastEnemyAction\":\"Item equipped\",\"lastLootDrop\":\"\"}}"
                           elif [ "$IS_SHIELD" = "true" ]; then
                             HERO_ACTION="Equipped $ITEM_TYPE! +$SHIELD_VAL pct block chance"
-                            PATCH="{\"spec\":{\"shieldBonus\":$SHIELD_VAL,\"inventory\":\"$NEW_INV\",\"backstabCooldown\":$BACKSTAB_CD,\"lastHeroAction\":\"$HERO_ACTION\",\"lastEnemyAction\":\"Item equipped\"}}"
+                            PATCH="{\"spec\":{\"shieldBonus\":$SHIELD_VAL,\"inventory\":\"$NEW_INV\",\"backstabCooldown\":$BACKSTAB_CD,\"lastHeroAction\":\"$HERO_ACTION\",\"lastEnemyAction\":\"Item equipped\",\"lastLootDrop\":\"\"}}"
                           else
                             HERO_ACTION="Equipped $ITEM_TYPE! +$ARMOR_VAL pct defense"
-                            PATCH="{\"spec\":{\"armorBonus\":$ARMOR_VAL,\"inventory\":\"$NEW_INV\",\"backstabCooldown\":$BACKSTAB_CD,\"lastHeroAction\":\"$HERO_ACTION\",\"lastEnemyAction\":\"Item equipped\"}}"
+                            PATCH="{\"spec\":{\"armorBonus\":$ARMOR_VAL,\"inventory\":\"$NEW_INV\",\"backstabCooldown\":$BACKSTAB_CD,\"lastHeroAction\":\"$HERO_ACTION\",\"lastEnemyAction\":\"Item equipped\",\"lastLootDrop\":\"\"}}"
                           fi
                           echo "$HERO_ACTION"
                           if kubectl patch dungeon "$DUNGEON" -n "$DUNGEON_NS" --type=merge -p "$PATCH" 2>&1; then
@@ -197,7 +197,7 @@ spec:
                           if [ "$BOSS_HP_CHK" -gt 0 ] || [ "$ALIVE_CHK" -gt 0 ]; then
                             echo "Cannot open treasure: boss not defeated"; exit 1
                           fi
-                          PATCH="{\"spec\":{\"treasureOpened\":1,\"lastHeroAction\":\"Opened the treasure chest!\",\"lastEnemyAction\":\"\"}}"
+                          PATCH="{\"spec\":{\"treasureOpened\":1,\"lastHeroAction\":\"Opened the treasure chest!\",\"lastEnemyAction\":\"\",\"lastLootDrop\":\"\"}}"
                           if kubectl patch dungeon "$DUNGEON" -n "$DUNGEON_NS" --type=merge -p "$PATCH" 2>&1; then
                             echo "Treasure opened!"; exit 0
                           fi
@@ -210,7 +210,7 @@ spec:
                           if [ "$TREASURE_OPENED" -ne 1 ]; then
                             echo "Open the treasure first to get the key"; exit 1
                           fi
-                          PATCH="{\"spec\":{\"doorUnlocked\":1,\"lastHeroAction\":\"Door unlocked! A new room awaits...\",\"lastEnemyAction\":\"\"}}"
+                          PATCH="{\"spec\":{\"doorUnlocked\":1,\"lastHeroAction\":\"Door unlocked! A new room awaits...\",\"lastEnemyAction\":\"\",\"lastLootDrop\":\"\"}}"
                           if kubectl patch dungeon "$DUNGEON" -n "$DUNGEON_NS" --type=merge -p "$PATCH" 2>&1; then
                             echo "Door unlocked!"; exit 0
                           fi
@@ -231,7 +231,7 @@ spec:
                           esac
                           MONSTER_COUNT=$(echo "$DUNGEON_JSON" | jq '.spec.monsterHP | length')
                           R2_ARRAY=$(python3 -c "print([$R2_MHP]*$MONSTER_COUNT)")
-                          PATCH="{\"spec\":{\"currentRoom\":2,\"monsterHP\":$R2_ARRAY,\"bossHP\":$R2_BHP,\"room2MonsterHP\":$R2_ARRAY,\"room2BossHP\":$R2_BHP,\"treasureOpened\":0,\"doorUnlocked\":0,\"lastHeroAction\":\"Entered Room 2! Stronger enemies await...\",\"lastEnemyAction\":\"\"}}"
+                          PATCH="{\"spec\":{\"currentRoom\":2,\"monsterHP\":$R2_ARRAY,\"bossHP\":$R2_BHP,\"room2MonsterHP\":$R2_ARRAY,\"room2BossHP\":$R2_BHP,\"treasureOpened\":0,\"doorUnlocked\":0,\"lastHeroAction\":\"Entered Room 2! Stronger enemies await...\",\"lastEnemyAction\":\"\",\"lastLootDrop\":\"\"}}"
                           if kubectl patch dungeon "$DUNGEON" -n "$DUNGEON_NS" --type=merge -p "$PATCH" 2>&1; then
                             echo "Entered Room 2!"; exit 0
                           fi
@@ -253,7 +253,7 @@ spec:
                           HERO_MANA=$((HERO_MANA - 2))
                           HERO_ACTION="Mage heals for $((NEW_HP - HERO_HP)) HP! (Mana: $HERO_MANA)"
                           ENEMY_ACTION="No counter-attack during heal"
-                          PATCH="{\"spec\":{\"heroHP\":$NEW_HP,\"heroMana\":$HERO_MANA,\"backstabCooldown\":$BACKSTAB_CD,\"lastHeroAction\":\"$HERO_ACTION\",\"lastEnemyAction\":\"$ENEMY_ACTION\"}}"
+                          PATCH="{\"spec\":{\"heroHP\":$NEW_HP,\"heroMana\":$HERO_MANA,\"backstabCooldown\":$BACKSTAB_CD,\"lastHeroAction\":\"$HERO_ACTION\",\"lastEnemyAction\":\"$ENEMY_ACTION\",\"lastLootDrop\":\"\"}}"
                           echo "$HERO_ACTION"
                           if kubectl patch dungeon "$DUNGEON" -n "$DUNGEON_NS" --type=merge -p "$PATCH" 2>&1; then
                             echo "Heal complete!"; exit 0
@@ -266,7 +266,7 @@ spec:
                           if [ "$HERO_CLASS" != "warrior" ]; then
                             echo "Only warrior can taunt"; exit 1
                           fi
-                          PATCH="{\"spec\":{\"tauntActive\":1,\"lastHeroAction\":\"Warrior activates Taunt! Next attack has 60% counter-attack reduction.\",\"lastEnemyAction\":\"\"}}"
+                          PATCH="{\"spec\":{\"tauntActive\":1,\"lastHeroAction\":\"Warrior activates Taunt! Next attack has 60% counter-attack reduction.\",\"lastEnemyAction\":\"\",\"lastLootDrop\":\"\"}}"
                           if kubectl patch dungeon "$DUNGEON" -n "$DUNGEON_NS" --type=merge -p "$PATCH" 2>&1; then
                             echo "Taunt activated!"; exit 0
                           fi

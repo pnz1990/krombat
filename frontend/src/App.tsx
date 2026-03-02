@@ -198,8 +198,8 @@ export default function App() {
         else setCombatModal({ phase: 'resolved', formula: '', heroAction, enemyAction, spec: updated.spec, oldHP: detail?.spec.heroHP ?? 100 })
       }
 
-      // Loot drop — read directly from server-set field
-      if (updated.spec.lastLootDrop) setLootDrop(updated.spec.lastLootDrop)
+      // Loot drop — only check on combat actions (not items/equip)
+      if (!isItem && updated.spec.lastLootDrop) setLootDrop(updated.spec.lastLootDrop)
       await new Promise(r => setTimeout(r, 100))
 
       // Read combat log from Dungeon CR
