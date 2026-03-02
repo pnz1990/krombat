@@ -853,7 +853,7 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
                     onClick={() => {
                       if (attackPhase) return
                       if (canUnlock) setShowDoorModal(true)
-                      else if (doorUnlocked && !gameOver) onAttack('enter-room-2', 0)
+                      else if (doorUnlocked) onAttack('enter-room-2', 0)
                     }} />
                 </>
               })()}
