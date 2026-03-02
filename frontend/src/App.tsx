@@ -163,6 +163,7 @@ export default function App() {
         setAttackPhase(null)
         setAnimPhase('idle')
         setAttackTarget(null)
+        return // Items done — don't fall through to combat/loot logic
       } else {
         // Combat: wait for Job to run, then poll for result
         const oldHP = detail?.spec.heroHP ?? 100

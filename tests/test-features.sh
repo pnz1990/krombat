@@ -89,10 +89,21 @@ sleep 3
 ACTION=$(kubectl get dungeon "test-loot-$TS" -o jsonpath='{.spec.lastHeroAction}')
 echo "$ACTION" | grep -q "monster-0" && pass "Monster killed, logged" || fail "Kill action: $ACTION"
 
-# Verify lastLootDrop only set on kill
-LOOT_DROP=$(kubectl get dungeon "test-loot-$TS" -o jsonpath='{.spec.lastLootDrop}')
-# Loot is probabilistic, but lastLootDrop should be empty string or an item name — never set from non-kill
-# Test: do a non-kill attack on boss and verify lastLootDrop is cleared
+# Verify no loot on attacking already-dead monster
+cat <<EOF | kubectl apply -f -
+apiVersion: game.k8s.example/v1alpha1
+kind: Attack
+metadata:
+  name: loot-dead-$TS
+  labels: {test-group: "features-$TS"}
+spec: {dungeonName: "test-loot-$TS", dungeonNamespace: default, target: "test-loot-$TS-monster-0", damage: 0}
+EOF
+wait_job "loot-dead-$TS"
+sleep 3
+DEAD_LOOT=$(kubectl get dungeon "test-loot-$TS" -o jsonpath='{.spec.lastLootDrop}')
+[ -z "$DEAD_LOOT" ] && pass "No loot on already-dead monster" || fail "lastLootDrop=$DEAD_LOOT on dead monster"
+
+# Verify lastLootDrop cleared on non-kill boss attack
 cat <<EOF | kubectl apply -f -
 apiVersion: game.k8s.example/v1alpha1
 kind: Attack

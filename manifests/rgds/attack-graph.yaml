@@ -417,8 +417,8 @@ spec:
                           fi
                           if [ "$HERO_HP" -lt 0 ]; then HERO_HP=0; fi
                           HP_PATCH="\"bossHP\":$NEW_HP"
-                          # Boss guaranteed loot drop
-                          if [ "$NEW_HP" -eq 0 ]; then
+                          # Boss guaranteed loot drop (only on kill transition)
+                          if [ "$OLD_HP" -gt 0 ] && [ "$NEW_HP" -eq 0 ]; then
                             RARITY_ROLL=$((RANDOM % 2))
                             if [ "$RARITY_ROLL" -eq 0 ]; then RARITY="rare"; else RARITY="epic"; fi
                             TYPE_ROLL=$((RANDOM % 4))
@@ -444,13 +444,13 @@ spec:
                           if [ "$NEW_HP" -lt 0 ]; then NEW_HP=0; fi
                           HP_ARRAY=$(echo "$DUNGEON_JSON" | jq ".spec.monsterHP[$IDX] = $NEW_HP | .spec.monsterHP")
                           # Mage mana regen on kill
-                          if [ "$NEW_HP" -eq 0 ] && [ "$HERO_CLASS" = "mage" ] && [ "$HERO_MANA" -lt 5 ]; then
+                          if [ "$OLD_HP" -gt 0 ] && [ "$NEW_HP" -eq 0 ] && [ "$HERO_CLASS" = "mage" ] && [ "$HERO_MANA" -lt 5 ]; then
                             HERO_MANA=$((HERO_MANA + 1))
                             MANA_PATCH=",\"heroMana\":$HERO_MANA"
                             CLASS_NOTE="$CLASS_NOTE +1 mana!"
                           fi
-                          # Loot drop on monster kill
-                          if [ "$NEW_HP" -eq 0 ]; then
+                          # Loot drop on monster kill (only on transition from alive to dead)
+                          if [ "$OLD_HP" -gt 0 ] && [ "$NEW_HP" -eq 0 ]; then
                             DROP_CHANCE=45
                             case "$DIFFICULTY" in easy) DROP_CHANCE=60 ;; normal) DROP_CHANCE=45 ;; hard) DROP_CHANCE=35 ;; esac
                             DROP_ROLL=$((RANDOM % 100))
