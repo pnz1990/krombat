@@ -153,7 +153,7 @@ export default function App() {
 
       if (isItem) {
         // Items: short wait, single fetch, done
-        await new Promise(r => setTimeout(r, 5000))
+        await new Promise(r => setTimeout(r, 3000))
         updated = await getDungeon(selected.ns, selected.name)
         setDetail(updated)
         setAttackPhase(null)
@@ -195,11 +195,10 @@ export default function App() {
         else setCombatModal({ phase: 'resolved', formula: '', heroAction, enemyAction, spec: updated.spec, oldHP: detail?.spec.heroHP ?? 100 })
       }
 
-      // Detect loot drops
-      const oldInv = prevInventoryRef.current
+      // Detect loot drops — only if heroAction mentions a drop
       const newInv = updated.spec.inventory || ''
-      if (newInv && newInv !== oldInv) {
-        const oldItems = oldInv.split(',').filter(Boolean)
+      if (heroAction.includes('Dropped')) {
+        const oldItems = prevInventoryRef.current.split(',').filter(Boolean)
         const newItems = newInv.split(',').filter(Boolean)
         const dropped = newItems.filter(item => !oldItems.includes(item))
         if (dropped.length > 0) setLootDrop(dropped[dropped.length - 1])
