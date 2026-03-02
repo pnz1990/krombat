@@ -149,12 +149,21 @@ export default function App() {
       const prevAction = detail?.spec.lastHeroAction || ''
 
       if (isItem) {
-        // Items: poll until spec changes (weapon/armor/shield/inventory/treasure/door)
-        const prevSpec = JSON.stringify(detail?.spec)
-        for (let attempt = 0; attempt < 15; attempt++) {
-          await new Promise(r => setTimeout(r, 2000))
+        // Items: poll until the specific field changes
+        const checkField = (d: any) => {
+          if (target === 'open-treasure') return d.spec.treasureOpened
+          if (target === 'unlock-door') return d.spec.doorUnlocked
+          if (target === 'enter-room-2') return d.spec.currentRoom
+          if (target.startsWith('equip-weapon')) return d.spec.weaponBonus
+          if (target.startsWith('equip-armor')) return d.spec.armorBonus
+          if (target.startsWith('equip-shield')) return d.spec.shieldBonus
+          return d.spec.lastHeroAction
+        }
+        const prevVal = checkField(detail)
+        for (let attempt = 0; attempt < 12; attempt++) {
+          await new Promise(r => setTimeout(r, 1500))
           const current = await getDungeon(selected.ns, selected.name)
-          if (JSON.stringify(current.spec) !== prevSpec) {
+          if (checkField(current) !== prevVal) {
             updated = current
             break
           }
@@ -840,12 +849,12 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
                 const canUnlock = (spec.treasureOpened ?? 0) === 1 && !doorUnlocked
                 return <>
                   <img src={`/sprites/dungeon/door-${doorUnlocked ? 'opened' : 'closed'}.png`}
-                    alt="door" style={{ width: 64, height: 64, imageRendering: 'pixelated' as any, cursor: canUnlock ? 'pointer' : 'default', filter: canUnlock ? 'drop-shadow(0 0 6px #f5c518)' : 'none' }}
-                    onClick={() => canUnlock && setShowDoorModal(true)} />
-                  {doorUnlocked && !gameOver && (
-                    <button className="btn btn-gold arena-atk-btn" style={{ marginTop: 4, fontSize: '7px' }}
-                      onClick={() => onAttack('enter-room-2', 0)}>Enter Room 2</button>
-                  )}
+                    alt="door" style={{ width: 64, height: 64, imageRendering: 'pixelated' as any, cursor: (canUnlock || doorUnlocked) ? 'pointer' : 'default', filter: (canUnlock || doorUnlocked) ? 'drop-shadow(0 0 6px #f5c518)' : 'none' }}
+                    onClick={() => {
+                      if (attackPhase) return
+                      if (canUnlock) setShowDoorModal(true)
+                      else if (doorUnlocked && !gameOver) onAttack('enter-room-2', 0)
+                    }} />
                 </>
               })()}
             </div>
