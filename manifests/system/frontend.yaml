@@ -34,11 +34,7 @@ kind: Service
 metadata:
   name: rpg-frontend
   namespace: rpg-system
-  annotations: {}
-  labels:
-    argocd.argoproj.io/managed-by: argocd_krombat
 spec:
-  type: NodePort
   selector:
     app: rpg-frontend
   ports:
