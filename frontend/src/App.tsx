@@ -727,11 +727,13 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
             <button className="btn btn-gold" style={{ marginTop: 12 }}
               disabled={!!attackPhase}
               onClick={() => onAttack('open-treasure', 0)}>
-              <PixelIcon name="key" size={12} /> Open Treasure
+              {attackPhase ? 'Opening...' : <><PixelIcon name="key" size={12} /> Open Treasure</>}
             </button>
           ) : (
-            <div className="loot-content" style={{ marginTop: 12 }}>{status?.loot || 'Loading treasure...'}</div>
-          )}
+            <div className="loot-content" style={{ marginTop: 12 }}>
+              <PixelIcon name="chest" size={16} /> {status?.loot || 'Treasure opened!'}
+            </div>
+          )}}
         </div>
       )}
 
@@ -817,10 +819,10 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
 
             {/* Treasure chest — appears after boss defeated */}
             {(spec.bossHP <= 0 && allMonstersDead) && (
-              <div className="arena-entity chest-entity" style={{ top: '40%', left: '50%' }}>
+              <div className="arena-entity chest-entity" style={{ top: '55%', left: '30%' }}>
                 <img src={`/sprites/dungeon/chest-${(spec.treasureOpened ?? 0) === 1 ? 'opened' : 'closed'}.png`}
-                  alt="chest" style={{ width: 48, height: 48, imageRendering: 'pixelated' as any, cursor: (spec.treasureOpened ?? 0) === 0 ? 'pointer' : 'default' }}
-                  onClick={() => (spec.treasureOpened ?? 0) === 0 && onAttack('open-treasure', 0)} />
+                  alt="chest" style={{ width: 56, height: 56, imageRendering: 'pixelated' as any, cursor: (spec.treasureOpened ?? 0) === 0 ? 'pointer' : 'default', filter: (spec.treasureOpened ?? 0) === 0 ? 'drop-shadow(0 0 4px gold)' : 'none' }}
+                  onClick={() => (spec.treasureOpened ?? 0) === 0 && !attackPhase && onAttack('open-treasure', 0)} />
                 {(spec.treasureOpened ?? 0) === 1 && status?.loot && (
                   <div style={{ fontSize: 7, color: 'var(--gold)', textAlign: 'center', marginTop: 4, textShadow: '1px 1px 2px #000' }}>🔑 {status.loot}</div>
                 )}
@@ -829,13 +831,13 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
 
             {/* Boss — visible when kro sets bossState to ready or defeated */}
             {bossState !== 'pending' && (() => {
-              let bAction: SpriteAction = (bossState === 'defeated' || spec.bossHP <= 0) ? 'dead' : 'idle'
+              let bAction: SpriteAction = (bossState === 'defeated' || spec.bossHP <= 0) ? 'victory' : 'idle'
               if (attackTarget?.includes('boss') && animPhase === 'hero-attack') bAction = 'hurt'
               if (bossState === 'ready' && animPhase === 'enemy-attack' && attackTarget?.includes('boss')) bAction = 'attack'
-              if (status?.victory || spec.bossHP <= 0) bAction = 'dead'
+              if (status?.victory || spec.bossHP <= 0) bAction = 'victory'
               const bossName = `${dungeonName}-boss`
               return (
-                <div className={`arena-entity boss-entity ${bossState === 'defeated' ? 'dead' : ''}`}
+                <div className={`arena-entity boss-entity`}
                   style={{ top: '40%', left: '50%' }}>
                   {floatingDmg?.target?.includes('boss') && <div className="floating-dmg" style={{ color: '#e94560' }}>{floatingDmg.amount}</div>}
                   <Sprite spriteType={(spec.currentRoom || 1) === 2 ? 'bat-boss' : 'dragon'} action={bAction} size={144} />
