@@ -520,14 +520,26 @@ spec:
                         EFFECT_NOTE=""
                         if echo "$REAL_TARGET" | grep -q "boss"; then
                           if [ "$NEW_HP" -gt 0 ]; then
-                            # Boss can inflict stun (15%) or burn (25%) — only if not already active
+                            CURRENT_ROOM=$(echo "$DUNGEON_JSON" | jq -r '.spec.currentRoom // 1')
                             EFFECT_ROLL=$((RANDOM % 100))
-                            if [ "$EFFECT_ROLL" -lt 15 ] && [ "$STUN_TURNS" -eq 0 ]; then
-                              STUN_TURNS=1
-                              EFFECT_NOTE=" Boss inflicts STUN! (1 turn)"
-                            elif [ "$EFFECT_ROLL" -lt 40 ] && [ "$BURN_TURNS" -eq 0 ]; then
-                              BURN_TURNS=2
-                              EFFECT_NOTE=" Boss inflicts BURN! (2 turns, -8 HP/turn)"
+                            if [ "$CURRENT_ROOM" -eq 2 ]; then
+                              # Bat-boss: poison (30%) + stun (15%)
+                              if [ "$EFFECT_ROLL" -lt 15 ] && [ "$STUN_TURNS" -eq 0 ]; then
+                                STUN_TURNS=1
+                                EFFECT_NOTE=" Bat Boss inflicts STUN! (1 turn)"
+                              elif [ "$EFFECT_ROLL" -lt 45 ] && [ "$POISON_TURNS" -eq 0 ]; then
+                                POISON_TURNS=3
+                                EFFECT_NOTE=" Bat Boss inflicts POISON! (3 turns, -5 HP/turn)"
+                              fi
+                            else
+                              # Dragon: stun (15%) + burn (25%)
+                              if [ "$EFFECT_ROLL" -lt 15 ] && [ "$STUN_TURNS" -eq 0 ]; then
+                                STUN_TURNS=1
+                                EFFECT_NOTE=" Boss inflicts STUN! (1 turn)"
+                              elif [ "$EFFECT_ROLL" -lt 40 ] && [ "$BURN_TURNS" -eq 0 ]; then
+                                BURN_TURNS=2
+                                EFFECT_NOTE=" Boss inflicts BURN! (2 turns, -8 HP/turn)"
+                              fi
                             fi
                           fi
                         else

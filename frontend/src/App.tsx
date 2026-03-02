@@ -825,8 +825,8 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
                 <div className={`arena-entity boss-entity ${bossState === 'defeated' ? 'dead' : ''}`}
                   style={{ top: '40%', left: '50%' }}>
                   {floatingDmg?.target?.includes('boss') && <div className="floating-dmg" style={{ color: '#e94560' }}>{floatingDmg.amount}</div>}
-                  <Sprite spriteType="dragon" action={bAction} size={128} />
-                  <div className="arena-shadow" style={{ width: 100 }} />
+                  <Sprite spriteType={(spec.currentRoom || 1) === 2 ? 'bat-boss' : 'dragon'} action={bAction} size={144} />
+                  <div className="arena-shadow" style={{ width: 120 }} />
                   <div className="arena-hover-ui">
                     <div className="arena-hp-bar"><div className={`arena-hp-fill ${spec.bossHP > 0 ? 'high' : 'low'}`} style={{ width: `${Math.min((spec.bossHP / maxBossHP) * 100, 100)}%` }} /></div>
                     <div className="arena-name">Boss · {spec.bossHP}/{maxBossHP}</div>

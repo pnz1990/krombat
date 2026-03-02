@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 // Heroes/boss: 7 frames, monsters: 6 frames
 // Frame mapping: 1=idle, 2=walk1, 3=walk2, 4=attack1, 5=attack2, 6=hurt, 7=victory/dead
 const FRAME_COUNT: Record<string, number> = {
-  warrior: 7, mage: 7, rogue: 7, dragon: 7, goblin: 6, skeleton: 6, troll: 6, ghoul: 6,
+  warrior: 7, mage: 7, rogue: 7, dragon: 7, goblin: 6, skeleton: 6, troll: 6, ghoul: 6, 'bat-boss': 7,
 }
 
 export type SpriteAction = 'idle' | 'attack' | 'hurt' | 'dead' | 'victory' | 'itemUse'
@@ -51,7 +51,7 @@ export function Sprite({ spriteType, action, size = 64, flip = false }: SpritePr
 
   if (!FRAME_COUNT[spriteType]) return <div style={{ width: size, height: size, fontSize: size * 0.6, textAlign: 'center' }}>👹</div>
 
-  const isBoss = spriteType === 'dragon'
+  const isBoss = spriteType === 'dragon' || spriteType === 'bat-boss'
   const isMonster = spriteType === 'goblin' || spriteType === 'skeleton' || spriteType === 'troll' || spriteType === 'ghoul'
   const frames = isBoss ? BOSS_ACTION_FRAMES[action] : isMonster ? MONSTER_ACTION_FRAMES[action] : ACTION_FRAMES[action]
 
