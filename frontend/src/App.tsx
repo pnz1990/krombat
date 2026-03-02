@@ -733,7 +733,7 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
             <div className="loot-content" style={{ marginTop: 12 }}>
               <PixelIcon name="chest" size={16} /> {status?.loot || 'Treasure opened!'}
             </div>
-          )}}
+          )}
         </div>
       )}
 
