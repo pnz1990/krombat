@@ -741,3 +741,7 @@ body {
 
 /* Combat modal — more transparent to see animations behind */
 .combat-overlay { background: rgba(0, 0, 0, 0.4) !important; }
+
+/* Equipped slot glow */
+.equip-slot.filled { animation: equipGlow 0.5s ease-out; }
+@keyframes equipGlow { 0% { box-shadow: 0 0 8px var(--gold); } 100% { box-shadow: none; } }

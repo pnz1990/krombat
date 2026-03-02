@@ -968,17 +968,17 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
                   <div className="equip-row">
                     <Tooltip text={sb > 0 ? `Shield equipped: ${sb}% chance to block counter-attacks` : 'Shield — none equipped'}>
                       <div className={`equip-slot${sb > 0 ? ' filled' : ' empty'}`}>
-                        {sb > 0 ? <><ItemSprite id="shield-common" size={22} /><span className="slot-stat">{sb}%</span></> : <PixelIcon name="shield" size={14} color="#333" />}
+                        {sb > 0 ? <><ItemSprite id={sb >= 25 ? 'shield-epic' : sb >= 15 ? 'shield-rare' : 'shield-common'} size={22} /><span className="slot-stat">{sb}%</span></> : <PixelIcon name="shield" size={14} color="#333" />}
                       </div>
                     </Tooltip>
-                    <Tooltip text={ab > 0 ? `Armor equipped: +${ab}% damage reduction on counter-attacks` : 'Armor — none equipped'}>
+                    <Tooltip text={ab > 0 ? `Armor equipped: +${ab}% damage reduction` : 'Armor — none equipped'}>
                       <div className={`equip-slot${ab > 0 ? ' filled' : ' empty'}`}>
-                        {ab > 0 ? <><ItemSprite id="armor-common" size={22} /><span className="slot-stat">+{ab}%</span></> : <PixelIcon name="shield" size={14} color="#333" />}
+                        {ab > 0 ? <><ItemSprite id={ab >= 30 ? 'armor-epic' : ab >= 20 ? 'armor-rare' : 'armor-common'} size={22} /><span className="slot-stat">+{ab}%</span></> : <PixelIcon name="shield" size={14} color="#333" />}
                       </div>
                     </Tooltip>
-                    <Tooltip text={wb > 0 ? `Weapon equipped: +${wb} bonus damage, ${wu} uses remaining` : 'Weapon — none equipped'}>
+                    <Tooltip text={wb > 0 ? `Weapon equipped: +${wb} damage (${wu} uses left)` : 'Weapon — none equipped'}>
                       <div className={`equip-slot${wb > 0 ? ' filled' : ' empty'}`}>
-                        {wb > 0 ? <><ItemSprite id="weapon-common" size={22} /><span className="slot-stat">+{wb}</span></> : <PixelIcon name="sword" size={14} color="#333" />}
+                        {wb > 0 ? <><ItemSprite id={wb >= 20 ? 'weapon-epic' : wb >= 10 ? 'weapon-rare' : 'weapon-common'} size={22} /><span className="slot-stat">+{wb}<br/>{wu}u</span></> : <PixelIcon name="sword" size={14} color="#333" />}
                       </div>
                     </Tooltip>
                   </div>
