@@ -139,8 +139,6 @@ export default function App() {
       setAttackTarget(target.replace(/-backstab$/, ''))
       setAnimPhase(isItem ? 'item-use' : 'hero-attack')
       setAttackPhase('attacking')
-      const oldHP = detail?.spec.heroHP ?? 100
-      const formula = detail?.status?.diceFormula || '2d12+4'
 
       if (!isAbility && !isItem) {
         setCombatModal({ phase: 'rolling', formula, heroAction: '', enemyAction: '', spec: detail?.spec, oldHP })
@@ -150,38 +148,51 @@ export default function App() {
       addK8s(`kubectl apply -f attack.yaml`, 'attack.game.k8s.example created',
         `apiVersion: game.k8s.example/v1alpha1\nkind: Attack\nmetadata:\n  name: ${selected.name}-${target}-${Date.now() % 100000}\nspec:\n  dungeonName: ${selected.name}\n  dungeonNamespace: ${selected.ns}\n  target: ${target}\n  damage: ${damage}`)
 
-      // Wait for CR update — initial delay for Job to run, then poll
-      const prevAction = detail?.spec.lastHeroAction
       let updated = detail!
-      await new Promise(r => setTimeout(r, 3000)) // wait for Job to start + run
-      for (let attempt = 0; attempt < 10; attempt++) {
-        const current = await getDungeon(selected.ns, selected.name)
-        if (current.spec.lastHeroAction !== prevAction) {
-          updated = current
-          addK8s(`kubectl get dungeon ${selected.name}`, `heroHP:${current.spec.heroHP} bossHP:${current.spec.bossHP}`,
-            JSON.stringify({ spec: current.spec, status: current.status }, null, 2))
-          break
+      const prevAction = detail?.spec.lastHeroAction
+
+      if (isItem) {
+        // Items: short wait, single fetch, done
+        await new Promise(r => setTimeout(r, 5000))
+        updated = await getDungeon(selected.ns, selected.name)
+        setDetail(updated)
+        setAttackPhase(null)
+        setAnimPhase('idle')
+        setAttackTarget(null)
+      } else {
+        // Combat: wait for Job to run, then poll for result
+        const oldHP = detail?.spec.heroHP ?? 100
+        const formula = detail?.status?.diceFormula || '2d12+4'
+
+        if (!isAbility) {
+          setCombatModal({ phase: 'rolling', formula, heroAction: '', enemyAction: '', spec: detail?.spec, oldHP })
         }
-        await new Promise(r => setTimeout(r, 1500))
+
+        await new Promise(r => setTimeout(r, 3000))
+        for (let attempt = 0; attempt < 10; attempt++) {
+          const current = await getDungeon(selected.ns, selected.name)
+          if (current.spec.lastHeroAction !== prevAction) {
+            updated = current
+            addK8s(`kubectl get dungeon ${selected.name}`, `heroHP:${current.spec.heroHP} bossHP:${current.spec.bossHP}`,
+              JSON.stringify({ spec: current.spec, status: current.status }, null, 2))
+            break
+          }
+          await new Promise(r => setTimeout(r, 1500))
+        }
+        setDetail(updated)
       }
-      setDetail(updated)
 
       const heroAction = updated.spec.lastHeroAction || ''
       const enemyAction = updated.spec.lastEnemyAction || ''
 
       if (!isAbility && !isItem) {
-        // Show resolved combat breakdown
-        setCombatModal({ phase: 'resolved', formula, heroAction, enemyAction, spec: updated.spec, oldHP })
+        setCombatModal({ phase: 'resolved', formula: detail?.status?.diceFormula || '2d12+4', heroAction, enemyAction, spec: updated.spec, oldHP: detail?.spec.heroHP ?? 100 })
         setAnimPhase('enemy-attack')
-      } else if (isItem) {
-        // Brief item feedback — no combat modal
-        setAttackPhase(null)
-        setAnimPhase('idle')
-        setAttackTarget(null)
-      } else {
+      } else if (!isItem) {
+        // Ability (heal/taunt)
         const healMatch = heroAction.match(/heals for (\d+)/)
-        if (healMatch) setCombatModal({ phase: 'resolved', formula: '', heroAction, enemyAction: 'No counter-attack during ability', spec: updated.spec, oldHP })
-        else setCombatModal({ phase: 'resolved', formula: '', heroAction, enemyAction, spec: updated.spec, oldHP })
+        if (healMatch) setCombatModal({ phase: 'resolved', formula: '', heroAction, enemyAction: 'No counter-attack during ability', spec: updated.spec, oldHP: detail?.spec.heroHP ?? 100 })
+        else setCombatModal({ phase: 'resolved', formula: '', heroAction, enemyAction, spec: updated.spec, oldHP: detail?.spec.heroHP ?? 100 })
       }
 
       // Detect loot drops
