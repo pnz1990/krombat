@@ -25,7 +25,7 @@ spec:
           namespace: ${schema.metadata.namespace}
         spec:
           backoffLimit: 3
-          ttlSecondsAfterFinished: 300
+          ttlSecondsAfterFinished: 30
           template:
             spec:
               serviceAccountName: attack-job-sa

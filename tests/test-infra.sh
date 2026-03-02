@@ -13,10 +13,10 @@ metadata:
 spec: {monsters: 1, difficulty: easy, monsterHP: [30], bossHP: 200, heroHP: 150, heroClass: warrior, modifier: none}
 EOF
 
-wait_for "pod ready" "kubectl get pod ${D}-monster-0 -n $D -o jsonpath='{.status.phase}' 2>/dev/null | grep -q Running" 60
-kubectl delete pod "${D}-monster-0" -n "$D" 2>/dev/null
-wait_for "pod recreated" "kubectl get pod ${D}-monster-0 -n $D -o jsonpath='{.status.phase}' 2>/dev/null | grep -q Running" 60 \
-  && pass "Drift: pod recreated after deletion" || fail "Drift"
+wait_for "configmap ready" "kubectl get configmap ${D}-monster-0 -n $D" 60
+kubectl delete configmap "${D}-monster-0" -n "$D" 2>/dev/null
+wait_for "configmap recreated" "kubectl get configmap ${D}-monster-0 -n $D" 60 \
+  && pass "Drift: configmap recreated after deletion" || fail "Drift"
 
 log "RBAC"
 kubectl auth can-i delete dungeons --as=system:serviceaccount:default:attack-job-sa 2>/dev/null | grep -q "no" \

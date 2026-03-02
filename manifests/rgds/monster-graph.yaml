@@ -15,14 +15,14 @@ spec:
       hp: integer | required=true
       difficulty: string | default="normal"
     status:
-      entityState: "${monsterPod.metadata.labels['game.k8s.example/state']}"
-      hp: "${monsterPod.metadata.annotations['game.k8s.example/hp']}"
+      entityState: "${monsterState.data.entityState}"
+      hp: "${monsterState.data.hp}"
 
   resources:
-    - id: monsterPod
+    - id: monsterState
       template:
         apiVersion: v1
-        kind: Pod
+        kind: ConfigMap
         metadata:
           name: "${schema.spec.dungeonName + '-monster-' + string(schema.spec.index)}"
           namespace: ${schema.metadata.namespace}
@@ -30,13 +30,6 @@ spec:
             game.k8s.example/dungeon: ${schema.spec.dungeonName}
             game.k8s.example/entity: monster
             game.k8s.example/state: "${schema.spec.hp > 0 ? 'alive' : 'dead'}"
-          annotations:
-            game.k8s.example/hp: "${string(schema.spec.hp)}"
-        spec:
-          containers:
-            - name: monster
-              image: registry.k8s.io/pause:3.10
-              resources:
-                requests:
-                  cpu: "10m"
-                  memory: "16Mi"
+        data:
+          entityState: "${schema.spec.hp > 0 ? 'alive' : 'dead'}"
+          hp: "${string(schema.spec.hp)}"
