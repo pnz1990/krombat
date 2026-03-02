@@ -34,13 +34,11 @@ kind: Service
 metadata:
   name: rpg-frontend
   namespace: rpg-system
-  annotations:
-    service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
-    service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: instance
+  annotations: {}
+  labels:
+    argocd.argoproj.io/managed-by: argocd_krombat
 spec:
-  type: LoadBalancer
-  loadBalancerClass: eks.amazonaws.com/nlb
-  externalTrafficPolicy: Cluster
+  type: NodePort
   selector:
     app: rpg-frontend
   ports:
