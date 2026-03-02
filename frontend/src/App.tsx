@@ -140,7 +140,7 @@ export default function App() {
 
       // Poll for CR update
       let updated = detail!
-      for (let attempt = 0; attempt < 20; attempt++) {
+      for (let attempt = 0; attempt < 10; attempt++) {
         const fetched = await getDungeon(selected.ns, selected.name)
         if (fetched.spec.lastHeroAction !== detail?.spec.lastHeroAction) {
           updated = fetched
@@ -148,7 +148,7 @@ export default function App() {
             JSON.stringify({ spec: fetched.spec, status: fetched.status }, null, 2))
           break
         }
-        await new Promise(r => setTimeout(r, 1000))
+        await new Promise(r => setTimeout(r, 2000))
       }
       setDetail(updated)
 
