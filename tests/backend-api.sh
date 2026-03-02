@@ -3,7 +3,7 @@
 # Requires: kubectl port-forward svc/rpg-backend -n rpg-system 8080:8080
 set -euo pipefail
 
-BASE="http://localhost:8080"
+BASE="${API_URL:-http://localhost:8080}"
 DUNGEON="api-test-$(date +%s)"
 PASS=0
 FAIL=0
