@@ -91,6 +91,7 @@ export default function App() {
           if (cancelled) return
           try {
             const d = await getDungeon(selected.ns, selected.name)
+            if (!cancelled) { setDetail(d); setLoading(false) }
             return
           } catch {
             await new Promise(r => setTimeout(r, 2000))
