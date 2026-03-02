@@ -112,6 +112,7 @@ spec:
 
                         INVENTORY_PATCH=""
                         WEAPON_PATCH=""
+                        LOOT_DROP=""
 
                         # === USE ITEM ===
                         if echo "$TARGET" | grep -q "^use-"; then
@@ -469,6 +470,7 @@ spec:
                               if [ -n "$INVENTORY" ]; then INVENTORY="$INVENTORY,$ITEM"; else INVENTORY="$ITEM"; fi
                               INVENTORY_PATCH=",\"inventory\":\"$INVENTORY\""
                               CLASS_NOTE="$CLASS_NOTE Dropped $ITEM!"
+                              LOOT_DROP="$ITEM"
                               # Create Loot CR → Secret via loot-graph RGD
                               ITEM_TYPE=$(echo "$ITEM" | sed 's/-[^-]*$//')
                               STAT=0
@@ -576,7 +578,7 @@ spec:
                           fi
                         fi
 
-                        PATCH="{\"spec\":{$HP_PATCH,\"heroHP\":$HERO_HP,\"tauntActive\":$TAUNT_ACTIVE,\"backstabCooldown\":$BACKSTAB_CD,\"lastHeroAction\":\"$HERO_ACTION\",\"lastEnemyAction\":\"$ENEMY_ACTION$EFFECT_NOTE\"$MANA_PATCH$WEAPON_PATCH$INVENTORY_PATCH$EFFECT_PATCH}}"
+                        PATCH="{\"spec\":{$HP_PATCH,\"heroHP\":$HERO_HP,\"tauntActive\":$TAUNT_ACTIVE,\"backstabCooldown\":$BACKSTAB_CD,\"lastHeroAction\":\"$HERO_ACTION\",\"lastEnemyAction\":\"$ENEMY_ACTION$EFFECT_NOTE\",\"lastLootDrop\":\"$LOOT_DROP\"$MANA_PATCH$WEAPON_PATCH$INVENTORY_PATCH$EFFECT_PATCH}}"
 
                         echo "$HERO_ACTION"
                         echo "$ENEMY_ACTION"

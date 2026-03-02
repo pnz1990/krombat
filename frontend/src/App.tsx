@@ -48,7 +48,6 @@ export default function App() {
   const [deleting, setDeleting] = useState<string | null>(null)
   const [lootDrop, setLootDrop] = useState<string | null>(null)
   const [activeNs, setActiveNs] = useState('default')
-  const prevInventoryRef = useRef('')
   const [attackTarget, setAttackTarget] = useState<string | null>(null)
   const [animPhase, setAnimPhase] = useState<'idle' | 'hero-attack' | 'enemy-attack' | 'item-use' | 'done'>('idle')
 
@@ -63,7 +62,6 @@ export default function App() {
       if (sel) {
         const d = await getDungeon(sel.ns, sel.name)
         setDetail(d)
-        if (!attackPhase) prevInventoryRef.current = d.spec.inventory || ''
       }
     } catch {}
   }, [])
@@ -75,7 +73,6 @@ export default function App() {
       const cr = lastEvent.payload as DungeonCR
       if (cr?.metadata?.name === selected.name) {
         setDetail(cr)
-        if (!attackPhase) prevInventoryRef.current = cr.spec?.inventory || ''
       }
     }
     if (lastEvent) refresh()
@@ -94,7 +91,6 @@ export default function App() {
           if (cancelled) return
           try {
             const d = await getDungeon(selected.ns, selected.name)
-            if (!cancelled) { setDetail(d); setLoading(false); prevInventoryRef.current = d.spec.inventory || '' }
             return
           } catch {
             await new Promise(r => setTimeout(r, 2000))
@@ -163,7 +159,6 @@ export default function App() {
           }
         }
         setDetail(updated)
-        prevInventoryRef.current = updated.spec.inventory || ''
         setAttackPhase(null)
         setAnimPhase('idle')
         setAttackTarget(null)
@@ -203,15 +198,8 @@ export default function App() {
         else setCombatModal({ phase: 'resolved', formula: '', heroAction, enemyAction, spec: updated.spec, oldHP: detail?.spec.heroHP ?? 100 })
       }
 
-      // Detect loot drops — only when heroAction says "Dropped"
-      const newInv = updated.spec.inventory || ''
-      if (heroAction.includes('Dropped')) {
-        const newItems = newInv.split(',').filter(Boolean)
-        const prevItems = prevInventoryRef.current.split(',').filter(Boolean)
-        const dropped = newItems.filter(item => !prevItems.includes(item))
-        if (dropped.length > 0) setLootDrop(dropped[dropped.length - 1])
-      }
-      prevInventoryRef.current = newInv
+      // Loot drop — read directly from server-set field
+      if (updated.spec.lastLootDrop) setLootDrop(updated.spec.lastLootDrop)
       await new Promise(r => setTimeout(r, 100))
 
       // Read combat log from Dungeon CR
@@ -312,7 +300,7 @@ export default function App() {
           combatModal={combatModal}
           onDismissCombat={dismissCombat}
           lootDrop={lootDrop}
-          onDismissLoot={() => { setLootDrop(null); prevInventoryRef.current = detail?.spec.inventory || '' }}
+          onDismissLoot={() => setLootDrop(null)}
           events={events}
           k8sLog={k8sLog}
           showLoot={showLoot}
