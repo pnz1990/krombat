@@ -233,9 +233,7 @@ export default function App() {
       else if (s?.bossState === 'ready') addEvent('🐉', 'Boss unlocked! All monsters slain!')
       else if ((updated.spec.heroHP ?? 100) <= 0) addEvent('💀', 'Hero has fallen...')
 
-      // Don't clear attackPhase — user must dismiss combat modal
-      setAnimPhase('idle')
-      setAttackTarget(null)
+      // Don't clear attackPhase/attackTarget — user must dismiss combat modal
     } catch (e: any) {
       setError(e.message)
       setCombatModal(null)
@@ -249,6 +247,8 @@ export default function App() {
   const dismissCombat = () => {
     setCombatModal(null)
     setAttackPhase(null)
+    setAnimPhase('idle')
+    setAttackTarget(null)
   }
 
   const handleSelect = (ns: string, name: string) => {
