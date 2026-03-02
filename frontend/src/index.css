@@ -745,3 +745,9 @@ body {
 /* Equipped slot glow */
 .equip-slot.filled { animation: equipGlow 0.5s ease-out; }
 @keyframes equipGlow { 0% { box-shadow: 0 0 8px var(--gold); } 100% { box-shadow: none; } }
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-3px); }
+  75% { transform: translateX(3px); }
+}

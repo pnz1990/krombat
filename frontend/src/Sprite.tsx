@@ -81,6 +81,9 @@ export function Sprite({ spriteType, action, size = 64, flip = false }: SpritePr
         objectFit: 'contain',
         imageRendering: 'pixelated' as any,
         transform: flip ? 'scaleX(-1)' : undefined,
+        opacity: action === 'dead' ? 0.35 : 1,
+        filter: action === 'hurt' ? 'brightness(1.5) sepia(1) saturate(5) hue-rotate(-10deg)' : undefined,
+        animation: action === 'hurt' ? 'shake 0.15s infinite' : undefined,
       }}
     />
   )
