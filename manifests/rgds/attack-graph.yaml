@@ -208,10 +208,6 @@ spec:
                           if [ "$TREASURE_OPENED" -ne 1 ]; then
                             echo "Open the treasure first to get the key"; exit 1
                           fi
-                          EXPECTED_KEY="$DUNGEON-LOOT"
-                          if [ "$DAMAGE" -eq 0 ] 2>/dev/null; then
-                            echo "Provide the key as damage field"; exit 1
-                          fi
                           PATCH="{\"spec\":{\"doorUnlocked\":1,\"lastHeroAction\":\"Door unlocked! A new room awaits...\",\"lastEnemyAction\":\"\"}}"
                           if kubectl patch dungeon "$DUNGEON" -n "$DUNGEON_NS" --type=merge -p "$PATCH" 2>&1; then
                             echo "Door unlocked!"; exit 0

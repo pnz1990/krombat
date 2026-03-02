@@ -672,6 +672,8 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
   const isHeroTurn = !currentTurn || currentTurn === 'hero'
   const allMonstersDead = (spec.monsterHP || []).every((hp: number) => hp <= 0)
   const gameOver = isDefeated || status?.victory || (spec.bossHP <= 0 && allMonstersDead)
+  const [showDoorModal, setShowDoorModal] = useState(false)
+  const [doorPassword, setDoorPassword] = useState('')
 
   // Build turn order for display
   const turnOrder: { id: string; label: string; alive: boolean }[] = [{ id: 'hero', label: '🛡️ Hero', alive: !isDefeated }]
@@ -713,6 +715,25 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
                 <button className="btn btn-gold" style={{ marginTop: 16 }} onClick={onDismissCombat}>Continue</button>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {showDoorModal && (
+        <div className="modal-overlay" onClick={() => setShowDoorModal(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 350 }}>
+            <h2 style={{ color: 'var(--gold)', fontSize: 12, marginBottom: 12 }}><PixelIcon name="key" size={14} /> Enter the Key</h2>
+            <p style={{ fontSize: 8, color: '#888', marginBottom: 8 }}>The door is locked. Enter the key found in the treasure chest.</p>
+            <input value={doorPassword} onChange={e => setDoorPassword(e.target.value)}
+              placeholder="Enter key..." style={{ width: '100%', padding: '6px 8px', fontSize: 9, fontFamily: 'inherit', background: '#0a0a1a', border: '1px solid #333', color: '#fff', borderRadius: 4, marginBottom: 8 }} />
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+              <button className="btn btn-gold" onClick={() => {
+                setShowDoorModal(false)
+                setDoorPassword('')
+                onAttack('unlock-door', 0)
+              }}>Unlock</button>
+              <button className="btn btn-ability" onClick={() => setShowDoorModal(false)}>Cancel</button>
+            </div>
           </div>
         </div>
       )}
@@ -816,16 +837,19 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
 
             {/* Door at top of arena */}
             <div className="arena-entity door-entity" style={{ top: '8%', left: '50%' }}>
-              <img src={`/sprites/dungeon/door-${(spec.doorUnlocked ?? 0) === 1 ? 'opened' : 'closed'}.png`}
-                alt="door" style={{ width: 64, height: 64, imageRendering: 'pixelated' as any }} />
-              {(spec.doorUnlocked ?? 0) === 1 && !gameOver && (
-                <button className="btn btn-gold arena-atk-btn" style={{ marginTop: 4, fontSize: '7px' }}
-                  onClick={() => onAttack('enter-room-2', 0)}>Enter Room 2</button>
-              )}
-              {(spec.treasureOpened ?? 0) === 1 && (spec.doorUnlocked ?? 0) === 0 && (
-                <button className="btn btn-ability arena-atk-btn" style={{ marginTop: 4, fontSize: '7px' }}
-                  onClick={() => onAttack('unlock-door', 0)}>Unlock Door</button>
-              )}
+              {(() => {
+                const doorUnlocked = (spec.doorUnlocked ?? 0) === 1
+                const canUnlock = (spec.treasureOpened ?? 0) === 1 && !doorUnlocked
+                return <>
+                  <img src={`/sprites/dungeon/door-${doorUnlocked ? 'opened' : 'closed'}.png`}
+                    alt="door" style={{ width: 64, height: 64, imageRendering: 'pixelated' as any, cursor: canUnlock ? 'pointer' : 'default', filter: canUnlock ? 'drop-shadow(0 0 6px #f5c518)' : 'none' }}
+                    onClick={() => canUnlock && setShowDoorModal(true)} />
+                  {doorUnlocked && !gameOver && (
+                    <button className="btn btn-gold arena-atk-btn" style={{ marginTop: 4, fontSize: '7px' }}
+                      onClick={() => onAttack('enter-room-2', 0)}>Enter Room 2</button>
+                  )}
+                </>
+              })()}
             </div>
 
             {/* Treasure chest — appears after boss defeated */}

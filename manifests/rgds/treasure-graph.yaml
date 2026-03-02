@@ -29,7 +29,7 @@ spec:
             game.k8s.example/entity: treasure
         data:
           state: "${schema.spec.opened == 1 ? 'opened' : 'unopened'}"
-          loot: "${schema.spec.opened == 1 ? 'Treasure code: ' + schema.spec.dungeonName + '-LOOT' : ''}"
+          loot: "${schema.spec.opened == 1 ? 'Key: ' + schema.spec.dungeonName + '-' + string(size(schema.spec.dungeonName) * 7) + '-RUNE' : ''}"
 
     - id: treasureSecret
       template:
@@ -42,4 +42,4 @@ spec:
             game.k8s.example/dungeon: ${schema.spec.dungeonName}
             game.k8s.example/entity: treasure
         stringData:
-          loot: "${'Treasure code: ' + schema.spec.dungeonName + '-LOOT'}"
+          loot: "${'Key: ' + schema.spec.dungeonName + '-' + string(size(schema.spec.dungeonName) * 7) + '-RUNE'}"
