@@ -141,7 +141,7 @@ export default function App() {
       setAttackPhase('attacking')
 
       if (!isAbility && !isItem) {
-        setCombatModal({ phase: 'rolling', formula, heroAction: '', enemyAction: '', spec: detail?.spec, oldHP })
+        setCombatModal({ phase: 'rolling', formula: detail?.status?.diceFormula || '2d12+4', heroAction: '', enemyAction: '', spec: detail?.spec, oldHP: detail?.spec.heroHP ?? 100 })
       }
 
       await submitAttack(selected.ns, selected.name, target, damage)
