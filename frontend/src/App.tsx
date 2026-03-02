@@ -31,6 +31,8 @@ export default function App() {
 
   const [dungeons, setDungeons] = useState<DungeonSummary[]>([])
   const [detail, setDetail] = useState<DungeonCR | null>(null)
+  const detailRef = useRef(detail)
+  detailRef.current = detail
   const [events, setEvents] = useState<WSEvent[]>([])
   const [k8sLog, setK8sLog] = useState<{ ts: string; cmd: string; res: string; yaml?: string }[]>([])
   const addK8s = (cmd: string, res: string, yaml?: string) => {
@@ -67,7 +69,16 @@ export default function App() {
   }, [])
 
   // Refresh on WebSocket events — only refresh data, don't add to event log
-  useEffect(() => { if (lastEvent) { refresh() } }, [lastEvent, refresh])
+  // Update dungeon state directly from WebSocket payload (no extra HTTP request)
+  useEffect(() => {
+    if (lastEvent?.type === 'DUNGEON_UPDATE' && lastEvent.payload && selected) {
+      const cr = lastEvent.payload as DungeonCR
+      if (cr?.metadata?.name === selected.name) {
+        setDetail(cr)
+      }
+    }
+    if (lastEvent) refresh() // still refresh list
+  }, [lastEvent])
 
   // Initial load + load dungeon detail when URL changes
   useEffect(() => {
@@ -138,17 +149,16 @@ export default function App() {
       addK8s(`kubectl apply -f attack.yaml`, 'attack.game.k8s.example created',
         `apiVersion: game.k8s.example/v1alpha1\nkind: Attack\nmetadata:\n  name: ${selected.name}-${target}-${Date.now() % 100000}\nspec:\n  dungeonName: ${selected.name}\n  dungeonNamespace: ${selected.ns}\n  target: ${target}\n  damage: ${damage}`)
 
-      // Poll for CR update
+      // Wait for CR update — WebSocket updates detail in real-time via ref
+      const prevAction = detail?.spec.lastHeroAction
       let updated = detail!
-      for (let attempt = 0; attempt < 10; attempt++) {
-        const fetched = await getDungeon(selected.ns, selected.name)
-        if (fetched.spec.lastHeroAction !== detail?.spec.lastHeroAction) {
-          updated = fetched
-          addK8s(`kubectl get dungeon ${selected.name} -o json`, `heroHP:${fetched.spec.heroHP} bossHP:${fetched.spec.bossHP}`,
-            JSON.stringify({ spec: fetched.spec, status: fetched.status }, null, 2))
+      for (let attempt = 0; attempt < 8; attempt++) {
+        await new Promise(r => setTimeout(r, 1500))
+        // Check if WebSocket already delivered the update
+        if (detailRef.current?.spec.lastHeroAction !== prevAction) {
+          updated = detailRef.current!
           break
         }
-        await new Promise(r => setTimeout(r, 2000))
       }
       setDetail(updated)
 
