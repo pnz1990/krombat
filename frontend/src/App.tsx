@@ -131,6 +131,12 @@ export default function App() {
   const handleAttack = async (target: string, damage: number) => {
     if (!selected || attackPhase || attackingRef.current) return
     attackingRef.current = true
+    // Prevent attacking dead targets
+    if (detail?.spec) {
+      const mMatch = target.match(/monster-(\d+)$/)
+      if (mMatch && (detail.spec.monsterHP || [])[parseInt(mMatch[1])] <= 0) { attackingRef.current = false; return }
+      if (target.endsWith('-boss') && detail.spec.bossHP <= 0) { attackingRef.current = false; return }
+    }
     setError('')
     const isAbility = target === 'hero' || target === 'activate-taunt'
     const isItem = target.startsWith('use-') || target.startsWith('equip-') || target === 'open-treasure' || target === 'unlock-door' || target === 'enter-room-2'
@@ -206,9 +212,12 @@ export default function App() {
 
       const heroAction = updated.spec.lastHeroAction || ''
       const enemyAction = updated.spec.lastEnemyAction || ''
+      const pollSucceeded = (updated.spec.attackSeq || 0) > prevSeq
 
       if (!isAbility && !isItem) {
-        setCombatModal({ phase: 'resolved', formula: detail?.status?.diceFormula || '2d12+4', heroAction, enemyAction, spec: updated.spec, oldHP: detail?.spec.heroHP ?? 100 })
+        const displayHero = pollSucceeded ? heroAction : 'Attack processing... (dismiss and check game state)'
+        const displayEnemy = pollSucceeded ? enemyAction : ''
+        setCombatModal({ phase: 'resolved', formula: detail?.status?.diceFormula || '2d12+4', heroAction: displayHero, enemyAction: displayEnemy, spec: updated.spec, oldHP: detail?.spec.heroHP ?? 100 })
         setAnimPhase('enemy-attack')
       } else if (!isItem) {
         // Ability (heal/taunt)
@@ -218,11 +227,11 @@ export default function App() {
       }
 
       // Loot drop — only check on combat actions (not items/equip)
-      if (!isItem && updated.spec.lastLootDrop) setLootDrop(updated.spec.lastLootDrop)
+      if (!isItem && pollSucceeded && updated.spec.lastLootDrop) setLootDrop(updated.spec.lastLootDrop)
       await new Promise(r => setTimeout(r, 100))
 
-      // Read combat log from Dungeon CR
-      if (heroAction) {
+      // Read combat log from Dungeon CR — skip "already dead" non-events
+      if (pollSucceeded && heroAction && !heroAction.includes('already dead') && !heroAction.includes('already defeated')) {
         const icon = heroAction.includes('heals') ? '💚' : heroAction.includes('Taunt') ? '🛡️' : heroAction.includes('Backstab') ? '🗡️' : heroAction.includes('STUNNED') ? '🟡' : '⚔️'
         addEvent(icon, heroAction)
         if (heroAction.includes('Dropped')) addEvent('🎁', heroAction.split('Dropped')[1]?.trim() || 'Loot dropped!')
@@ -232,18 +241,20 @@ export default function App() {
           addEvent('💀', `${target} slain!`)
         }
       }
-      if (enemyAction) {
+      if (pollSucceeded && enemyAction) {
         const eIcon = enemyAction.includes('POISON') ? '🟢' : enemyAction.includes('BURN') ? '🔴' : enemyAction.includes('STUN') ? '🟡' : enemyAction.includes('defeated') ? '👑' : '💀'
         addEvent(eIcon, enemyAction)
       }
-      // State change events (only if this attack caused the transition)
-      const prevBossHP = detail?.spec.bossHP ?? 1
-      const newBossHP = updated.spec.bossHP ?? 1
-      const prevAllDead = (detail?.spec.monsterHP || []).every((hp: number) => hp <= 0)
-      const nowAllDead = (updated.spec.monsterHP || []).every((hp: number) => hp <= 0)
-      if (nowAllDead && !prevAllDead) addEvent('🐉', 'Boss unlocked! All monsters slain!')
-      if (newBossHP <= 0 && prevBossHP > 0) addEvent('🏆', 'VICTORY! Boss defeated!')
-      if ((updated.spec.heroHP ?? 100) <= 0 && (detail?.spec.heroHP ?? 100) > 0) addEvent('💀', 'Hero has fallen...')
+      // State change events (only if poll succeeded and state actually changed)
+      if (pollSucceeded) {
+        const prevBossHP = detail?.spec.bossHP ?? 1
+        const newBossHP = updated.spec.bossHP ?? 1
+        const prevAllDead = (detail?.spec.monsterHP || []).every((hp: number) => hp <= 0)
+        const nowAllDead = (updated.spec.monsterHP || []).every((hp: number) => hp <= 0)
+        if (nowAllDead && !prevAllDead) addEvent('🐉', 'Boss unlocked! All monsters slain!')
+        if (newBossHP <= 0 && prevBossHP > 0) addEvent('🏆', 'VICTORY! Boss defeated!')
+        if ((updated.spec.heroHP ?? 100) <= 0 && (detail?.spec.heroHP ?? 100) > 0) addEvent('💀', 'Hero has fallen...')
+      }
 
       // Don't clear attackPhase/attackTarget — user must dismiss combat modal
     } catch (e: any) {
