@@ -63,6 +63,8 @@ spec:
                         DIFFICULTY=$(echo "$DUNGEON_JSON" | jq -r '.spec.difficulty // "normal"')
                         TAUNT_ACTIVE=$(echo "$DUNGEON_JSON" | jq -r '.spec.tauntActive // 0')
                         BACKSTAB_CD=$(echo "$DUNGEON_JSON" | jq -r '.spec.backstabCooldown // 0')
+                        ATTACK_SEQ=$(echo "$DUNGEON_JSON" | jq -r '.spec.attackSeq // 0')
+                        ATTACK_SEQ=$((ATTACK_SEQ + 1))
                         MODIFIER=$(echo "$DUNGEON_JSON" | jq -r '.spec.modifier // "none"')
                         INVENTORY=$(echo "$DUNGEON_JSON" | jq -r '.spec.inventory // ""')
                         WEAPON_BONUS=$(echo "$DUNGEON_JSON" | jq -r '.spec.weaponBonus // 0')
@@ -127,7 +129,7 @@ spec:
                           HERO_MANA=$((HERO_MANA - 2))
                           HERO_ACTION="Mage heals for $((NEW_HP - HERO_HP)) HP! (Mana: $HERO_MANA)"
                           ENEMY_ACTION="No counter-attack during heal"
-                          PATCH="{\"spec\":{\"heroHP\":$NEW_HP,\"heroMana\":$HERO_MANA,\"backstabCooldown\":$BACKSTAB_CD,\"lastHeroAction\":\"$HERO_ACTION\",\"lastEnemyAction\":\"$ENEMY_ACTION\",\"lastLootDrop\":\"\"}}"
+                          PATCH="{\"spec\":{\"heroHP\":$NEW_HP,\"heroMana\":$HERO_MANA,\"backstabCooldown\":$BACKSTAB_CD,\"lastHeroAction\":\"$HERO_ACTION\",\"lastEnemyAction\":\"$ENEMY_ACTION\",\"lastLootDrop\":\"\",\"attackSeq\":$ATTACK_SEQ}}"
                           echo "$HERO_ACTION"
                           if kubectl patch dungeon "$DUNGEON" -n "$DUNGEON_NS" --type=merge -p "$PATCH" 2>&1; then
                             echo "Heal complete!"; exit 0
@@ -140,7 +142,7 @@ spec:
                           if [ "$HERO_CLASS" != "warrior" ]; then
                             echo "Only warrior can taunt"; exit 1
                           fi
-                          PATCH="{\"spec\":{\"tauntActive\":1,\"lastHeroAction\":\"Warrior activates Taunt! Next attack has 60% counter-attack reduction.\",\"lastEnemyAction\":\"\",\"lastLootDrop\":\"\"}}"
+                          PATCH="{\"spec\":{\"tauntActive\":1,\"lastHeroAction\":\"Warrior activates Taunt! Next attack has 60% counter-attack reduction.\",\"lastEnemyAction\":\"\",\"lastLootDrop\":\"\",\"attackSeq\":$ATTACK_SEQ}}"
                           if kubectl patch dungeon "$DUNGEON" -n "$DUNGEON_NS" --type=merge -p "$PATCH" 2>&1; then
                             echo "Taunt activated!"; exit 0
                           fi
@@ -251,7 +253,7 @@ spec:
                         if echo "$REAL_TARGET" | grep -q "\-boss$"; then
                           OLD_HP=$(echo "$DUNGEON_JSON" | jq -r '.spec.bossHP')
                           if [ "$OLD_HP" -le 0 ]; then
-                            kubectl patch dungeon "$DUNGEON" -n "$DUNGEON_NS" --type=merge -p "{\"spec\":{\"lastLootDrop\":\"\",\"lastHeroAction\":\"Boss already defeated\",\"lastEnemyAction\":\"\"}}" 2>&1
+                            kubectl patch dungeon "$DUNGEON" -n "$DUNGEON_NS" --type=merge -p "{\"spec\":{\"lastLootDrop\":\"\",\"lastHeroAction\":\"Boss already defeated\",\"lastEnemyAction\":\"\",\"attackSeq\":$ATTACK_SEQ}}" 2>&1
                             echo "Boss already dead"; exit 0
                           fi
                           NEW_HP=$((OLD_HP - EFFECTIVE_DAMAGE))
@@ -319,7 +321,7 @@ spec:
                           IDX=$(echo "$REAL_TARGET" | grep -oE '[0-9]+$')
                           OLD_HP=$(echo "$DUNGEON_JSON" | jq -r ".spec.monsterHP[$IDX]")
                           if [ "$OLD_HP" -le 0 ]; then
-                            kubectl patch dungeon "$DUNGEON" -n "$DUNGEON_NS" --type=merge -p "{\"spec\":{\"lastLootDrop\":\"\",\"lastHeroAction\":\"Monster already dead\",\"lastEnemyAction\":\"\"}}" 2>&1
+                            kubectl patch dungeon "$DUNGEON" -n "$DUNGEON_NS" --type=merge -p "{\"spec\":{\"lastLootDrop\":\"\",\"lastHeroAction\":\"Monster already dead\",\"lastEnemyAction\":\"\",\"attackSeq\":$ATTACK_SEQ}}" 2>&1
                             echo "Monster already dead"; exit 0
                           fi
                           NEW_HP=$((OLD_HP - EFFECTIVE_DAMAGE))
@@ -460,7 +462,7 @@ spec:
                           fi
                         fi
 
-                        PATCH="{\"spec\":{$HP_PATCH,\"heroHP\":$HERO_HP,\"tauntActive\":$TAUNT_ACTIVE,\"backstabCooldown\":$BACKSTAB_CD,\"lastHeroAction\":\"$HERO_ACTION\",\"lastEnemyAction\":\"$ENEMY_ACTION$EFFECT_NOTE\",\"lastLootDrop\":\"$LOOT_DROP\"$MANA_PATCH$WEAPON_PATCH$INVENTORY_PATCH$EFFECT_PATCH}}"
+                        PATCH="{\"spec\":{$HP_PATCH,\"heroHP\":$HERO_HP,\"tauntActive\":$TAUNT_ACTIVE,\"backstabCooldown\":$BACKSTAB_CD,\"lastHeroAction\":\"$HERO_ACTION\",\"lastEnemyAction\":\"$ENEMY_ACTION$EFFECT_NOTE\",\"lastLootDrop\":\"$LOOT_DROP\",\"attackSeq\":$ATTACK_SEQ$MANA_PATCH$WEAPON_PATCH$INVENTORY_PATCH$EFFECT_PATCH}}"
 
                         echo "$HERO_ACTION"
                         echo "$ENEMY_ACTION"

@@ -43,6 +43,7 @@ export default function App() {
   const [error, setError] = useState('')
   const [showLoot, setShowLoot] = useState(false)
   const [attackPhase, setAttackPhase] = useState<string | null>(null)
+  const attackingRef = useRef(false)
   const [roomLoading, setRoomLoading] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
   const [showCheat, setShowCheat] = useState(false)
@@ -128,7 +129,8 @@ export default function App() {
   const [combatModal, setCombatModal] = useState<{ phase: 'rolling' | 'resolved'; formula: string; heroAction: string; enemyAction: string; spec: any; oldHP: number } | null>(null)
 
   const handleAttack = async (target: string, damage: number) => {
-    if (!selected || attackPhase) return
+    if (!selected || attackPhase || attackingRef.current) return
+    attackingRef.current = true
     setError('')
     const isAbility = target === 'hero' || target === 'activate-taunt'
     const isItem = target.startsWith('use-') || target.startsWith('equip-') || target === 'open-treasure' || target === 'unlock-door' || target === 'enter-room-2'
@@ -149,7 +151,7 @@ export default function App() {
         `apiVersion: game.k8s.example/v1alpha1\nkind: ${crKind}\nmetadata:\n  name: ${selected.name}-${target}-${Date.now() % 100000}\nspec:\n  dungeonName: ${selected.name}\n  dungeonNamespace: ${selected.ns}\n  ${crField}`)
 
       let updated = detail!
-      const prevAction = detail?.spec.lastHeroAction || ''
+      const prevSeq = detail?.spec.attackSeq || 0
 
       if (isItem) {
         // Items: poll until the specific field changes
@@ -177,6 +179,7 @@ export default function App() {
         setAttackPhase(null)
         setAnimPhase('idle')
         setAttackTarget(null)
+        attackingRef.current = false
         return // Items done — don't fall through to combat/loot logic
       } else {
         // Combat: wait for Job to run, then poll for result
@@ -190,7 +193,7 @@ export default function App() {
         await new Promise(r => setTimeout(r, 3000))
         for (let attempt = 0; attempt < 10; attempt++) {
           const current = await getDungeon(selected.ns, selected.name)
-          if (current.spec.lastHeroAction && current.spec.lastHeroAction !== prevAction) {
+          if ((current.spec.attackSeq || 0) > prevSeq) {
             updated = current
             addK8s(`kubectl get dungeon ${selected.name}`, `heroHP:${current.spec.heroHP} bossHP:${current.spec.bossHP}`,
               JSON.stringify({ spec: current.spec, status: current.status }, null, 2))
@@ -233,10 +236,14 @@ export default function App() {
         const eIcon = enemyAction.includes('POISON') ? '🟢' : enemyAction.includes('BURN') ? '🔴' : enemyAction.includes('STUN') ? '🟡' : enemyAction.includes('defeated') ? '👑' : '💀'
         addEvent(eIcon, enemyAction)
       }
-      const s = updated.status
-      if (s?.victory) addEvent('🏆', 'VICTORY! Boss defeated!')
-      else if (s?.bossState === 'ready') addEvent('🐉', 'Boss unlocked! All monsters slain!')
-      else if ((updated.spec.heroHP ?? 100) <= 0) addEvent('💀', 'Hero has fallen...')
+      // State change events (only if this attack caused the transition)
+      const prevBossHP = detail?.spec.bossHP ?? 1
+      const newBossHP = updated.spec.bossHP ?? 1
+      const prevAllDead = (detail?.spec.monsterHP || []).every((hp: number) => hp <= 0)
+      const nowAllDead = (updated.spec.monsterHP || []).every((hp: number) => hp <= 0)
+      if (nowAllDead && !prevAllDead) addEvent('🐉', 'Boss unlocked! All monsters slain!')
+      if (newBossHP <= 0 && prevBossHP > 0) addEvent('🏆', 'VICTORY! Boss defeated!')
+      if ((updated.spec.heroHP ?? 100) <= 0 && (detail?.spec.heroHP ?? 100) > 0) addEvent('💀', 'Hero has fallen...')
 
       // Don't clear attackPhase/attackTarget — user must dismiss combat modal
     } catch (e: any) {
@@ -246,6 +253,7 @@ export default function App() {
       setAnimPhase('idle')
       setAttackTarget(null)
       setFloatingDmg(null)
+      attackingRef.current = false
     }
   }
 
@@ -254,6 +262,7 @@ export default function App() {
     setAttackPhase(null)
     setAnimPhase('idle')
     setAttackTarget(null)
+    attackingRef.current = false
   }
 
   const handleSelect = (ns: string, name: string) => {
