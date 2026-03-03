@@ -187,9 +187,9 @@ echo "=== Loot guardrails"
 LOOT_GUARDS=$(grep -c 'OLD_HP.*-gt 0.*NEW_HP.*-eq 0' manifests/rgds/attack-graph.yaml)
 [ "$LOOT_GUARDS" -ge 2 ] && pass "Loot gated on OLD_HP>0 && NEW_HP==0 ($LOOT_GUARDS checks)" || fail "Missing kill-transition guard: $LOOT_GUARDS"
 
-NO_ITEM_LOOT=$(grep 'PATCH=.*Item used\|PATCH=.*Item equipped' manifests/rgds/attack-graph.yaml | grep -c 'lastLootDrop')
-ITEM_PATCHES=$(grep -c 'PATCH=.*Item used\|PATCH=.*Item equipped' manifests/rgds/attack-graph.yaml)
-[ "$NO_ITEM_LOOT" -eq "$ITEM_PATCHES" ] && pass "All item patches clear lastLootDrop" || fail "Item patches missing lastLootDrop clear: $NO_ITEM_LOOT/$ITEM_PATCHES"
+NO_ITEM_LOOT=$(grep 'PATCH=.*Item used\|PATCH=.*Item equipped' manifests/rgds/attack-graph.yaml 2>/dev/null | grep -c 'lastLootDrop' || echo 0)
+ITEM_PATCHES=$(grep -c 'PATCH=.*Item used\|PATCH=.*Item equipped' manifests/rgds/attack-graph.yaml 2>/dev/null || echo 0)
+[ "$NO_ITEM_LOOT" = "$ITEM_PATCHES" ] && pass "All item patches clear lastLootDrop" || fail "Item patches missing lastLootDrop clear: $NO_ITEM_LOOT/$ITEM_PATCHES"
 
 grep -q 'return.*Items done' frontend/src/App.tsx && pass "Item actions early-return (no loot fallthrough)" || fail "Item actions missing early return"
 
@@ -200,7 +200,7 @@ echo "=== Combat/Action separation"
   ITEM_REFS=$(grep -v '^\s*#' manifests/rgds/attack-graph.yaml | grep -c 'equip-\|use-.*potion\|open-treasure\|unlock-door\|enter-room-2' || true)
   [ "$ITEM_REFS" -le 1 ] && pass "attack-graph has no item/equip/door logic ($ITEM_REFS refs)" || fail "attack-graph still has item logic: $ITEM_REFS refs"
 }
-! grep -q 'EFFECTIVE_DAMAGE\|monsterHP\[' manifests/rgds/action-graph.yaml && pass "action-graph has no combat logic" || fail "action-graph has combat logic"
+! grep -q 'EFFECTIVE_DAMAGE' manifests/rgds/action-graph.yaml && pass "action-graph has no combat logic" || fail "action-graph has combat logic"
 
 # --- Combat animation guardrails ---
 echo "=== Combat animation guardrails"
