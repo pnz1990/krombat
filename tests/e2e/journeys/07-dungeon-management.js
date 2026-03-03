@@ -8,13 +8,20 @@ function ok(msg) { console.log(`  ✅ ${msg}`); passed++; }
 function fail(msg) { console.log(`  ❌ ${msg}`); failed++; }
 
 async function api(page, method, path, body) {
-  return page.evaluate(async ([m, p, b]) => {
-    const opts = { method: m, headers: { 'Content-Type': 'application/json' } };
-    if (b) opts.body = JSON.stringify(b);
-    const r = await fetch(`/api/v1${p}`, opts);
-    const text = await r.text();
-    try { return { status: r.status, body: JSON.parse(text) }; } catch { return { status: r.status, body: text }; }
-  }, [method, path, body]);
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      return await page.evaluate(async ([m, p, b]) => {
+        const opts = { method: m, headers: { 'Content-Type': 'application/json' } };
+        if (b) opts.body = JSON.stringify(b);
+        const r = await fetch(`/api/v1${p}`, opts);
+        const text = await r.text();
+        try { return { status: r.status, body: JSON.parse(text) }; } catch { return { status: r.status, body: text }; }
+      }, [method, path, body]);
+    } catch {
+      await page.waitForTimeout(2000);
+    }
+  }
+  return { status: 0, body: 'fetch failed after retries' };
 }
 
 async function waitGone(page, name, maxWait = 60000) {
