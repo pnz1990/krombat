@@ -158,8 +158,12 @@ async function run() {
 
     // === Recreate Deleted Name ===
     console.log('\n=== Recreate Deleted Name ===');
-    // Wait for kro to fully clean up before recreating
-    const gone = await waitGone(page, names[0], 120000);
+    // Wait for kro to fully clean up before recreating (CR must be fully gone, not just filtered)
+    for (let i = 0; i < 40; i++) {
+      const check = await api(page, 'GET', `/dungeons/default/${names[0]}`);
+      if (check.status === 404) break;
+      await page.waitForTimeout(3000);
+    }
     const reRes = await api(page, 'POST', '/dungeons', { name: names[0], monsters: 1, difficulty: 'easy', heroClass: 'warrior' });
     reRes.status === 201 ? ok(`Recreated "${names[0]}"`) : fail(`Recreate failed: HTTP ${reRes.status} (kro may still be cleaning up)`);
 
