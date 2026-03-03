@@ -35,6 +35,7 @@ spec:
       room2BossHP: integer | default=0
       lastHeroAction: string | default=""
       lastEnemyAction: string | default=""
+      lastCombatLog: string | default=""
       lastLootDrop: string | default=""
       attackSeq: integer | default=0
     status:

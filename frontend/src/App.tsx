@@ -233,7 +233,24 @@ export default function App() {
       // Read combat log from Dungeon CR — skip "already dead" non-events
       if (pollSucceeded && heroAction && !heroAction.includes('already dead') && !heroAction.includes('already defeated')) {
         const icon = heroAction.includes('heals') ? '💚' : heroAction.includes('Taunt') ? '🛡️' : heroAction.includes('Backstab') ? '🗡️' : heroAction.includes('STUNNED') ? '🟡' : '⚔️'
-        addEvent(icon, heroAction)
+        // Try to parse rich combat log
+        let logParsed: any = null
+        try { logParsed = JSON.parse(updated.spec.lastCombatLog || '{}') } catch {}
+        if (logParsed?.seq) {
+          const parts = [heroAction]
+          if (logParsed.modifier && logParsed.modifier !== 'none') parts.push(`[${logParsed.modifier}]`)
+          if (logParsed.weaponBonus > 0) parts.push(`[+${logParsed.weaponBonus} wpn, ${logParsed.weaponUses} uses left]`)
+          if (logParsed.armorBonus > 0) parts.push(`[${logParsed.armorBonus}% armor]`)
+          if (logParsed.shieldBonus > 0) parts.push(`[${logParsed.shieldBonus}% shield]`)
+          if (logParsed.tauntActive > 0) parts.push(`[taunt active]`)
+          if (logParsed.poison > 0) parts.push(`[poison ${logParsed.poison}t]`)
+          if (logParsed.burn > 0) parts.push(`[burn ${logParsed.burn}t]`)
+          if (logParsed.stun > 0) parts.push(`[stun ${logParsed.stun}t]`)
+          if (logParsed.notes) parts.push(logParsed.notes)
+          addEvent(icon, parts.join(' '))
+        } else {
+          addEvent(icon, heroAction)
+        }
         if (heroAction.includes('Dropped')) addEvent('🎁', heroAction.split('Dropped')[1]?.trim() || 'Loot dropped!')
         // Kill
         if (heroAction.includes('-> 0)')) {

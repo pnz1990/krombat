@@ -462,7 +462,33 @@ spec:
                           fi
                         fi
 
-                        PATCH="{\"spec\":{$HP_PATCH,\"heroHP\":$HERO_HP,\"tauntActive\":$TAUNT_ACTIVE,\"backstabCooldown\":$BACKSTAB_CD,\"lastHeroAction\":\"$HERO_ACTION\",\"lastEnemyAction\":\"$ENEMY_ACTION$EFFECT_NOTE\",\"lastLootDrop\":\"$LOOT_DROP\",\"attackSeq\":$ATTACK_SEQ$MANA_PATCH$WEAPON_PATCH$INVENTORY_PATCH$EFFECT_PATCH}}"
+                        # Build comprehensive combat log
+                        COMBAT_LOG=$(jq -n \
+                          --arg seq "$ATTACK_SEQ" \
+                          --arg target "$REAL_TARGET" \
+                          --arg hero "$HERO_ACTION" \
+                          --arg enemy "$ENEMY_ACTION$EFFECT_NOTE" \
+                          --arg class "$HERO_CLASS" \
+                          --arg diff "$DIFFICULTY" \
+                          --arg mod "$MODIFIER" \
+                          --arg loot "$LOOT_DROP" \
+                          --arg wpnBonus "$WEAPON_BONUS" \
+                          --arg wpnUses "$WEAPON_USES" \
+                          --arg armorBonus "$ARMOR_BONUS" \
+                          --arg shieldBonus "$SHIELD_BONUS" \
+                          --arg taunt "$TAUNT_ACTIVE" \
+                          --arg bsCooldown "$BACKSTAB_CD" \
+                          --arg heroHP "$HERO_HP" \
+                          --arg mana "$HERO_MANA" \
+                          --arg poison "$POISON_TURNS" \
+                          --arg burn "$BURN_TURNS" \
+                          --arg stun "$STUN_TURNS" \
+                          --arg dmg "$EFFECTIVE_DAMAGE" \
+                          --arg classNote "$CLASS_NOTE" \
+                          '{seq:($seq|tonumber),target:$target,hero:$hero,enemy:$enemy,class:$class,difficulty:$diff,modifier:$mod,loot:$loot,weaponBonus:($wpnBonus|tonumber),weaponUses:($wpnUses|tonumber),armorBonus:($armorBonus|tonumber),shieldBonus:($shieldBonus|tonumber),tauntActive:($taunt|tonumber),backstabCD:($bsCooldown|tonumber),heroHP:($heroHP|tonumber),mana:($mana|tonumber),poison:($poison|tonumber),burn:($burn|tonumber),stun:($stun|tonumber),damage:($dmg|tonumber),notes:$classNote}' | tr -d '\n')
+                        COMBAT_LOG_ESCAPED=$(echo "$COMBAT_LOG" | sed 's/"/\\"/g')
+
+                        PATCH="{\"spec\":{$HP_PATCH,\"heroHP\":$HERO_HP,\"tauntActive\":$TAUNT_ACTIVE,\"backstabCooldown\":$BACKSTAB_CD,\"lastHeroAction\":\"$HERO_ACTION\",\"lastEnemyAction\":\"$ENEMY_ACTION$EFFECT_NOTE\",\"lastCombatLog\":\"$COMBAT_LOG_ESCAPED\",\"lastLootDrop\":\"$LOOT_DROP\",\"attackSeq\":$ATTACK_SEQ$MANA_PATCH$WEAPON_PATCH$INVENTORY_PATCH$EFFECT_PATCH}}"
 
                         echo "$HERO_ACTION"
                         echo "$ENEMY_ACTION"
