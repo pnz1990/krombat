@@ -32,7 +32,7 @@ spec:
               restartPolicy: Never
               containers:
                 - name: attacker
-                  image: bitnami/kubectl:latest
+                  image: 569190534191.dkr.ecr.us-west-2.amazonaws.com/krombat/job-runner:latest
                   imagePullPolicy: IfNotPresent
                   env:
                     - name: DUNGEON
