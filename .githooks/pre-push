@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Pre-push hook: runs all integration tests locally before allowing push.
-# If any test fails, push is blocked.
+# Pre-push hook: runs ALL test suites before allowing push.
+# If any test fails, push is blocked. Use --no-verify to skip.
 set -uo pipefail
 
-echo "🔒 Pre-push hook: running integration tests..."
+echo "🔒 Pre-push hook: running all tests..."
 echo ""
 
 FAILED=0
@@ -11,38 +11,45 @@ FAILED=0
 # 1. Integration tests (parallel)
 echo "=== Integration Tests ==="
 ./tests/run.sh
-if [ $? -ne 0 ]; then
-  echo "❌ Integration tests failed"
-  FAILED=1
-else
-  echo "✅ Integration tests passed"
-fi
+if [ $? -ne 0 ]; then echo "❌ Integration tests failed"; FAILED=1
+else echo "✅ Integration tests passed"; fi
 
 # 2. Guardrail tests
 echo ""
 echo "=== Guardrail Tests ==="
 ./tests/guardrails.sh
-if [ $? -ne 0 ]; then
-  echo "❌ Guardrail tests failed"
-  FAILED=1
-else
-  echo "✅ Guardrail tests passed"
-fi
+if [ $? -ne 0 ]; then echo "❌ Guardrail tests failed"; FAILED=1
+else echo "✅ Guardrail tests passed"; fi
 
 # 3. Backend API tests
 echo ""
 echo "=== Backend API Tests ==="
+lsof -ti:8080 | xargs kill -9 2>/dev/null
 kubectl port-forward svc/rpg-backend -n rpg-system 8080:8080 > /dev/null 2>&1 &
 PF_PID=$!
 sleep 3
 ./tests/backend-api.sh
 RESULT=$?
 kill $PF_PID 2>/dev/null
-if [ $RESULT -ne 0 ]; then
-  echo "❌ Backend API tests failed"
-  FAILED=1
+if [ $RESULT -ne 0 ]; then echo "❌ Backend API tests failed"; FAILED=1
+else echo "✅ Backend API tests passed"; fi
+
+# 4. UI smoke tests
+echo ""
+echo "=== UI Smoke Tests ==="
+if command -v npx &>/dev/null && npx playwright --version &>/dev/null 2>&1; then
+  lsof -ti:3000 | xargs kill -9 2>/dev/null
+  kubectl port-forward svc/rpg-frontend -n rpg-system 3000:3000 > /dev/null 2>&1 &
+  PF_PID=$!
+  sleep 3
+  node tests/e2e/smoke-test.js
+  RESULT=$?
+  kill $PF_PID 2>/dev/null
+  lsof -ti:3000 | xargs kill -9 2>/dev/null
+  if [ $RESULT -ne 0 ]; then echo "❌ UI smoke tests failed"; FAILED=1
+  else echo "✅ UI smoke tests passed"; fi
 else
-  echo "✅ Backend API tests passed"
+  echo "⚠️  Playwright not installed — skipping UI tests"
 fi
 
 echo ""
