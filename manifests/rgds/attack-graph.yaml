@@ -172,7 +172,7 @@ spec:
                             hard)   DICE_COUNT=3; DICE_SIDES=20; DICE_MOD=5 ;;
                             *)      DICE_COUNT=2; DICE_SIDES=12; DICE_MOD=4 ;;
                           esac
-                          if echo "$REAL_TARGET" | grep -q "boss"; then
+                          if echo "$REAL_TARGET" | grep -q "\-boss$"; then
                             DICE_COUNT=$((DICE_COUNT + 1))
                             DICE_SIDES=$((DICE_SIDES))
                             DICE_MOD=$((DICE_MOD + 3))
@@ -248,7 +248,7 @@ spec:
                         fi
 
                         # Calculate hero's attack on target
-                        if echo "$REAL_TARGET" | grep -q "boss"; then
+                        if echo "$REAL_TARGET" | grep -q "\-boss$"; then
                           OLD_HP=$(echo "$DUNGEON_JSON" | jq -r '.spec.bossHP')
                           if [ "$OLD_HP" -le 0 ]; then
                             kubectl patch dungeon "$DUNGEON" -n "$DUNGEON_NS" --type=merge -p "{\"spec\":{\"lastLootDrop\":\"\",\"lastHeroAction\":\"Boss already defeated\",\"lastEnemyAction\":\"\"}}" 2>&1
@@ -404,7 +404,7 @@ spec:
 
                         # Roll for status effects from counter-attacks
                         EFFECT_NOTE=""
-                        if echo "$REAL_TARGET" | grep -q "boss"; then
+                        if echo "$REAL_TARGET" | grep -q "\-boss$"; then
                           if [ "$NEW_HP" -gt 0 ]; then
                             CURRENT_ROOM=$(echo "$DUNGEON_JSON" | jq -r '.spec.currentRoom // 1')
                             EFFECT_ROLL=$((RANDOM % 100))
@@ -444,7 +444,7 @@ spec:
 
                         HERO_ACTION="$DOT_NOTE""Hero ($HERO_CLASS) deals $EFFECTIVE_DAMAGE damage to $REAL_TARGET (HP: $OLD_HP -> $NEW_HP)$CLASS_NOTE"
 
-                        if echo "$REAL_TARGET" | grep -q "boss"; then
+                        if echo "$REAL_TARGET" | grep -q "\-boss$"; then
                           if [ "$NEW_HP" -gt 0 ]; then
                             ENEMY_ACTION="Boss strikes back for $COUNTER damage! (Hero HP: $HERO_HP)"
                           else
