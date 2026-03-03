@@ -109,23 +109,24 @@ async function run() {
       if (await closeBtn.count() > 0) await closeBtn.click().catch(() => {});
     }
 
-    // === Step 5: Kill all monsters via API (speed up test) ===
+    // === Step 5: Kill all monsters via kubectl (speed up test — attack Job tested in step 4) ===
     console.log('\n=== Kill All Monsters ===');
-    // Get current state
     let state = await api(page, 'GET', `/dungeons/${ns}/${dName}`);
-    const monsterHP = state.body.spec?.monsterHP || [];
-    for (let i = 0; i < monsterHP.length; i++) {
-      if (monsterHP[i] > 0) {
-        // Attack until dead
-        for (let atk = 0; atk < 10 && monsterHP[i] > 0; atk++) {
-          const result = await attack(page, ns, dName, `${dName}-monster-${i}`);
-          if (result) monsterHP[i] = result.spec.monsterHP[i];
-        }
-      }
+    const zeroHP = (state.body.spec?.monsterHP || []).map(() => 0);
+    // Patch directly — we already tested combat via UI in step 4
+    await page.evaluate(async ([n, hp]) => {
+      await fetch(`/api/v1/dungeons/default/${n}/attacks`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target: `${n}-monster-0`, damage: 999 }),
+      });
+    }, [dName, zeroHP]);
+    // Wait for attack to process, then kill remaining via more attacks
+    for (let i = 0; i < (zeroHP.length); i++) {
+      await attack(page, ns, dName, `${dName}-monster-${i}`);
     }
-    state = await api(page, 'GET', `/dungeons/${ns}/${dName}`);
-    const allDead = (state.body.spec?.monsterHP || []).every(hp => hp <= 0);
-    allDead ? ok('All monsters dead') : fail(`Monsters still alive: ${state.body.spec?.monsterHP}`);
+    // Poll until all dead
+    const allDeadState = await waitForSpec(page, ns, dName, d => (d.spec?.monsterHP || []).every(hp => hp <= 0), 60000);
+    allDeadState ? ok('All monsters dead') : fail(`Monsters still alive: ${(await api(page, 'GET', `/dungeons/${ns}/${dName}`)).body.spec?.monsterHP}`);
 
     // Check loot — if any dropped, lastLootDrop should have been set at some point
     ok('Monster kill phase complete');
@@ -139,11 +140,10 @@ async function run() {
 
     // === Step 7: Kill boss via API ===
     console.log('\n=== Kill Boss ===');
-    state = await api(page, 'GET', `/dungeons/${ns}/${dName}`);
-    let bossHP = state.body.spec?.bossHP || 200;
-    for (let atk = 0; atk < 20 && bossHP > 0; atk++) {
-      const result = await attack(page, ns, dName, `${dName}-boss`);
-      if (result) bossHP = result.spec.bossHP;
+    for (let atk = 0; atk < 30; atk++) {
+      state = await api(page, 'GET', `/dungeons/${ns}/${dName}`);
+      if (state.body.spec?.bossHP <= 0) break;
+      await attack(page, ns, dName, `${dName}-boss`);
     }
     state = await api(page, 'GET', `/dungeons/${ns}/${dName}`);
     state.body.spec?.bossHP <= 0 ? ok('Boss defeated') : fail(`Boss HP: ${state.body.spec?.bossHP}`);
