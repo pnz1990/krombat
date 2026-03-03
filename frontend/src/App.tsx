@@ -681,9 +681,9 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
   const heroHP = spec.heroHP ?? 100
   const maxHeroHP = Number(status?.maxHeroHP) || heroHP
   const isDefeated = status?.defeated || heroHP <= 0
-  const bossState = spec.bossHP <= 0 ? 'defeated' : allMonstersDead ? 'ready' : 'pending'
   const isHeroTurn = !currentTurn || currentTurn === 'hero'
   const allMonstersDead = (spec.monsterHP || []).every((hp: number) => hp <= 0)
+  const bossState = spec.bossHP <= 0 ? 'defeated' : allMonstersDead ? 'ready' : 'pending'
   const gameOver = isDefeated || (spec.bossHP <= 0 && allMonstersDead)
   const [showDoorModal, setShowDoorModal] = useState(false)
   const [doorPassword, setDoorPassword] = useState('')
