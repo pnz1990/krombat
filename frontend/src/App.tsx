@@ -269,9 +269,17 @@ export default function App() {
     try {
       await deleteDungeon(delNs, delName)
       if (selected?.name === delName) navigate('/')
-      // Remove from local list immediately (backend filters DELETING CRs)
-      setDungeons(prev => prev.filter(d => d.name !== delName))
-      setDeleting(prev => { const s = new Set(prev); s.delete(delName); return s })
+      // Keep in list with "deleting" visual — backend filters DELETING CRs on next refresh
+      const poll = async () => {
+        for (let i = 0; i < 30; i++) {
+          await new Promise(r => setTimeout(r, 3000))
+          const list = await listDungeons()
+          setDungeons(list)
+          if (!list.find(d => d.name === delName)) break
+        }
+        setDeleting(prev => { const s = new Set(prev); s.delete(delName); return s })
+      }
+      poll() // fire and forget — don't block UI
     } catch (e: any) { setError(e.message); setDeleting(prev => { const s = new Set(prev); s.delete(delName); return s }) }
   }
 

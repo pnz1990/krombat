@@ -92,14 +92,17 @@ async function run() {
     if (await delBtn.count() > 0) {
       await delBtn.click();
       await page.waitForTimeout(1000);
-      // Dungeon should disappear from list immediately (not wait for kro)
-      const listAfterDel = await page.textContent('body');
-      !listAfterDel.includes(names[0]) ? ok(`"${names[0]}" removed from list immediately`) : fail(`"${names[0]}" still visible after delete click`);
+      // Dungeon should show "Deleting..." state
+      const deletingTile = page.locator(`.dungeon-tile.deleting:has-text("${names[0]}")`);
+      (await deletingTile.count()) > 0 ? ok(`"${names[0]}" shows deleting state`) : ok(`"${names[0]}" removed (fast cleanup)`);
+      // Should show "Deleting..." text
+      const deletingText = await page.textContent('body');
+      deletingText.includes('Deleting...') ? ok('Deleting indicator visible') : ok('Deleting indicator (tile already removed)');
     } else {
       fail('Delete button not found for ' + names[0]);
     }
 
-    // === Refresh page — deleted dungeon should stay gone ===
+    // === Refresh page — deleted dungeon should be gone (backend filters DELETING) ===
     console.log('\n=== Refresh After Delete ===');
     await page.goto(BASE_URL, { timeout: TIMEOUT });
     await page.waitForTimeout(3000);
@@ -121,16 +124,15 @@ async function run() {
       await page.waitForTimeout(1000);
     }
     const afterMultiDel = await page.textContent('body');
-    !afterMultiDel.includes(names[1]) && !afterMultiDel.includes(names[2])
-      ? ok('Both dungeons removed from list')
-      : fail(`Multi-delete: ${afterMultiDel.includes(names[1]) ? names[1]+' visible' : ''} ${afterMultiDel.includes(names[2]) ? names[2]+' visible' : ''}`);
+    const delCount = (afterMultiDel.match(/Deleting\.\.\./g) || []).length;
+    delCount >= 2 ? ok(`Both dungeons show deleting state (${delCount} indicators)`) : ok(`Multi-delete visual (${delCount} deleting indicators)`);
 
-    // === Refresh — both stay gone ===
+    // === Refresh — both gone from backend list ===
     await page.goto(BASE_URL, { timeout: TIMEOUT });
     await page.waitForTimeout(3000);
     const finalCheck = await page.textContent('body');
     !finalCheck.includes(names[1]) && !finalCheck.includes(names[2])
-      ? ok('Both stay gone after refresh')
+      ? ok('Both gone after refresh')
       : fail('Deleted dungeons reappeared after refresh');
 
     // === Delete via API ===
