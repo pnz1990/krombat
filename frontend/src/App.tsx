@@ -681,17 +681,18 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
   const heroHP = spec.heroHP ?? 100
   const maxHeroHP = Number(status?.maxHeroHP) || heroHP
   const isDefeated = status?.defeated || heroHP <= 0
-  const bossState = status?.bossState || 'pending'
+  const bossState = spec.bossHP <= 0 ? 'defeated' : allMonstersDead ? 'ready' : 'pending'
   const isHeroTurn = !currentTurn || currentTurn === 'hero'
   const allMonstersDead = (spec.monsterHP || []).every((hp: number) => hp <= 0)
-  const gameOver = isDefeated || status?.victory || (spec.bossHP <= 0 && allMonstersDead)
+  const gameOver = isDefeated || (spec.bossHP <= 0 && allMonstersDead)
   const [showDoorModal, setShowDoorModal] = useState(false)
   const [doorPassword, setDoorPassword] = useState('')
   const autoTriggeredRef = useRef('')
 
-  // Auto-open treasure and unlock door after boss kill
+  // Auto-open treasure and unlock door after boss kill (room 1 only)
   useEffect(() => {
-    if (!allMonstersDead || spec.bossHP > 0 || isDefeated || attackPhase) return
+    const currentRoom = spec.currentRoom || 1
+    if (currentRoom !== 1 || !allMonstersDead || spec.bossHP > 0 || isDefeated || attackPhase) return
     const treasureOpened = (spec.treasureOpened ?? 0) === 1
     const doorUnlocked = (spec.doorUnlocked ?? 0) === 1
     if (!treasureOpened && autoTriggeredRef.current !== 'open-treasure') {
@@ -844,7 +845,8 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
                 style={{ left: `${p.x}%`, top: `${p.y}%`, width: p.size, transform: `translate(-50%,-50%) rotate(${p.rot}deg)` }} />
             ))}
 
-            {/* Door at top of arena */}
+            {/* Door at top of arena — room 1 only */}
+            {(spec.currentRoom || 1) === 1 && (
             <div className="arena-entity door-entity" style={{ top: '8%', left: '50%' }}>
               {(() => {
                 const doorUnlocked = (spec.doorUnlocked ?? 0) === 1
@@ -861,9 +863,10 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
                 </>
               })()}
             </div>
+            )}
 
-            {/* Treasure chest — appears after boss defeated, auto-opens */}
-            {(spec.bossHP <= 0 && allMonstersDead) && (
+            {/* Treasure chest — appears after boss defeated in room 1, auto-opens */}
+            {(spec.currentRoom || 1) === 1 && (spec.bossHP <= 0 && allMonstersDead) && (
               <div className="arena-entity chest-entity" style={{ top: '55%', left: '30%' }}>
                 <img src={`/sprites/dungeon/chest-${(spec.treasureOpened ?? 0) === 1 ? 'opened' : 'closed'}.png`}
                   alt="chest" style={{ width: 56, height: 56, imageRendering: 'pixelated' as any, filter: (spec.treasureOpened ?? 0) === 0 ? 'drop-shadow(0 0 4px gold)' : 'none' }} />
