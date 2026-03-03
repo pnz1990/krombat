@@ -196,8 +196,8 @@ export default function App() {
           setCombatModal({ phase: 'rolling', formula, heroAction: '', enemyAction: '', spec: detail?.spec, oldHP })
         }
 
-        await new Promise(r => setTimeout(r, 3000))
-        for (let attempt = 0; attempt < 10; attempt++) {
+        await new Promise(r => setTimeout(r, 5000))
+        for (let attempt = 0; attempt < 20; attempt++) {
           const current = await getDungeon(selected.ns, selected.name)
           if ((current.spec.attackSeq || 0) > prevSeq) {
             updated = current
@@ -205,7 +205,7 @@ export default function App() {
               JSON.stringify({ spec: current.spec, status: current.status }, null, 2))
             break
           }
-          await new Promise(r => setTimeout(r, 1500))
+          await new Promise(r => setTimeout(r, 3000))
         }
         setDetail(updated)
       }
