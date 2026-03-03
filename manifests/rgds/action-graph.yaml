@@ -161,6 +161,10 @@ spec:
                           R2_ARRAY=$(echo "$DUNGEON_JSON" | jq "[range($MONSTER_COUNT)] | map($R2_MHP)")
                           PATCH="{\"spec\":{\"currentRoom\":2,\"monsterHP\":$R2_ARRAY,\"bossHP\":$R2_BHP,\"room2MonsterHP\":$R2_ARRAY,\"room2BossHP\":$R2_BHP,\"treasureOpened\":0,\"doorUnlocked\":0,\"lastHeroAction\":\"Entered Room 2! Stronger enemies await...\",\"lastEnemyAction\":\"\",\"lastLootDrop\":\"\"}}"
                           if kubectl patch dungeon "$DUNGEON" -n "$DUNGEON_NS" --type=merge -p "$PATCH" 2>&1; then
+                            # Clean up stale attack/action CRs from room 1
+                            for atk in $(kubectl get attacks --no-headers -o custom-columns=NAME:.metadata.name 2>/dev/null | grep "^$DUNGEON-" || true); do
+                              kubectl delete attack "$atk" --wait=false 2>/dev/null || true
+                            done
                             echo "Entered Room 2!"; exit 0
                           fi
                           echo "Conflict, retrying ($i/5)..."; sleep $i; continue
