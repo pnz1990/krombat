@@ -46,7 +46,7 @@ export default function App() {
   const [roomLoading, setRoomLoading] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
   const [showCheat, setShowCheat] = useState(false)
-  const [deleting, setDeleting] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState<Set<string>>(new Set())
   const [lootDrop, setLootDrop] = useState<string | null>(null)
   const [activeNs, setActiveNs] = useState('default')
   const [attackTarget, setAttackTarget] = useState<string | null>(null)
@@ -265,19 +265,14 @@ export default function App() {
     const delName = name || selected?.name
     if (!delNs || !delName) return
     if (!confirm(`Delete dungeon "${delName}"? This cannot be undone.`)) return
-    setDeleting(delName)
+    setDeleting(prev => new Set(prev).add(delName))
     try {
       await deleteDungeon(delNs, delName)
       if (selected?.name === delName) navigate('/')
-      // Poll until dungeon is actually gone
-      for (let i = 0; i < 30; i++) {
-        await new Promise(r => setTimeout(r, 3000))
-        const list = await listDungeons()
-        setDungeons(list)
-        if (!list.find(d => d.name === delName)) { setDeleting(null); return }
-      }
-      setDeleting(null)
-    } catch (e: any) { setError(e.message); setDeleting(null) }
+      // Remove from local list immediately (backend filters DELETING CRs)
+      setDungeons(prev => prev.filter(d => d.name !== delName))
+      setDeleting(prev => { const s = new Set(prev); s.delete(delName); return s })
+    } catch (e: any) { setError(e.message); setDeleting(prev => { const s = new Set(prev); s.delete(delName); return s }) }
   }
 
   return (
@@ -363,16 +358,16 @@ function CreateForm({ onCreate }: { onCreate: (n: string, m: number, d: string, 
 
 function DungeonList({ dungeons, onSelect, onDelete, deleting }: {
   dungeons: DungeonSummary[]; onSelect: (ns: string, name: string) => void
-  onDelete: (ns: string, name: string) => void; deleting: string | null
+  onDelete: (ns: string, name: string) => void; deleting: Set<string>
 }) {
   if (!dungeons.length) return <div className="loading">No dungeons yet — create one above</div>
   return (
     <div className="dungeon-list">
       {dungeons.map(d => (
-        <div key={d.name} className={`dungeon-tile${deleting === d.name ? ' deleting' : ''}`} onClick={() => onSelect(d.namespace, d.name)}>
+        <div key={d.name} className={`dungeon-tile${deleting.has(d.name) ? ' deleting' : ''}`} onClick={() => onSelect(d.namespace, d.name)}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h3>{d.victory ? '' : ''}{d.name}</h3>
-            {deleting === d.name ? (
+            {deleting.has(d.name) ? (
               <span style={{ fontSize: '7px', color: 'var(--accent)' }}>Deleting...</span>
             ) : (
               <button className="tile-delete-btn" title="Delete dungeon" onClick={e => { e.stopPropagation(); onDelete(d.namespace, d.name) }}><PixelIcon name="damage" size={12} /></button>

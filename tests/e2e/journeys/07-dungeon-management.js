@@ -87,45 +87,85 @@ async function run() {
     // === Delete first dungeon via UI ===
     console.log('\n=== Delete Dungeon (UI) ===');
     page.on('dialog', dialog => dialog.accept());
-    // Find the tile for our specific dungeon and click its delete button
     const tile = page.locator(`.dungeon-tile:has-text("${names[0]}")`);
     const delBtn = tile.locator('.tile-delete-btn');
     if (await delBtn.count() > 0) {
       await delBtn.click();
-      ok('Delete button clicked');
-
-      // Wait for dungeon to disappear (kro finalizer takes ~60s)
-      const gone = await waitGone(page, names[0], 120000);
-      gone ? ok(`"${names[0]}" removed from list`) : fail(`"${names[0]}" still in list after 120s`);
+      await page.waitForTimeout(1000);
+      // Dungeon should disappear from list immediately (not wait for kro)
+      const listAfterDel = await page.textContent('body');
+      !listAfterDel.includes(names[0]) ? ok(`"${names[0]}" removed from list immediately`) : fail(`"${names[0]}" still visible after delete click`);
     } else {
       fail('Delete button not found for ' + names[0]);
     }
 
+    // === Refresh page — deleted dungeon should stay gone ===
+    console.log('\n=== Refresh After Delete ===');
+    await page.goto(BASE_URL, { timeout: TIMEOUT });
+    await page.waitForTimeout(3000);
+    const afterRefresh = await page.textContent('body');
+    !afterRefresh.includes(names[0]) ? ok(`"${names[0]}" gone after refresh`) : fail(`"${names[0]}" reappeared after refresh`);
+
+    // === Delete two dungeons in sequence ===
+    console.log('\n=== Delete Multiple ===');
+    const tile1 = page.locator(`.dungeon-tile:has-text("${names[1]}")`);
+    const del1 = tile1.locator('.tile-delete-btn');
+    if (await del1.count() > 0) {
+      await del1.click();
+      await page.waitForTimeout(500);
+    }
+    const tile2 = page.locator(`.dungeon-tile:has-text("${names[2]}")`);
+    const del2 = tile2.locator('.tile-delete-btn');
+    if (await del2.count() > 0) {
+      await del2.click();
+      await page.waitForTimeout(1000);
+    }
+    const afterMultiDel = await page.textContent('body');
+    !afterMultiDel.includes(names[1]) && !afterMultiDel.includes(names[2])
+      ? ok('Both dungeons removed from list')
+      : fail(`Multi-delete: ${afterMultiDel.includes(names[1]) ? names[1]+' visible' : ''} ${afterMultiDel.includes(names[2]) ? names[2]+' visible' : ''}`);
+
+    // === Refresh — both stay gone ===
+    await page.goto(BASE_URL, { timeout: TIMEOUT });
+    await page.waitForTimeout(3000);
+    const finalCheck = await page.textContent('body');
+    !finalCheck.includes(names[1]) && !finalCheck.includes(names[2])
+      ? ok('Both stay gone after refresh')
+      : fail('Deleted dungeons reappeared after refresh');
+
     // === Delete via API ===
     console.log('\n=== Delete Dungeon (API) ===');
-    const delRes = await api(page, 'DELETE', `/dungeons/default/${names[1]}`);
+    // Create a fresh dungeon for API delete test
+    const apiDelName = `j7-api-${ts}`;
+    await api(page, 'POST', '/dungeons', { name: apiDelName, monsters: 1, difficulty: 'easy', heroClass: 'warrior' });
+    await page.waitForTimeout(3000);
+    const delRes = await api(page, 'DELETE', `/dungeons/default/${apiDelName}`);
     (delRes.status === 204 || delRes.status === 200) ? ok(`DELETE API returns ${delRes.status}`) : fail(`DELETE returned ${delRes.status}`);
+    // Backend should filter DELETING CRs from list
+    await page.waitForTimeout(1000);
+    const listAfterApiDel = await api(page, 'GET', '/dungeons');
+    !listAfterApiDel.body.find(d => d.name === apiDelName)
+      ? ok('Deleted dungeon filtered from API list')
+      : fail('Deleted dungeon still in API list');
 
-    const gone2 = await waitGone(page, names[1], 90000);
-    gone2 ? ok(`"${names[1]}" fully deleted`) : fail(`"${names[1]}" still exists after 90s`);
-
-    // === Refresh page, verify deleted dungeons stay gone ===
+    // === Persistence Check ===
     console.log('\n=== Persistence Check ===');
     await page.goto(BASE_URL, { timeout: TIMEOUT });
     await page.waitForTimeout(3000);
     const finalText = await page.textContent('body');
-    !finalText.includes(names[0]) ? ok(`"${names[0]}" stays deleted after refresh`) : fail(`"${names[0]}" reappeared`);
-    !finalText.includes(names[1]) ? ok(`"${names[1]}" stays deleted after refresh`) : fail(`"${names[1]}" reappeared`);
-    finalText.includes(names[2]) ? ok(`"${names[2]}" still exists`) : fail(`"${names[2]}" disappeared`);
+    !finalText.includes(names[0]) ? ok(`"${names[0]}" stays deleted`) : fail(`"${names[0]}" reappeared`);
+    !finalText.includes(apiDelName) ? ok(`"${apiDelName}" stays deleted`) : fail(`"${apiDelName}" reappeared`);
 
-    // === Create dungeon with same name as deleted ===
+    // === Recreate Deleted Name ===
     console.log('\n=== Recreate Deleted Name ===');
+    // Wait for kro to fully clean up before recreating
+    const gone = await waitGone(page, names[0], 120000);
     const reRes = await api(page, 'POST', '/dungeons', { name: names[0], monsters: 1, difficulty: 'easy', heroClass: 'warrior' });
-    reRes.status === 201 ? ok(`Recreated "${names[0]}"`) : fail(`Recreate failed: HTTP ${reRes.status}`);
+    reRes.status === 201 ? ok(`Recreated "${names[0]}"`) : fail(`Recreate failed: HTTP ${reRes.status} (kro may still be cleaning up)`);
 
     // === Cleanup ===
     console.log('\n=== Cleanup ===');
-    for (const name of [names[0], names[2]]) {
+    for (const name of [names[0], names[1], names[2], apiDelName]) {
       await api(page, 'DELETE', `/dungeons/default/${name}`);
     }
     ok('Cleanup initiated');

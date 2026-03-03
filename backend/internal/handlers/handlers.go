@@ -204,6 +204,10 @@ func (h *Handler) ListDungeons(w http.ResponseWriter, r *http.Request) {
 	}
 	items := []summary{}
 	for _, d := range list.Items {
+		// Skip dungeons being deleted (kro finalizers take time)
+		if d.GetDeletionTimestamp() != nil {
+			continue
+		}
 		spec, _ := d.Object["spec"].(map[string]interface{})
 		status, _ := d.Object["status"].(map[string]interface{})
 		items = append(items, summary{
