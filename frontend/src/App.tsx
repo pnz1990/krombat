@@ -143,8 +143,10 @@ export default function App() {
       }
 
       await submitAttack(selected.ns, selected.name, target, damage)
-      addK8s(`kubectl apply -f attack.yaml`, 'attack.game.k8s.example created',
-        `apiVersion: game.k8s.example/v1alpha1\nkind: Attack\nmetadata:\n  name: ${selected.name}-${target}-${Date.now() % 100000}\nspec:\n  dungeonName: ${selected.name}\n  dungeonNamespace: ${selected.ns}\n  target: ${target}\n  damage: ${damage}`)
+      const crKind = isItem ? 'Action' : 'Attack'
+      const crField = isItem ? `action: ${target}` : `target: ${target}\n  damage: ${damage}`
+      addK8s(`kubectl apply -f ${crKind.toLowerCase()}.yaml`, `${crKind.toLowerCase()}.game.k8s.example created`,
+        `apiVersion: game.k8s.example/v1alpha1\nkind: ${crKind}\nmetadata:\n  name: ${selected.name}-${target}-${Date.now() % 100000}\nspec:\n  dungeonName: ${selected.name}\n  dungeonNamespace: ${selected.ns}\n  ${crField}`)
 
       let updated = detail!
       const prevAction = detail?.spec.lastHeroAction || ''

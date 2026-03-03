@@ -158,7 +158,7 @@ spec:
                             *)      R2_MHP=80; R2_BHP=800 ;;
                           esac
                           MONSTER_COUNT=$(echo "$DUNGEON_JSON" | jq '.spec.monsterHP | length')
-                          R2_ARRAY=$(python3 -c "print([$R2_MHP]*$MONSTER_COUNT)")
+                          R2_ARRAY=$(echo "$DUNGEON_JSON" | jq "[range($MONSTER_COUNT)] | map($R2_MHP)")
                           PATCH="{\"spec\":{\"currentRoom\":2,\"monsterHP\":$R2_ARRAY,\"bossHP\":$R2_BHP,\"room2MonsterHP\":$R2_ARRAY,\"room2BossHP\":$R2_BHP,\"treasureOpened\":0,\"doorUnlocked\":0,\"lastHeroAction\":\"Entered Room 2! Stronger enemies await...\",\"lastEnemyAction\":\"\",\"lastLootDrop\":\"\"}}"
                           if kubectl patch dungeon "$DUNGEON" -n "$DUNGEON_NS" --type=merge -p "$PATCH" 2>&1; then
                             echo "Entered Room 2!"; exit 0
