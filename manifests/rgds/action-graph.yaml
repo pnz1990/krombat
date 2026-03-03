@@ -27,7 +27,7 @@ spec:
           ttlSecondsAfterFinished: 30
           template:
             spec:
-              serviceAccountName: rpg-backend-sa
+              serviceAccountName: attack-job-sa
               restartPolicy: Never
               containers:
                 - name: actor
