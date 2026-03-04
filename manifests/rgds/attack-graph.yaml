@@ -253,7 +253,7 @@ spec:
                         if echo "$REAL_TARGET" | grep -q "\-boss$"; then
                           OLD_HP=$(echo "$DUNGEON_JSON" | jq -r '.spec.bossHP')
                           if [ "$OLD_HP" -le 0 ]; then
-                            kubectl patch dungeon "$DUNGEON" -n "$DUNGEON_NS" --type=merge -p "{\"spec\":{\"lastLootDrop\":\"\",\"lastHeroAction\":\"Boss already defeated\",\"lastEnemyAction\":\"\",\"attackSeq\":$ATTACK_SEQ}}" 2>&1
+                            kubectl patch dungeon "$DUNGEON" -n "$DUNGEON_NS" --type=merge -p "{\"spec\":{\"lastLootDrop\":\"\",\"lastHeroAction\":\"Boss already defeated\",\"lastEnemyAction\":\"\"}}" 2>&1
                             echo "Boss already dead"; exit 0
                           fi
                           NEW_HP=$((OLD_HP - EFFECTIVE_DAMAGE))
@@ -321,7 +321,7 @@ spec:
                           IDX=$(echo "$REAL_TARGET" | grep -oE '[0-9]+$')
                           OLD_HP=$(echo "$DUNGEON_JSON" | jq -r ".spec.monsterHP[$IDX]")
                           if [ "$OLD_HP" -le 0 ]; then
-                            kubectl patch dungeon "$DUNGEON" -n "$DUNGEON_NS" --type=merge -p "{\"spec\":{\"lastLootDrop\":\"\",\"lastHeroAction\":\"Monster already dead\",\"lastEnemyAction\":\"\",\"attackSeq\":$ATTACK_SEQ}}" 2>&1
+                            kubectl patch dungeon "$DUNGEON" -n "$DUNGEON_NS" --type=merge -p "{\"spec\":{\"lastLootDrop\":\"\",\"lastHeroAction\":\"Monster already dead\",\"lastEnemyAction\":\"\"}}" 2>&1
                             echo "Monster already dead"; exit 0
                           fi
                           NEW_HP=$((OLD_HP - EFFECTIVE_DAMAGE))
