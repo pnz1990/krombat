@@ -23,7 +23,6 @@ Kubernetes RPG demonstrates how [kro](https://kro.run) transforms Kubernetes int
 | Attack      | Custom Resource → Job (via attack-graph RGD) |
 | Treasure    | Custom Resource → Secret (via treasure-graph RGD) |
 | Loot        | Custom Resource → Secret (via loot-graph RGD) |
-| Shield      | Item — equippable for block chance |
 | Modifier    | Custom Resource → ConfigMap (via modifier-graph RGD) |
 | Action      | Custom Resource → Job (via action-graph RGD) |
 
@@ -37,7 +36,9 @@ Each dungeon instance gets its own Namespace for isolation and clean teardown.
 4. **Use items** — submit Action CRs; kro's action-graph RGD spawns a Job for equipping weapons/armor/shields, using potions, opening treasure, and unlocking doors
 4. **Use abilities** — Mage heals, Warrior taunts, Rogue backstabs — all via the same Attack CR pipeline
 5. **Boss unlocks** — when all monster HP=0, kro transitions the boss to `state=ready`
-6. **Defeat the boss** — attack the boss to reduce `bossHP` to 0; kro sets `state=defeated` and victory=true
+6. **Defeat the boss** — attack the boss to reduce `bossHP` to 0
+7. **Enter Room 2** — treasure auto-opens, door auto-unlocks, click door to enter a harder room with trolls/ghouls and a bat-boss
+8. **Final victory** — defeat the Room 2 boss to conquer the dungeon
 
 The backend and frontend only interact with kro-generated CRs (Dungeon and Attack). All game logic — HP calculations, class abilities, loot drops, status effects, modifiers — lives in kro's CEL expressions and Attack Job scripts. **kro is the game engine.**
 
@@ -94,6 +95,8 @@ The backend and frontend only interact with kro-generated CRs (Dungeon and Attac
 │   ├── rbac/                # ServiceAccounts, Roles, Bindings
 │   ├── rgds/                # 9 kro ResourceGraphDefinitions
 │   └── system/              # Backend/frontend deployments, dungeon reaper
+├── images/                  # Custom container images
+│   └── job-runner/          # Minimal kubectl+jq+bash for Attack/Action Jobs
 ├── infra/                   # Terraform (EKS, capabilities, ECR, CI)
 ├── tests/                   # Integration test suites
 │   ├── run.sh               # Game engine tests (32 tests)

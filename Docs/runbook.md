@@ -41,7 +41,7 @@ kubectl delete job <attack-name>
 kubectl delete attack <attack-name>
 ```
 
-### Monster pod not updating state after attack
+### Monster ConfigMap not updating state after attack
 kro reconciles on a loop. Wait 10-15 seconds. If still stuck:
 ```bash
 # Check the Dungeon CR spec — HP values should reflect the attack
@@ -113,7 +113,7 @@ kubectl get application krombat -n argocd -o jsonpath='Sync: {.status.sync.statu
 | Log Group | Contents | Retention |
 |-----------|----------|-----------|
 | `/eks/krombat/rpg-system` | Backend + frontend container logs | 7 days |
-| `/eks/krombat/game` | Attack Job logs, dungeon namespace pods | 7 days |
+| `/eks/krombat/game` | Attack Job logs, dungeon namespace resources | 7 days |
 | `/eks/krombat/kro` | kro controller logs | 30 days |
 | `/eks/krombat/argocd` | Argo CD logs | 30 days |
 
