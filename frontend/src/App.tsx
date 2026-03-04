@@ -157,7 +157,6 @@ export default function App() {
         `apiVersion: game.k8s.example/v1alpha1\nkind: ${crKind}\nmetadata:\n  name: ${selected.name}-${target}-${Date.now() % 100000}\nspec:\n  dungeonName: ${selected.name}\n  dungeonNamespace: ${selected.ns}\n  ${crField}`)
 
       let updated = detail!
-      const prevSeq = detail?.spec.attackSeq || 0
 
       if (isItem) {
         // Items: poll until the specific field changes
@@ -197,6 +196,10 @@ export default function App() {
         }
 
         await new Promise(r => setTimeout(r, 5000))
+        // Read attackSeq AFTER initial wait — any stale Jobs that resolved during
+        // submission + wait are now reflected in the baseline
+        const freshState = await getDungeon(selected.ns, selected.name)
+        const prevSeq = freshState.spec.attackSeq || 0
         for (let attempt = 0; attempt < 20; attempt++) {
           const current = await getDungeon(selected.ns, selected.name)
           if ((current.spec.attackSeq || 0) > prevSeq) {
@@ -212,7 +215,7 @@ export default function App() {
 
       const heroAction = updated.spec.lastHeroAction || ''
       const enemyAction = updated.spec.lastEnemyAction || ''
-      const pollSucceeded = (updated.spec.attackSeq || 0) > prevSeq
+      const pollSucceeded = updated !== detail
 
       if (!isAbility && !isItem) {
         const displayHero = pollSucceeded ? heroAction : 'Attack processing... (dismiss and check game state)'
@@ -801,21 +804,10 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
         </div>
       )}
 
-      {status?.victory && (
+      {gameOver && !isDefeated && (spec.currentRoom || 1) === 2 && (
         <div className="victory-banner">
           <h2><PixelIcon name="crown" size={18} /> VICTORY! <PixelIcon name="crown" size={18} /></h2>
           <p className="loot">The dungeon has been conquered!</p>
-          {(spec.treasureOpened ?? 0) === 0 ? (
-            <button className="btn btn-gold" style={{ marginTop: 12 }}
-              disabled={!!attackPhase}
-              onClick={() => onAttack('open-treasure', 0)}>
-              {attackPhase ? 'Opening...' : <><PixelIcon name="key" size={12} /> Open Treasure</>}
-            </button>
-          ) : (
-            <div className="loot-content" style={{ marginTop: 12 }}>
-              <PixelIcon name="chest" size={16} /> {status?.loot || 'Treasure opened!'}
-            </div>
-          )}
         </div>
       )}
 
