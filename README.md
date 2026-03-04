@@ -18,21 +18,23 @@ Kubernetes RPG demonstrates how [kro](https://kro.run) transforms Kubernetes int
 |-------------|-------------------|
 | Dungeon     | Custom Resource (parent RGD, orchestrates child CRs) |
 | Hero        | Custom Resource → ConfigMap (via hero-graph RGD) |
-| Monster     | Custom Resource → Pod (via monster-graph RGD) |
-| Boss        | Custom Resource → Pod (via boss-graph RGD) |
+| Monster     | Custom Resource → ConfigMap (via monster-graph RGD) |
+| Boss        | Custom Resource → ConfigMap (via boss-graph RGD) |
 | Attack      | Custom Resource → Job (via attack-graph RGD) |
 | Treasure    | Custom Resource → Secret (via treasure-graph RGD) |
 | Loot        | Custom Resource → Secret (via loot-graph RGD) |
 | Shield      | Item — equippable for block chance |
 | Modifier    | Custom Resource → ConfigMap (via modifier-graph RGD) |
+| Action      | Custom Resource → Job (via action-graph RGD) |
 
 Each dungeon instance gets its own Namespace for isolation and clean teardown.
 
 ## How It Works
 
 1. **Create a Dungeon** — specify monster count, difficulty (easy/normal/hard), and hero class (warrior/mage/rogue)
-2. **kro reconciles** — creates a namespace, hero ConfigMap, monster pods, a pending boss, a treasure Secret, and a modifier ConfigMap (curse or blessing)
+2. **kro reconciles** — creates a namespace, hero ConfigMap, monster ConfigMaps, a pending boss, a treasure Secret, and a modifier ConfigMap (curse or blessing)
 3. **Attack monsters** — submit Attack CRs; kro's attack-graph RGD spawns a Job that patches the Dungeon CR's `monsterHP` array. Monsters may drop loot and inflict status effects
+4. **Use items** — submit Action CRs; kro's action-graph RGD spawns a Job for equipping weapons/armor/shields, using potions, opening treasure, and unlocking doors
 4. **Use abilities** — Mage heals, Warrior taunts, Rogue backstabs — all via the same Attack CR pipeline
 5. **Boss unlocks** — when all monster HP=0, kro transitions the boss to `state=ready`
 6. **Defeat the boss** — attack the boss to reduce `bossHP` to 0; kro sets `state=defeated` and victory=true
@@ -59,18 +61,18 @@ The backend and frontend only interact with kro-generated CRs (Dungeon and Attac
 ```
 
 - **Frontend** — 8-bit D&D-inspired React SPA with pixel art styling. Nginx reverse-proxies `/api/` to the backend. All game state derived from the Dungeon CR
-- **Backend** — Stateless Go service. Only touches Dungeon and Attack CRs — never reads Pods, Secrets, or Jobs. Includes rate limiting (1 attack/s per dungeon) and Prometheus metrics on `/metrics`
-- **Kubernetes + kro** — Sole source of truth. Eight RGDs orchestrate the game via CR chaining: `dungeon-graph` (parent) spawns child CRs managed by `hero-graph`, `monster-graph`, `boss-graph`, `treasure-graph`, `modifier-graph`, `loot-graph` (items as Secrets), and `attack-graph` (combat). kro runs as an [EKS Managed Capability](https://docs.aws.amazon.com/eks/latest/userguide/kro.html)
+- **Backend** — Stateless Go service. Only touches Dungeon, Attack, and Action CRs — never reads Pods, Secrets, or Jobs. Routes item actions to Action CR, combat to Attack CR. Includes rate limiting (1 attack/s per dungeon) and Prometheus metrics on `/metrics`
+- **Kubernetes + kro** — Sole source of truth. Nine RGDs orchestrate the game via CR chaining: `dungeon-graph` (parent) spawns child CRs managed by `hero-graph`, `monster-graph`, `boss-graph`, `treasure-graph`, `modifier-graph`, `loot-graph` (items as Secrets), `attack-graph` (combat), and `action-graph` (items, equipment, treasure, doors). kro runs as an [EKS Managed Capability](https://docs.aws.amazon.com/eks/latest/userguide/kro.html)
 - **Argo CD** — Runs as an [EKS Managed Capability](https://docs.aws.amazon.com/eks/latest/userguide/argocd.html). Continuously syncs all cluster manifests from this Git repo. GitHub webhook for ~6s sync latency
 - **Observability** — CloudWatch Container Insights for cluster/pod metrics, CloudWatch Logs for centralized log aggregation (JSON structured logs from backend, attack Job logs, kro controller logs), CloudWatch dashboard and alarms for operational monitoring
 
 ## Key Demonstrations
 
-- **Eight-RGD orchestration** — `dungeon-graph` manages game state, `attack-graph` handles combat, six child RGDs handle entities
+- **Nine-RGD orchestration** — `dungeon-graph` manages game state, `attack-graph` handles combat, `action-graph` handles items/equipment, seven child RGDs handle entities
 - **RGD composition via CR chaining** — Parent RGD spawns child CRs (Hero, Monster, Boss, Treasure, Modifier), each reconciled by its own RGD into native K8s resources
-- **Dynamic resource generation** — Monster pod count driven by CEL expressions
+- **Dynamic resource generation** — Monster count driven by CEL expressions
 - **Cross-resource state derivation** — Boss readiness depends on aggregated monster HP values via CEL; Dungeon status reads Modifier CR status
-- **Drift correction** — Delete an alive monster pod and kro recreates it with correct state from Dungeon CR
+- **Drift correction** — Delete a monster ConfigMap and kro recreates it with correct state from Dungeon CR
 - **Optimistic concurrency** — Attack Jobs use resourceVersion preconditions for safe concurrent Dungeon CR mutation
 - **CRs as the only interface** — Backend never touches native K8s objects; kro is the abstraction layer
 - **Complex game logic in bash + CEL** — Hero abilities, loot drops, status effects, modifiers all computed in Attack Job scripts
@@ -90,14 +92,15 @@ The backend and frontend only interact with kro-generated CRs (Dungeon and Attac
 ├── manifests/               # Argo CD syncs this directory
 │   ├── apps/                # Argo CD Application
 │   ├── rbac/                # ServiceAccounts, Roles, Bindings
-│   ├── rgds/                # 8 kro ResourceGraphDefinitions
+│   ├── rgds/                # 9 kro ResourceGraphDefinitions
 │   └── system/              # Backend/frontend deployments, dungeon reaper
 ├── infra/                   # Terraform (EKS, capabilities, ECR, CI)
 ├── tests/                   # Integration test suites
-│   ├── run.sh               # Game engine tests (~47 tests)
-│   ├── backend-api.sh       # Backend API tests (15 tests)
-│   ├── guardrails.sh        # Architecture guardrails (17 tests)
-│   └── e2e/smoke-test.js    # Playwright UI tests (~40 tests)
+│   ├── run.sh               # Game engine tests (32 tests)
+│   ├── backend-api.sh       # Backend API tests (17 tests)
+│   ├── guardrails.sh        # Architecture guardrails (28 tests)
+│   ├── e2e/smoke-test.js    # Playwright UI tests (59 smoke tests)
+│   └── e2e/journeys/       # Gameplay journey tests (88 tests across 4 journeys)
 ├── assets/                  # Source sprite sheets (generated via AI)
 ├── scripts/                 # Utility scripts
 │   └── watch-dungeon.sh     # tmux dashboard for watching game state

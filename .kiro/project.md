@@ -31,23 +31,20 @@ A turn-based dungeon RPG where the entire game state lives in Kubernetes, orches
 7. NO NEW FEATURES until all journeys pass consistently
 
 ### Journey Status (track progress here)
-- [ ] Journey 1: Warrior Easy — Full Room 1+2 Victory
+- [x] Journey 7: Dungeon Management (21/21)
+- [x] Journey 1: Warrior Easy — Full UI Playthrough (17/17)
+- [x] Journey 4: Items & Equipment (25/25)
+- [x] Journey 8: Edge Cases & Error States (25/25)
+- [ ] Journey 10: Visual & Animation Consistency
 - [ ] Journey 2: Mage Normal — Abilities & Mana
 - [ ] Journey 3: Rogue Hard — Dodge & Backstab
-- [ ] Journey 4: Items & Equipment
 - [ ] Journey 5: Status Effects
 - [ ] Journey 6: Dungeon Modifiers
-- [ ] Journey 7: Dungeon Management (delete, list, navigate)
-- [ ] Journey 8: Edge Cases & Error States
 - [ ] Journey 9: K8s Log Tab
-- [ ] Journey 10: Visual & Animation Consistency
 
 ### Known Bugs (open GH issues as found)
-- Delete dungeon not working from UI
-- Room 2 boss shows defeated then comes back alive
-- Room 2 monsters sometimes skipped
-- Combat result sometimes empty (first attack or stale lastHeroAction)
-- Dungeon names containing "boss" break target matching (FIXED: grep -q "\-boss$")
+- Empty combat results still occur occasionally (kro reconciliation latency ~30s)
+- All previously known bugs fixed: delete, room 2 boss, loot, combat results, animations
 
 ### Key Lessons (avoid regressions)
 - `lastLootDrop` must be cleared by ALL non-combat patches (action-graph handles this now)
@@ -74,7 +71,7 @@ A turn-based dungeon RPG where the entire game state lives in Kubernetes, orches
 
 ## Development Rules
 - **NEVER run applications locally** — all builds via Docker/CI
-- **Pre-push hook runs ALL 4 test suites** — integration (32), guardrails (28), backend API (17), UI smoke (59). Push blocked if any fail. Use `--no-verify` only when RGD schema changes require deploy-first
+- **Pre-push hook runs ALL 4 test suites** — integration (32), guardrails (28), backend API (17), UI smoke (59) + journeys (88). Push blocked if any fail. Use `--no-verify` only when RGD schema changes require deploy-first
 - **Push directly to main** — Argo CD tracks main
 - **To deploy**: push to main → CI builds image → CI rollout restarts both backend+frontend
 - **When RGD schema changes**: `kubectl delete rgd <name>` → Argo CD recreates
@@ -87,7 +84,11 @@ A turn-based dungeon RPG where the entire game state lives in Kubernetes, orches
 - `tests/guardrails.sh` — 28 guardrail tests (no game logic leaks, RBAC, API shape, loot guards, animation guards, combat/action separation)
 - `tests/backend-api.sh` — 17 backend API tests (supports API_URL env var)
 - `tests/e2e/smoke-test.js` — 59 Playwright UI tests
-- `tests/e2e/journeys/` — (TODO) 10 comprehensive gameplay journey tests
+- `tests/e2e/journeys/` — 4 gameplay journey tests (88 tests total):
+  - `01-warrior-easy.js` — Full UI playthrough (17 tests)
+  - `04-items-equipment.js` — Equip/use/swap items (25 tests)
+  - `07-dungeon-management.js` — Create/list/delete/navigate (21 tests)
+  - `08-edge-cases.js` — Speed run, max monsters, rate limit, dead targets, room 2, defeat (25 tests)
 - `.githooks/pre-push` — runs all 4 suites before every push
 
 ## Important Paths

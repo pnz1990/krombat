@@ -8,9 +8,10 @@ kubectl get dungeons
 kubectl get dungeon <name> -o jsonpath='{.status}'
 ```
 
-### Check all pods in a dungeon
+### Check all resources in a dungeon
 ```bash
-kubectl get pods -n <dungeon-name> -o custom-columns='NAME:.metadata.name,HP:.metadata.annotations.game\.k8s\.example/hp,STATE:.metadata.labels.game\.k8s\.example/state'
+kubectl get configmaps -n <dungeon-name>
+kubectl get secrets -n <dungeon-name>
 ```
 
 ### Check RGD health
