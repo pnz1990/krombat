@@ -727,7 +727,9 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
   const isHeroTurn = !currentTurn || currentTurn === 'hero'
   const allMonstersDead = (spec.monsterHP || []).every((hp: number) => hp <= 0)
   const bossState = spec.bossHP <= 0 ? 'defeated' : allMonstersDead ? 'ready' : 'pending'
-  const gameOver = isDefeated || (spec.bossHP <= 0 && allMonstersDead)
+  // During room 2 transition, bossHP=0 is stale from room 1 — not a real victory
+  const inRoomTransition = (spec.currentRoom || 1) === 2 && spec.bossHP <= 0 && allMonstersDead && (spec.room2BossHP || 0) > 0
+  const gameOver = isDefeated || (!inRoomTransition && spec.bossHP <= 0 && allMonstersDead)
   const [showDoorModal, setShowDoorModal] = useState(false)
   const [doorPassword, setDoorPassword] = useState('')
   const autoTriggeredRef = useRef('')

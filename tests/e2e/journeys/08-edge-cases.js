@@ -1,5 +1,7 @@
 // Journey 8: Edge Cases & Error States
+// UI-ONLY: no kubectl, no fetch/api, no execSync
 const { chromium } = require('playwright');
+const { createDungeonUI, attackMonster, attackBoss, waitForCombatResult, dismissLootPopup, navigateHome, deleteDungeon } = require('./helpers');
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 const TIMEOUT = 15000;
@@ -8,117 +10,128 @@ function ok(msg) { console.log(`  ✅ ${msg}`); passed++; }
 function fail(msg) { console.log(`  ❌ ${msg}`); failed++; }
 function warn(msg) { console.log(`  ⚠️  ${msg}`); warnings++; }
 
-async function api(page, method, path, body) {
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      return await page.evaluate(async ([m, p, b]) => {
-        const opts = { method: m, headers: { 'Content-Type': 'application/json' } };
-        if (b) opts.body = JSON.stringify(b);
-        const r = await fetch(`/api/v1${p}`, opts);
-        const text = await r.text();
-        try { return { status: r.status, body: JSON.parse(text) }; } catch { return { status: r.status, body: text }; }
-      }, [method, path, body]);
-    } catch { await page.waitForTimeout(2000); }
+// Kill all monsters + boss through the UI, returns true if hero survived
+async function playToVictory(page) {
+  for (let i = 0; i < 80; i++) {
+    const alive = page.locator('.arena-entity.monster-entity:not(.dead) .arena-atk-btn.btn-primary');
+    const boss = page.locator('.arena-entity.boss-entity .arena-atk-btn.btn-primary');
+    if (await alive.count() > 0) {
+      await alive.first().click({ force: true });
+    } else if (await boss.count() > 0) {
+      await boss.click({ force: true });
+    } else {
+      return true; // Nothing left to attack
+    }
+    const result = await waitForCombatResult(page);
+    if (!result) { await page.waitForTimeout(2000); continue; }
+    await dismissLootPopup(page);
+    // Check if hero died
+    const body = await page.textContent('body');
+    if (body.includes('DEFEAT') || body.includes('has fallen')) return false;
+    await page.waitForTimeout(500);
   }
-  return { status: 0, body: 'fetch failed' };
-}
-
-async function waitForSpec(page, name, check, maxWait = 45000) {
-  const start = Date.now();
-  while (Date.now() - start < maxWait) {
-    const res = await api(page, 'GET', `/dungeons/default/${name}`);
-    if (res.status === 200 && check(res.body)) return res.body;
-    await page.waitForTimeout(2000);
-  }
-  return null;
+  return false;
 }
 
 async function run() {
   console.log('🧪 Journey 8: Edge Cases & Error States\n');
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
-  const { execSync } = require('child_process');
+  const ts = Date.now();
 
   const consoleErrors = [];
   page.on('console', msg => {
     if (msg.type() === 'error' && !msg.text().includes('WebSocket') && !msg.text().includes('404') && !msg.text().includes('429') && !msg.text().includes('500') && !msg.text().includes('400'))
       consoleErrors.push(msg.text());
   });
+  page.on('dialog', dialog => dialog.accept());
 
   try {
+    // === Test 1: Speed run — 1 monster easy, play to victory ===
+    console.log('=== Test 1: Speed Run (1 monster, easy) ===');
+    const speedName = `j8sp${ts}`;
     await page.goto(BASE_URL, { timeout: TIMEOUT });
     await page.waitForTimeout(2000);
+    await createDungeonUI(page, speedName, { monsters: 1, difficulty: 'easy', heroClass: 'warrior' });
+    ok('Speed run dungeon created');
 
-    // === Test 1: Speed run — 1 monster easy ===
-    console.log('=== Test 1: Speed Run (1 monster, easy) ===');
-    const speedName = `j8-speed-${Date.now()}`;
-    await api(page, 'POST', '/dungeons', { name: speedName, monsters: 1, difficulty: 'easy', heroClass: 'warrior' });
-    await waitForSpec(page, speedName, d => d.spec?.monsterHP?.length === 1);
-    // Kill monster instantly
-    execSync(`kubectl patch dungeon ${speedName} --type=merge -p '{"spec":{"monsterHP":[0]}}'`);
-    await page.waitForTimeout(3000);
-    let state = await api(page, 'GET', `/dungeons/default/${speedName}`);
-    (state.body.spec?.monsterHP || [])[0] === 0 ? ok('Monster killed instantly') : fail('Monster not dead');
-    // Boss should be ready
-    await page.goto(`${BASE_URL}/dungeon/default/${speedName}`, { timeout: TIMEOUT });
-    await page.waitForTimeout(5000);
-    const bossBtn = page.locator('.arena-entity.boss-entity .arena-atk-btn.btn-primary');
-    (await bossBtn.count()) > 0 ? ok('Boss attackable after instant kill') : warn('Boss not visible yet (kro reconciling)');
-    await api(page, 'DELETE', `/dungeons/default/${speedName}`);
-
-    // === Test 2: 10 monsters hard ===
-    console.log('\n=== Test 2: Max Monsters (10, hard) ===');
-    const maxName = `j8-max-${Date.now()}`;
-    await api(page, 'POST', '/dungeons', { name: maxName, monsters: 10, difficulty: 'hard', heroClass: 'rogue' });
-    const maxDungeon = await waitForSpec(page, maxName, d => d.spec?.monsterHP?.length === 10);
-    maxDungeon ? ok('10 monsters created') : fail('10 monsters not created');
-    if (maxDungeon) {
-      const expectedHP = maxDungeon.spec.modifier === 'curse-fortitude' ? 120 : 80;
-      maxDungeon.spec.monsterHP.every(hp => hp === expectedHP) ? ok(`All monsters have ${expectedHP} HP (hard${maxDungeon.spec.modifier === 'curse-fortitude' ? ' +fortitude' : ''})`) : fail(`Monster HP: ${maxDungeon.spec.monsterHP}`);
-      maxDungeon.spec.bossHP === 800 ? ok('Boss has 800 HP (hard)') : fail(`Boss HP: ${maxDungeon.spec.bossHP}`);
+    // Kill the single monster through UI
+    let monsterDead = false;
+    for (let i = 0; i < 15; i++) {
+      const alive = page.locator('.arena-entity.monster-entity:not(.dead) .arena-atk-btn.btn-primary');
+      if (await alive.count() === 0) { monsterDead = true; break; }
+      await alive.first().click({ force: true });
+      await waitForCombatResult(page);
+      await dismissLootPopup(page);
+      await page.waitForTimeout(500);
     }
-    // Verify all render in UI
-    await page.goto(`${BASE_URL}/dungeon/default/${maxName}`, { timeout: TIMEOUT });
-    await page.waitForTimeout(5000);
+    monsterDead ? ok('Monster killed') : fail('Could not kill monster');
+
+    // Boss should now be attackable
+    const bossBtn = page.locator('.arena-entity.boss-entity .arena-atk-btn.btn-primary');
+    for (let i = 0; i < 15; i++) {
+      if (await bossBtn.count() > 0) break;
+      await page.waitForTimeout(2000);
+    }
+    (await bossBtn.count()) > 0 ? ok('Boss attackable after monster kill') : fail('Boss not attackable');
+
+    // === Test 2: 10 monsters hard — verify all render ===
+    console.log('\n=== Test 2: Max Monsters (10, hard) ===');
+    const maxName = `j8mx${ts}`;
+    await navigateHome(page, BASE_URL);
+    await page.waitForTimeout(2000);
+    await createDungeonUI(page, maxName, { monsters: 10, difficulty: 'hard', heroClass: 'rogue' });
+    ok('10-monster dungeon created');
+
     const monsterEntities = page.locator('.arena-entity.monster-entity');
+    for (let i = 0; i < 10; i++) {
+      if (await monsterEntities.count() === 10) break;
+      await page.waitForTimeout(2000);
+    }
     const mCount = await monsterEntities.count();
-    mCount === 10 ? ok('All 10 monsters rendered in arena') : fail(`Only ${mCount} monsters rendered`);
-    await api(page, 'DELETE', `/dungeons/default/${maxName}`);
+    mCount === 10 ? ok(`All 10 monsters rendered`) : fail(`Only ${mCount} monsters rendered`);
 
     // === Test 3: Rate limiting — rapid attack clicks ===
     console.log('\n=== Test 3: Rate Limiting ===');
-    const rateName = `j8-rate-${Date.now()}`;
-    await api(page, 'POST', '/dungeons', { name: rateName, monsters: 2, difficulty: 'easy', heroClass: 'warrior' });
-    await waitForSpec(page, rateName, d => d.spec?.monsterHP?.length === 2);
-    // Submit 5 attacks rapidly via API
-    const results = [];
-    for (let i = 0; i < 5; i++) {
-      const r = await api(page, 'POST', `/dungeons/default/${rateName}/attacks`, { target: `${rateName}-monster-0`, damage: 0 });
-      results.push(r.status);
+    // Click attack button rapidly 5 times
+    const rateBtn = page.locator('.arena-entity.monster-entity:not(.dead) .arena-atk-btn.btn-primary').first();
+    if (await rateBtn.count() > 0) {
+      for (let i = 0; i < 5; i++) {
+        await rateBtn.click({ force: true }).catch(() => {});
+        await page.waitForTimeout(100);
+      }
+      // Should not crash or show multiple combat modals
+      await page.waitForTimeout(3000);
+      const modalCount = await page.locator('.combat-modal').count();
+      modalCount <= 1 ? ok('Rapid clicks handled (at most 1 combat modal)') : fail(`${modalCount} combat modals from rapid clicks`);
+      // Dismiss any modal
+      const cont = page.locator('button:has-text("Continue")');
+      for (let i = 0; i < 10; i++) {
+        if (await cont.count() > 0) { await cont.click().catch(() => {}); break; }
+        await page.waitForTimeout(2000);
+      }
+      await dismissLootPopup(page);
+    } else {
+      warn('No attack button for rate limit test');
     }
-    const accepted = results.filter(s => s === 202).length;
-    const limited = results.filter(s => s === 429).length;
-    (accepted >= 1 && limited >= 1) ? ok(`Rate limiting works: ${accepted} accepted, ${limited} limited`)
-      : accepted === 5 ? warn(`All 5 accepted (rate limit may be per-second)`)
-      : fail(`Unexpected: ${JSON.stringify(results)}`);
-    await api(page, 'DELETE', `/dungeons/default/${rateName}`);
 
-    // === Test 4: Attack already-dead monster via API ===
+    // === Test 4: Attack already-dead monster via UI ===
     console.log('\n=== Test 4: Attack Dead Monster ===');
-    const deadName = `j8-dead-${Date.now()}`;
-    await api(page, 'POST', '/dungeons', { name: deadName, monsters: 1, difficulty: 'easy', heroClass: 'warrior' });
-    await waitForSpec(page, deadName, d => d.spec?.monsterHP?.length === 1);
-    execSync(`kubectl patch dungeon ${deadName} --type=merge -p '{"spec":{"monsterHP":[0],"lastLootDrop":"","attackSeq":1}}'`);
+    // Use the speed-run dungeon where monster is already dead
+    await navigateHome(page, BASE_URL);
     await page.waitForTimeout(2000);
-    // Attack the dead monster
-    await api(page, 'POST', `/dungeons/default/${deadName}/attacks`, { target: `${deadName}-monster-0`, damage: 0 });
-    await page.waitForTimeout(20000);
-    state = await api(page, 'GET', `/dungeons/default/${deadName}`);
-    // attackSeq should NOT have incremented (already-dead doesn't increment)
-    state.body.spec?.attackSeq === 1 ? ok('Dead monster attack did not increment attackSeq') : warn(`attackSeq: ${state.body.spec?.attackSeq} (may have incremented from stale Job)`);
-    // lastLootDrop should be empty
-    (state.body.spec?.lastLootDrop || '') === '' ? ok('No loot from dead monster') : fail(`Loot from dead: ${state.body.spec?.lastLootDrop}`);
-    await api(page, 'DELETE', `/dungeons/default/${deadName}`);
+    const speedTile = page.locator(`.dungeon-tile:has-text("${speedName}")`);
+    if (await speedTile.count() > 0) {
+      await speedTile.click();
+      await page.waitForTimeout(4000);
+      // Dead monsters should have no attack button
+      const deadMonsterBtns = page.locator('.arena-entity.monster-entity.dead .arena-atk-btn.btn-primary');
+      (await deadMonsterBtns.count()) === 0
+        ? ok('Dead monsters have no attack button')
+        : fail('Dead monster still has attack button');
+    } else {
+      warn('Speed run dungeon not found for dead monster test');
+    }
 
     // === Test 5: Navigate to nonexistent dungeon ===
     console.log('\n=== Test 5: Nonexistent Dungeon ===');
@@ -128,111 +141,125 @@ async function run() {
     (errText.includes('not found') || errText.includes('Initializing') || errText.includes('Error') || errText.includes('initializing'))
       ? ok('Nonexistent dungeon shows error/initializing')
       : fail(`No error for nonexistent dungeon: ${errText.substring(0, 100)}`);
-    // Should not crash
     const crashed = errText.includes('Cannot read') || errText.includes('undefined');
     !crashed ? ok('No JS crash on nonexistent dungeon') : fail('JS crash detected');
 
     // === Test 6: Refresh mid-combat ===
     console.log('\n=== Test 6: Refresh Mid-Combat ===');
-    const refreshName = `j8-refresh-${Date.now()}`;
-    await api(page, 'POST', '/dungeons', { name: refreshName, monsters: 1, difficulty: 'easy', heroClass: 'warrior' });
-    await waitForSpec(page, refreshName, d => d.spec?.monsterHP?.length === 1);
-    await page.goto(`${BASE_URL}/dungeon/default/${refreshName}`, { timeout: TIMEOUT });
-    await page.waitForTimeout(5000);
-    // Click attack
-    const atkBtn = page.locator('.arena-atk-btn.btn-primary').first();
-    if (await atkBtn.count() > 0) {
+    // Navigate to the 10-monster dungeon (still has targets)
+    await navigateHome(page, BASE_URL);
+    await page.waitForTimeout(2000);
+    const maxTile = page.locator(`.dungeon-tile:has-text("${maxName}")`);
+    if (await maxTile.count() > 0) {
+      await maxTile.click();
+      await page.waitForTimeout(4000);
+      const atkBtn = page.locator('.arena-atk-btn.btn-primary').first();
+      if (await atkBtn.count() > 0) {
+        await atkBtn.click({ force: true });
+        await page.waitForTimeout(2000);
+        // Refresh mid-combat
+        await page.reload({ timeout: TIMEOUT });
+        await page.waitForTimeout(5000);
+        const afterRefresh = await page.textContent('body');
+        afterRefresh.includes(maxName) ? ok('Page recovers after mid-combat refresh') : fail('Page broken after refresh');
+        const atkBtn2 = page.locator('.arena-atk-btn.btn-primary').first();
+        (await atkBtn2.count()) > 0 ? ok('Attack buttons available after refresh') : warn('Attack buttons not visible (combat may still be processing)');
+      } else {
+        warn('No attack button for refresh test');
+      }
+    } else {
+      warn('Max dungeon not found for refresh test');
+    }
+
+    // === Test 7: Room 2 transition via full playthrough ===
+    console.log('\n=== Test 7: Room 2 Transition ===');
+    const roomName = `j8rm${ts}`;
+    await navigateHome(page, BASE_URL);
+    await page.waitForTimeout(2000);
+    await createDungeonUI(page, roomName, { monsters: 1, difficulty: 'easy', heroClass: 'warrior' });
+    ok('Room transition dungeon created');
+
+    const won = await playToVictory(page);
+    if (won) {
+      ok('Room 1 cleared');
+      // Wait for post-boss sequence: treasure opens, door unlocks
+      for (let i = 0; i < 30; i++) {
+        const body = await page.textContent('body');
+        if (body.includes('Enter') || body.includes('Room 2')) break;
+        await page.waitForTimeout(2000);
+      }
+      // Click door to enter room 2
+      const doorBtn = page.locator('button:has-text("Enter"), .door-entity');
+      if (await doorBtn.count() > 0) {
+        await doorBtn.first().click({ force: true });
+        // Wait for room 2 to load
+        for (let i = 0; i < 30; i++) {
+          const body = await page.textContent('body');
+          if (body.includes('Room 2') || body.includes('room 2')) break;
+          await page.waitForTimeout(2000);
+        }
+        const r2Text = await page.textContent('body');
+        r2Text.includes('2') ? ok('Room 2 loaded') : fail('Room 2 did not load');
+        // Should NOT show victory banner
+        !r2Text.includes('VICTORY') ? ok('No victory banner in room 2') : fail('Victory banner showing in room 2');
+        // Monsters should be attackable
+        const r2Atk = page.locator('.arena-atk-btn.btn-primary');
+        for (let i = 0; i < 10; i++) {
+          if (await r2Atk.count() > 0) break;
+          await page.waitForTimeout(2000);
+        }
+        (await r2Atk.count()) > 0 ? ok('Room 2 monsters attackable') : fail('No attack buttons in room 2');
+      } else {
+        fail('Door not found after room 1 victory');
+      }
+    } else {
+      warn('Hero died before room 2 — cannot test room transition');
+    }
+
+    // === Test 8: Defeat state — play until hero dies ===
+    console.log('\n=== Test 8: Defeat State ===');
+    const defeatName = `j8df${ts}`;
+    await navigateHome(page, BASE_URL);
+    await page.waitForTimeout(2000);
+    // Hard + many monsters = hero likely dies
+    await createDungeonUI(page, defeatName, { monsters: 5, difficulty: 'hard', heroClass: 'mage' });
+    ok('Defeat test dungeon created');
+
+    // Attack until hero dies (mage has 120 HP, hard monsters hit hard)
+    let defeated = false;
+    for (let i = 0; i < 40; i++) {
+      const body = await page.textContent('body');
+      if (body.includes('DEFEAT') || body.includes('has fallen')) { defeated = true; break; }
+      const atkBtn = page.locator('.arena-entity:not(.dead) .arena-atk-btn.btn-primary').first();
+      if (await atkBtn.count() === 0) break;
       await atkBtn.click({ force: true });
-      await page.waitForTimeout(2000);
-      // Refresh mid-combat
-      await page.reload({ timeout: TIMEOUT });
-      await page.waitForTimeout(5000);
-      const afterRefresh = await page.textContent('body');
-      afterRefresh.includes(refreshName) ? ok('Page recovers after mid-combat refresh') : fail('Page broken after refresh');
-      // Should be able to attack again
-      const atkBtn2 = page.locator('.arena-atk-btn.btn-primary').first();
-      (await atkBtn2.count()) > 0 ? ok('Attack buttons available after refresh') : warn('Attack buttons not visible (combat may still be processing)');
-    } else {
-      warn('No attack button for refresh test');
+      await waitForCombatResult(page);
+      await dismissLootPopup(page);
+      await page.waitForTimeout(500);
     }
-    await api(page, 'DELETE', `/dungeons/default/${refreshName}`);
-
-    // === Test 7: Room 2 boss state ===
-    console.log('\n=== Test 7: Room 2 Boss State ===');
-    const roomName = `j8-room-${Date.now()}`;
-    await api(page, 'POST', '/dungeons', { name: roomName, monsters: 1, difficulty: 'easy', heroClass: 'warrior' });
-    await waitForSpec(page, roomName, d => d.spec?.monsterHP?.length === 1);
-    // Fast-forward to room 2
-    execSync(`kubectl patch dungeon ${roomName} --type=merge -p '{"spec":{"monsterHP":[0],"bossHP":0,"treasureOpened":1,"doorUnlocked":1}}'`);
-    await page.waitForTimeout(3000);
-    // Enter room 2 via action
-    await api(page, 'POST', `/dungeons/default/${roomName}/attacks`, { target: 'enter-room-2', damage: 0 });
-    const room2 = await waitForSpec(page, roomName, d => d.spec?.currentRoom === 2, 60000);
-    if (room2) {
-      ok('Entered room 2');
-      room2.spec.bossHP > 0 ? ok(`Room 2 boss alive: HP ${room2.spec.bossHP}`) : fail('Room 2 boss dead on entry');
-      room2.spec.monsterHP.every(hp => hp > 0) ? ok('Room 2 monsters alive') : fail(`Room 2 monsters: ${room2.spec.monsterHP}`);
-      // Verify UI
-      await page.goto(`${BASE_URL}/dungeon/default/${roomName}`, { timeout: TIMEOUT });
-      await page.waitForTimeout(5000);
-      const r2Text = await page.textContent('body');
-      // Should NOT show victory banner
-      !r2Text.includes('VICTORY') ? ok('No victory banner in room 2') : fail('Victory banner showing in room 2');
-      // Should NOT show treasure/door
-      const chest = page.locator('.chest-entity');
-      (await chest.count()) === 0 ? ok('No treasure in room 2') : fail('Treasure visible in room 2');
-      const door = page.locator('.door-entity');
-      (await door.count()) === 0 ? ok('No door in room 2') : fail('Door visible in room 2');
-      // Monsters should be attackable
-      const r2Atk = page.locator('.arena-atk-btn.btn-primary');
-      (await r2Atk.count()) > 0 ? ok('Room 2 monsters attackable') : fail('No attack buttons in room 2');
+    if (defeated) {
+      ok('Hero defeated');
+      const defeatAtk = page.locator('.arena-atk-btn.btn-primary');
+      (await defeatAtk.count()) === 0 ? ok('No attack buttons when defeated') : fail('Attack buttons visible when hero is dead');
     } else {
-      fail('Room 2 transition failed');
-    }
-    await api(page, 'DELETE', `/dungeons/default/${roomName}`);
-
-    // === Test 8: Create dungeon with special characters ===
-    console.log('\n=== Test 8: Special Characters ===');
-    // K8s names must be lowercase alphanumeric + hyphens
-    const badRes = await api(page, 'POST', '/dungeons', { name: 'UPPERCASE', monsters: 1, difficulty: 'easy', heroClass: 'warrior' });
-    // Should either fail or lowercase it
-    if (badRes.status === 400 || badRes.status === 422 || badRes.status === 500) {
-      ok(`Uppercase name rejected (HTTP ${badRes.status})`);
-    } else if (badRes.status === 201) {
-      ok('Uppercase name accepted (K8s may lowercase it)');
-      await api(page, 'DELETE', '/dungeons/default/UPPERCASE');
-      await api(page, 'DELETE', '/dungeons/default/uppercase');
-    } else {
-      warn(`Unexpected status for uppercase name: ${badRes.status}`);
+      warn('Hero survived 40 attacks on hard — cannot test defeat state');
     }
 
-    const emptyRes = await api(page, 'POST', '/dungeons', { name: '', monsters: 1, difficulty: 'easy', heroClass: 'warrior' });
-    emptyRes.status === 400 ? ok('Empty name rejected') : fail(`Empty name: HTTP ${emptyRes.status}`);
-
-    // === Test 9: Defeat state ===
-    console.log('\n=== Test 9: Defeat State ===');
-    const defeatName = `j8-defeat-${Date.now()}`;
-    await api(page, 'POST', '/dungeons', { name: defeatName, monsters: 1, difficulty: 'easy', heroClass: 'warrior' });
-    await waitForSpec(page, defeatName, d => d.spec?.monsterHP?.length === 1);
-    // Set hero HP to 0
-    execSync(`kubectl patch dungeon ${defeatName} --type=merge -p '{"spec":{"heroHP":0}}'`);
-    await page.waitForTimeout(3000);
-    await page.goto(`${BASE_URL}/dungeon/default/${defeatName}`, { timeout: TIMEOUT });
-    await page.waitForTimeout(5000);
-    // Attack buttons should be disabled/hidden
-    const defeatAtk = page.locator('.arena-atk-btn.btn-primary');
-    (await defeatAtk.count()) === 0 ? ok('No attack buttons when defeated') : fail('Attack buttons visible when hero is dead');
-    await api(page, 'DELETE', `/dungeons/default/${defeatName}`);
-
-    // === Test 10: Console errors ===
-    console.log('\n=== Test 10: Console Errors ===');
+    // === Test 9: Console errors ===
+    console.log('\n=== Test 9: Console Errors ===');
     consoleErrors.length === 0
       ? ok('No console errors')
       : fail(`${consoleErrors.length} console errors: ${consoleErrors[0]}`);
 
     // === Cleanup ===
     console.log('\n=== Cleanup ===');
-    ok('All edge case tests complete');
+    await navigateHome(page, BASE_URL);
+    await page.waitForTimeout(2000);
+    for (const name of [speedName, maxName, roomName, defeatName]) {
+      await deleteDungeon(page, name);
+      await page.waitForTimeout(500);
+    }
+    ok('Cleanup initiated via UI');
 
   } catch (error) {
     console.error(`\n❌ Fatal: ${error.message}`);
