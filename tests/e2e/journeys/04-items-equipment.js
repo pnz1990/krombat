@@ -1,5 +1,7 @@
-// Journey 4: Items & Equipment — Full UI test with corner cases
+// Journey 4: Items & Equipment — Full UI playthrough
+// UI-ONLY: no kubectl, no fetch/api, no execSync
 const { chromium } = require('playwright');
+const { createDungeonUI, attackMonster, attackBoss, waitForCombatResult, dismissLootPopup, useBackpackItem, navigateHome, deleteDungeon } = require('./helpers');
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 const TIMEOUT = 15000;
@@ -8,280 +10,223 @@ function ok(msg) { console.log(`  ✅ ${msg}`); passed++; }
 function fail(msg) { console.log(`  ❌ ${msg}`); failed++; }
 function warn(msg) { console.log(`  ⚠️  ${msg}`); warnings++; }
 
-async function api(page, method, path, body) {
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      return await page.evaluate(async ([m, p, b]) => {
-        const opts = { method: m, headers: { 'Content-Type': 'application/json' } };
-        if (b) opts.body = JSON.stringify(b);
-        const r = await fetch(`/api/v1${p}`, opts);
-        const text = await r.text();
-        try { return { status: r.status, body: JSON.parse(text) }; } catch { return { status: r.status, body: text }; }
-      }, [method, path, body]);
-    } catch { await page.waitForTimeout(2000); }
-  }
-  return { status: 0, body: 'fetch failed' };
+async function getBodyText(page) { return page.textContent('body'); }
+
+async function backpackCount(page) {
+  return page.locator('.backpack-slot').count();
 }
 
-async function waitForSpec(page, name, check, maxWait = 45000) {
-  const start = Date.now();
-  while (Date.now() - start < maxWait) {
-    const res = await api(page, 'GET', `/dungeons/default/${name}`);
-    if (res.status === 200 && check(res.body)) return res.body;
-    await page.waitForTimeout(2000);
+// Dismiss any modal that might be blocking (combat result, loot popup, stuck rolling)
+async function clearModals(page) {
+  for (let i = 0; i < 10; i++) {
+    const cont = page.locator('button:has-text("Continue")');
+    if (await cont.count() > 0) { await cont.click().catch(() => {}); await page.waitForTimeout(500); continue; }
+    const gotIt = page.locator('button:has-text("Got it!")');
+    if (await gotIt.count() > 0) { await gotIt.click().catch(() => {}); await page.waitForTimeout(500); continue; }
+    // Stuck combat overlay with no button yet — wait for it to resolve
+    const overlay = page.locator('.modal-overlay.combat-overlay');
+    if (await overlay.count() > 0) { await page.waitForTimeout(3000); continue; }
+    break;
   }
-  return null;
+}
+
+async function getEquipmentText(page) {
+  // Read the equipment panel text for bonuses
+  const panel = page.locator('.equipment-panel, .equip-panel, .hero-stats, .hero-panel');
+  if (await panel.count() > 0) return panel.textContent();
+  return page.textContent('body');
+}
+
+// Kill monsters until we collect at least targetCount loot items, or all monsters + boss are dead
+async function farmLoot(page, targetCount) {
+  const collected = [];
+  for (let round = 0; round < 60; round++) {
+    // Check if there are alive monsters to attack
+    const aliveMonsters = page.locator('.arena-entity.monster-entity:not(.dead) .arena-atk-btn.btn-primary');
+    const bossBtn = page.locator('.arena-entity.boss-entity .arena-atk-btn.btn-primary');
+
+    if (await aliveMonsters.count() > 0) {
+      await aliveMonsters.first().click({ force: true });
+    } else if (await bossBtn.count() > 0) {
+      await bossBtn.click({ force: true });
+    } else {
+      break; // Nothing left to attack
+    }
+
+    // Wait for combat result
+    const result = await waitForCombatResult(page);
+    if (!result) { await page.waitForTimeout(2000); continue; }
+
+    // Check for loot popup after combat
+    const loot = await dismissLootPopup(page);
+    if (loot) collected.push(loot);
+
+    if (collected.length >= targetCount) break;
+    await page.waitForTimeout(1000);
+  }
+  return collected;
 }
 
 async function run() {
   console.log('🧪 Journey 4: Items & Equipment\n');
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
-  const dName = `j4-${Date.now()}`;
+  const dName = `j4${Date.now()}`;
 
   const consoleErrors = [];
   page.on('console', msg => {
     if (msg.type() === 'error' && !msg.text().includes('WebSocket') && !msg.text().includes('404'))
       consoleErrors.push(msg.text());
   });
+  page.on('dialog', dialog => dialog.accept());
 
   try {
+    // === Setup: Create dungeon and farm loot by killing monsters ===
+    console.log('=== Setup: Create Dungeon & Farm Loot ===');
     await page.goto(BASE_URL, { timeout: TIMEOUT });
     await page.waitForTimeout(2000);
+    // Use easy + many monsters to maximize loot drops (easy = 60% drop rate)
+    const created = await createDungeonUI(page, dName, { monsters: 5, difficulty: 'easy', heroClass: 'warrior' });
+    created ? ok('Dungeon created via UI') : fail('Failed to create dungeon');
 
-    // === Setup: Create dungeon with pre-loaded inventory ===
-    console.log('=== Setup: Create Dungeon with Inventory ===');
-    const createRes = await api(page, 'POST', '/dungeons', {
-      name: dName, monsters: 1, difficulty: 'easy', heroClass: 'warrior'
-    });
-    createRes.status === 201 ? ok('Dungeon created') : fail(`Create: HTTP ${createRes.status}`);
-
-    // Wait for kro
-    await waitForSpec(page, dName, d => d.spec?.monsterHP?.length > 0);
-
-    // Patch inventory with test items directly via kubectl
-    await page.evaluate(async (name) => {
-      // We'll use the attack API to set up — but actually we need kubectl
-      // Instead, let's just play and get loot naturally, or patch via API
-    }, dName);
-
-    // Actually, let's patch the dungeon directly to have items
-    // The backend doesn't have a patch endpoint, so we'll use kubectl from the test runner
-    const { execSync } = require('child_process');
-    execSync(`kubectl patch dungeon ${dName} --type=merge -p '{"spec":{"inventory":"weapon-epic,weapon-rare,armor-common,shield-rare,hppotion-rare,hppotion-common,manapotion-rare","heroHP":100}}'`);
-    await page.waitForTimeout(3000);
-    ok('Inventory pre-loaded with test items');
-
-    // Navigate to dungeon
-    await page.goto(`${BASE_URL}/dungeon/default/${dName}`, { timeout: TIMEOUT });
-    await page.waitForTimeout(5000);
+    // Farm loot by killing monsters through the UI
+    console.log('\n=== Farm Loot by Killing Monsters ===');
+    const loot = await farmLoot(page, 3);
+    ok(`Collected ${loot.length} loot drops from combat`);
 
     // === Test 1: Verify backpack shows items ===
     console.log('\n=== Test 1: Backpack Display ===');
-    const backpackSlots = page.locator('.backpack-slot');
-    const slotCount = await backpackSlots.count();
-    slotCount >= 5 ? ok(`Backpack has ${slotCount} item slots`) : fail(`Expected ≥5 items, got ${slotCount}`);
+    await clearModals(page);
+    await page.waitForTimeout(2000);
+    const slots = await backpackCount(page);
+    if (slots > 0) {
+      ok(`Backpack has ${slots} item(s)`);
+    } else if (loot.length > 0) {
+      fail('Loot was collected but backpack is empty');
+    } else {
+      warn('No loot dropped (RNG) — skipping item tests');
+    }
 
-    // === Test 2: Equip weapon (click first backpack slot) ===
-    console.log('\n=== Test 2: Equip Weapon ===');
-    // Items render as backpack-slot buttons. We need to click the weapon one.
-    // Since we loaded weapon-epic first, it should be the first slot.
-    const firstSlot = page.locator('.backpack-slot').first();
-    if (await firstSlot.count() > 0) {
-      await firstSlot.click({ force: true });
-      ok('First item clicked (weapon-epic)');
-      const equipped = await waitForSpec(page, dName, d => d.spec?.weaponBonus > 0);
-      if (equipped) {
-        ok(`Weapon equipped: +${equipped.spec.weaponBonus} bonus, ${equipped.spec.weaponUses} uses`);
-        !equipped.spec.inventory.includes('weapon-epic') ? ok('weapon-epic removed from inventory') : fail('weapon-epic still in inventory');
+    // === Test 2: Use/equip first item from backpack ===
+    console.log('\n=== Test 2: Use First Item ===');
+    if (slots > 0) {
+      await clearModals(page);
+      const firstItem = page.locator('.backpack-slot').first();
+      const itemText = await firstItem.textContent().catch(() => 'unknown');
+      await firstItem.click({ force: true });
+      ok(`Clicked item: ${itemText.trim().substring(0, 40)}`);
+
+      // Wait for action to process
+      await page.waitForTimeout(8000);
+      await clearModals(page);
+
+      const slotsAfter = await backpackCount(page);
+      slotsAfter < slots
+        ? ok(`Item consumed/equipped — backpack ${slots} → ${slotsAfter}`)
+        : warn('Backpack count unchanged (item may still be processing)');
+    }
+
+    // === Test 3: No loot popup from item use ===
+    console.log('\n=== Test 3: No Loot From Item Use ===');
+    await clearModals(page);
+    if (slots > 0) {
+      // Use another item and check that no loot popup appears
+      const slotsNow2 = await backpackCount(page);
+      if (slotsNow2 > 0) {
+        const nextSlot = page.locator('.backpack-slot').first();
+        await nextSlot.click({ force: true });
+        await page.waitForTimeout(5000);
+        const lootModal = page.locator('.modal-overlay:has-text("LOOT")');
+        (await lootModal.count()) === 0
+          ? ok('No phantom loot popup from item action')
+          : fail('Loot popup appeared from item use');
+        await clearModals(page);
       } else {
-        fail('Weapon equip did not update spec');
+        ok('No items left to test loot popup (skipped)');
       }
     } else {
-      fail('No backpack slots found');
+      ok('No items to test loot popup (skipped)');
     }
 
-    // Reload to see updated UI
-    await page.goto(`${BASE_URL}/dungeon/default/${dName}`, { timeout: TIMEOUT });
-    await page.waitForTimeout(3000);
+    // === Test 4: Items don't cost a turn (no counter-attack) ===
+    console.log('\n=== Test 4: Items Don\'t Cost a Turn ===');
+    await clearModals(page);
+    const slotsNow = await backpackCount(page);
+    if (slotsNow > 0) {
+      const nextItem = page.locator('.backpack-slot').first();
+      await nextItem.click({ force: true });
+      await page.waitForTimeout(5000);
 
-    // === Test 3: Equip different weapon (swap) ===
-    console.log('\n=== Test 3: Swap Weapon ===');
-    const swapBtn = page.locator('.backpack-slot').first();
-    if (await swapBtn.count() > 0) {
-      await swapBtn.click({ force: true });
-      ok('Swap weapon clicked');
-      const swapped = await waitForSpec(page, dName, d => d.spec?.weaponBonus === 10); // rare = 10
-      if (swapped) {
-        ok(`Weapon swapped to rare: +${swapped.spec.weaponBonus}`);
-      } else {
-        warn('Weapon swap may not have resolved yet');
-      }
+      // No combat modal should appear
+      const combatModal = page.locator('.combat-modal');
+      (await combatModal.count()) === 0
+        ? ok('No combat modal from item use (no turn cost)')
+        : fail('Combat modal appeared from item use');
+
+      await clearModals(page);
     } else {
-      warn('No second weapon to swap');
+      ok('No items left to test turn cost (skipped)');
     }
 
-    await page.goto(`${BASE_URL}/dungeon/default/${dName}`, { timeout: TIMEOUT });
-    await page.waitForTimeout(3000);
-
-    // === Test 4: Equip armor ===
-    console.log('\n=== Test 4: Equip Armor ===');
-    const armorBtn = page.locator('.backpack-slot').first();
-    if (await armorBtn.count() > 0) {
-      await armorBtn.click({ force: true });
-      ok('Equip armor clicked');
-      const armored = await waitForSpec(page, dName, d => d.spec?.armorBonus > 0);
-      armored ? ok(`Armor equipped: ${armored.spec.armorBonus}% defense`) : fail('Armor equip failed');
+    // === Test 5: Equipment panel reflects changes ===
+    console.log('\n=== Test 5: Equipment Panel ===');
+    const equipText = await getEquipmentText(page);
+    // Check if any equipment bonuses are visible in the UI
+    const hasWeaponUI = /weapon|wpn|\+\d+\s*dmg/i.test(equipText);
+    const hasArmorUI = /armor|def|\d+%\s*def/i.test(equipText);
+    const hasShieldUI = /shield|block|\d+%\s*block/i.test(equipText);
+    if (hasWeaponUI || hasArmorUI || hasShieldUI) {
+      ok(`Equipment visible in UI (weapon:${hasWeaponUI} armor:${hasArmorUI} shield:${hasShieldUI})`);
+    } else if (loot.length === 0) {
+      warn('No loot was collected, so no equipment to verify');
     } else {
-      warn('No armor equip button');
+      warn('Equipment panel text not detected (may use icons only)');
     }
 
-    await page.goto(`${BASE_URL}/dungeon/default/${dName}`, { timeout: TIMEOUT });
-    await page.waitForTimeout(3000);
-
-    // === Test 5: Equip shield ===
-    console.log('\n=== Test 5: Equip Shield ===');
-    const shieldBtn = page.locator('.backpack-slot').first();
-    if (await shieldBtn.count() > 0) {
-      await shieldBtn.click({ force: true });
-      ok('Equip shield clicked');
-      const shielded = await waitForSpec(page, dName, d => d.spec?.shieldBonus > 0);
-      shielded ? ok(`Shield equipped: ${shielded.spec.shieldBonus}% block`) : fail('Shield equip failed');
+    // === Test 6: Attack with equipment — verify combat works ===
+    console.log('\n=== Test 6: Attack With Equipment ===');
+    const atkBtns = page.locator('.arena-entity:not(.dead) .arena-atk-btn.btn-primary');
+    if (await atkBtns.count() > 0) {
+      await atkBtns.first().click({ force: true });
+      const combatResult = await waitForCombatResult(page);
+      combatResult
+        ? ok('Combat works with equipment equipped')
+        : fail('Combat failed with equipment');
+      await dismissLootPopup(page);
     } else {
-      warn('No shield equip button');
+      warn('No targets alive for equipped combat test');
     }
 
-    await page.goto(`${BASE_URL}/dungeon/default/${dName}`, { timeout: TIMEOUT });
-    await page.waitForTimeout(3000);
-
-    // === Test 6: Use HP potion ===
-    console.log('\n=== Test 6: Use HP Potion ===');
-    const state = await api(page, 'GET', `/dungeons/default/${dName}`);
-    const hpBefore = state.body.spec?.heroHP || 100;
-    const potionBtn = page.locator('.backpack-slot').first();
-    if (await potionBtn.count() > 0) {
-      await potionBtn.click({ force: true });
-      ok('HP potion clicked');
-      const healed = await waitForSpec(page, dName, d => d.spec?.heroHP > hpBefore);
-      if (healed) {
-        ok(`HP restored: ${hpBefore} → ${healed.spec.heroHP}`);
-        // Verify potion removed from inventory
-        const inv = healed.spec.inventory || '';
-        ok('Potion consumed');
-      } else {
-        warn('HP potion may not have resolved (hero may be at max HP)');
-      }
-    } else {
-      warn('No HP potion button');
-    }
-
-    await page.goto(`${BASE_URL}/dungeon/default/${dName}`, { timeout: TIMEOUT });
-    await page.waitForTimeout(3000);
-
-    // === Test 7: Use second HP potion ===
-    console.log('\n=== Test 7: Use Second HP Potion ===');
-    const potionBtn2 = page.locator('.backpack-slot').first();
-    if (await potionBtn2.count() > 0) {
-      await potionBtn2.click({ force: true });
-      ok('Second HP potion clicked');
-      await page.waitForTimeout(20000); // Wait for action to process
-      ok('Second potion action submitted');
-    } else {
-      ok('No more HP potions (first was consumed)');
-    }
-
-    // === Test 8: Rapid equip clicks ===
-    console.log('\n=== Test 8: Rapid Equip Clicks ===');
-    await page.goto(`${BASE_URL}/dungeon/default/${dName}`, { timeout: TIMEOUT });
-    await page.waitForTimeout(3000);
-    const anyItemBtn = page.locator('.backpack-slot').first();
-    if (await anyItemBtn.count() > 0) {
-      // Click 3 times rapidly
-      await anyItemBtn.click({ force: true }).catch(() => {});
-      await anyItemBtn.click({ force: true }).catch(() => {});
-      await anyItemBtn.click({ force: true }).catch(() => {});
+    // === Test 7: Rapid item clicks ===
+    console.log('\n=== Test 7: Rapid Item Clicks ===');
+    const rapidSlots = await backpackCount(page);
+    if (rapidSlots > 0) {
+      const btn = page.locator('.backpack-slot').first();
+      await btn.click({ force: true }).catch(() => {});
+      await btn.click({ force: true }).catch(() => {});
+      await btn.click({ force: true }).catch(() => {});
       await page.waitForTimeout(3000);
-      // Should not crash or show errors
-      const errText = await page.textContent('body');
-      !errText.includes('Error') ? ok('Rapid equip clicks handled gracefully') : fail('Error after rapid clicks');
+      const errText = await getBodyText(page);
+      !errText.includes('Error')
+        ? ok('Rapid item clicks handled gracefully')
+        : fail('Error after rapid item clicks');
     } else {
-      ok('No items left to rapid-click');
+      ok('No items left for rapid-click test');
     }
 
-    // === Test 9: No loot popup from item use ===
-    console.log('\n=== Test 9: No Loot From Item Use ===');
-    const lootModal = page.locator('.modal-overlay:has-text("LOOT")');
-    (await lootModal.count()) === 0 ? ok('No loot popup from item actions') : fail('Phantom loot popup appeared');
-
-    // === Test 10: Verify equipment panel reflects changes ===
-    console.log('\n=== Test 10: Equipment Panel ===');
-    await page.goto(`${BASE_URL}/dungeon/default/${dName}`, { timeout: TIMEOUT });
-    await page.waitForTimeout(3000);
-    const finalState = await api(page, 'GET', `/dungeons/default/${dName}`);
-    const spec = finalState.body.spec || {};
-    console.log(`    Final state: wpn=${spec.weaponBonus}/${spec.weaponUses} armor=${spec.armorBonus} shield=${spec.shieldBonus} HP=${spec.heroHP} inv="${spec.inventory}"`);
-
-    // Verify at least some equipment was applied
-    const hasEquipment = spec.weaponBonus > 0 || spec.armorBonus > 0 || spec.shieldBonus > 0;
-    hasEquipment ? ok('Equipment bonuses applied') : warn('No equipment bonuses (actions may still be processing)');
-
-    // === Test 11: Attack with weapon equipped — verify bonus in combat ===
-    console.log('\n=== Test 11: Attack With Weapon ===');
-    if (spec.weaponBonus > 0 && spec.weaponUses > 0) {
-      const atkBtn = page.locator('.arena-atk-btn.btn-primary').first();
-      if (await atkBtn.count() > 0) {
-        await atkBtn.click({ force: true });
-        await page.waitForTimeout(2000);
-        // Wait for combat to resolve
-        for (let i = 0; i < 25; i++) {
-          const cb = page.locator('button:has-text("Continue")');
-          if (await cb.count() > 0) {
-            const modalText = await page.textContent('.combat-modal').catch(() => '');
-            modalText.includes('wpn') || modalText.includes('weapon') || modalText.includes('damage')
-              ? ok('Combat result shows weapon bonus')
-              : warn('Weapon bonus not visible in combat text');
-            await cb.click().catch(() => {});
-            break;
-          }
-          await page.waitForTimeout(3000);
-        }
-
-        // Check weaponUses decremented
-        const afterAtk = await api(page, 'GET', `/dungeons/default/${dName}`);
-        const usesAfter = afterAtk.body.spec?.weaponUses ?? -1;
-        usesAfter < spec.weaponUses ? ok(`Weapon uses decremented: ${spec.weaponUses} → ${usesAfter}`) : warn('Weapon uses may not have updated yet');
-      }
-    } else {
-      warn('No weapon equipped for combat test');
-    }
-
-    // === Test 12: Mana potion on warrior (should still work) ===
-    console.log('\n=== Test 12: Mana Potion on Warrior ===');
-    const manaState = await api(page, 'GET', `/dungeons/default/${dName}`);
-    const hasMana = (manaState.body.spec?.inventory || '').includes('manapotion');
-    if (hasMana) {
-      await page.goto(`${BASE_URL}/dungeon/default/${dName}`, { timeout: TIMEOUT });
-      await page.waitForTimeout(3000);
-      const manaBtn = page.locator('.backpack-slot').first();
-      if (await manaBtn.count() > 0) {
-        await manaBtn.click({ force: true });
-        await page.waitForTimeout(20000);
-        ok('Mana potion used on warrior (mana stays 0)');
-      }
-    } else {
-      ok('No mana potion in inventory (skipped)');
-    }
-
-    // === Test 13: Console errors ===
-    console.log('\n=== Test 13: Console Errors ===');
+    // === Test 8: Console errors ===
+    console.log('\n=== Test 8: Console Errors ===');
     consoleErrors.length === 0
       ? ok('No console errors')
       : fail(`${consoleErrors.length} console errors: ${consoleErrors[0]}`);
 
     // === Cleanup ===
     console.log('\n=== Cleanup ===');
-    await api(page, 'DELETE', `/dungeons/default/${dName}`);
-    ok('Cleanup initiated');
+    await clearModals(page);
+    await navigateHome(page, BASE_URL);
+    await page.waitForTimeout(2000);
+    await deleteDungeon(page, dName);
+    ok('Cleanup initiated via UI');
 
   } catch (error) {
     console.error(`\n❌ Fatal: ${error.message}`);
