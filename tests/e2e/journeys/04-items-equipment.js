@@ -16,20 +16,6 @@ async function backpackCount(page) {
   return page.locator('.backpack-slot').count();
 }
 
-// Dismiss any modal that might be blocking (combat result, loot popup, stuck rolling)
-async function clearModals(page) {
-  for (let i = 0; i < 10; i++) {
-    const cont = page.locator('button:has-text("Continue")');
-    if (await cont.count() > 0) { await cont.click().catch(() => {}); await page.waitForTimeout(500); continue; }
-    const gotIt = page.locator('button:has-text("Got it!")');
-    if (await gotIt.count() > 0) { await gotIt.click().catch(() => {}); await page.waitForTimeout(500); continue; }
-    // Stuck combat overlay with no button yet — wait for it to resolve
-    const overlay = page.locator('.modal-overlay.combat-overlay');
-    if (await overlay.count() > 0) { await page.waitForTimeout(3000); continue; }
-    break;
-  }
-}
-
 async function getEquipmentText(page) {
   // Read the equipment panel text for bonuses
   const panel = page.locator('.equipment-panel, .equip-panel, .hero-stats, .hero-panel');
@@ -96,7 +82,6 @@ async function run() {
 
     // === Test 1: Verify backpack shows items ===
     console.log('\n=== Test 1: Backpack Display ===');
-    await clearModals(page);
     await page.waitForTimeout(2000);
     const slots = await backpackCount(page);
     if (slots > 0) {
@@ -110,7 +95,6 @@ async function run() {
     // === Test 2: Use/equip first item from backpack ===
     console.log('\n=== Test 2: Use First Item ===');
     if (slots > 0) {
-      await clearModals(page);
       const firstItem = page.locator('.backpack-slot').first();
       const itemText = await firstItem.textContent().catch(() => 'unknown');
       await firstItem.click({ force: true });
@@ -118,7 +102,6 @@ async function run() {
 
       // Wait for action to process
       await page.waitForTimeout(8000);
-      await clearModals(page);
 
       const slotsAfter = await backpackCount(page);
       slotsAfter < slots
@@ -128,7 +111,6 @@ async function run() {
 
     // === Test 3: No loot popup from item use ===
     console.log('\n=== Test 3: No Loot From Item Use ===');
-    await clearModals(page);
     if (slots > 0) {
       // Use another item and check that no loot popup appears
       const slotsNow2 = await backpackCount(page);
@@ -140,7 +122,6 @@ async function run() {
         (await lootModal.count()) === 0
           ? ok('No phantom loot popup from item action')
           : fail('Loot popup appeared from item use');
-        await clearModals(page);
       } else {
         ok('No items left to test loot popup (skipped)');
       }
@@ -150,7 +131,6 @@ async function run() {
 
     // === Test 4: Items don't cost a turn (no counter-attack) ===
     console.log('\n=== Test 4: Items Don\'t Cost a Turn ===');
-    await clearModals(page);
     const slotsNow = await backpackCount(page);
     if (slotsNow > 0) {
       const nextItem = page.locator('.backpack-slot').first();
@@ -163,7 +143,6 @@ async function run() {
         ? ok('No combat modal from item use (no turn cost)')
         : fail('Combat modal appeared from item use');
 
-      await clearModals(page);
     } else {
       ok('No items left to test turn cost (skipped)');
     }
@@ -222,7 +201,6 @@ async function run() {
 
     // === Cleanup ===
     console.log('\n=== Cleanup ===');
-    await clearModals(page);
     await navigateHome(page, BASE_URL);
     await page.waitForTimeout(2000);
     await deleteDungeon(page, dName);

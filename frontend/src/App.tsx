@@ -811,7 +811,7 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
         </div>
       )}
 
-      {lootDrop && (
+      {lootDrop && !combatModal && (
         <div className="modal-overlay" onClick={onDismissLoot}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div style={{ marginBottom: 12 }}><PixelIcon name="chest" size={48} /></div>
