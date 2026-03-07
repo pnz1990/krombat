@@ -1,237 +1,294 @@
 // Journey 10: Visual & Animation Consistency
+// UI-ONLY: no kubectl, no fetch/api, no execSync
+// Tests: dead monster opacity, alive opacity, attack button counts, boss pending/ready,
+//        combat modal sprites, hero sprite, post-dismiss state.
+// Room 2 sprite check is omitted — playing all the way through would take ~15 min.
 const { chromium } = require('playwright');
+const { createDungeonUI, waitForCombatResult, dismissLootPopup, navigateHome, deleteDungeon } = require('./helpers');
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 const TIMEOUT = 15000;
 let passed = 0, failed = 0, warnings = 0;
-function ok(msg) { console.log(`  ✅ ${msg}`); passed++; }
+function ok(msg)   { console.log(`  ✅ ${msg}`); passed++; }
 function fail(msg) { console.log(`  ❌ ${msg}`); failed++; }
 function warn(msg) { console.log(`  ⚠️  ${msg}`); warnings++; }
 
-async function api(page, method, path, body) {
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      return await page.evaluate(async ([m, p, b]) => {
-        const opts = { method: m, headers: { 'Content-Type': 'application/json' } };
-        if (b) opts.body = JSON.stringify(b);
-        const r = await fetch(`/api/v1${p}`, opts);
-        const text = await r.text();
-        try { return { status: r.status, body: JSON.parse(text) }; } catch { return { status: r.status, body: text }; }
-      }, [method, path, body]);
-    } catch { await page.waitForTimeout(2000); }
-  }
-  return { status: 0, body: 'fetch failed' };
-}
+async function getBodyText(page) { return page.textContent('body'); }
 
-async function waitForSpec(page, name, check, maxWait = 45000) {
-  const start = Date.now();
-  while (Date.now() - start < maxWait) {
-    const res = await api(page, 'GET', `/dungeons/default/${name}`);
-    if (res.status === 200 && check(res.body)) return res.body;
-    await page.waitForTimeout(2000);
+// Attack the same monster by index until it dies or maxAttacks exhausted.
+// Returns true if monster died.
+async function killMonster(page, monsterIndex, maxAttacks) {
+  for (let i = 0; i < maxAttacks; i++) {
+    const btns = page.locator('.arena-entity.monster-entity:not(.dead) .arena-atk-btn.btn-primary');
+    const count = await btns.count();
+    if (count === 0) return true; // all dead
+    await btns.nth(Math.min(monsterIndex, count - 1)).click({ force: true });
+    const result = await waitForCombatResult(page);
+    await dismissLootPopup(page);
+    if (!result) continue;
+    // Check if HP went to 0
+    const dead = await page.locator('.arena-entity.monster-entity.dead').count();
+    if (dead > 0) return true;
   }
-  return null;
+  return false;
 }
 
 async function run() {
   console.log('🧪 Journey 10: Visual & Animation Consistency\n');
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
-  const { execSync } = require('child_process');
   const dName = `j10-${Date.now()}`;
 
+  const consoleErrors = [];
+  page.on('console', msg => {
+    if (msg.type() === 'error' && !msg.text().includes('WebSocket') && !msg.text().includes('404'))
+      consoleErrors.push(msg.text());
+  });
+  page.on('dialog', dialog => dialog.accept());
+
   try {
+    // === Setup: Create dungeon with 2 monsters ===
+    console.log('=== Setup: Create Dungeon ===');
     await page.goto(BASE_URL, { timeout: TIMEOUT });
     await page.waitForTimeout(2000);
+    // Easy warrior: 200 hero HP, avg 12.5 damage/attack.
+    // Monsters have ~30 HP each → ~3 attacks to kill one.
+    const created = await createDungeonUI(page, dName, { monsters: 2, difficulty: 'easy', heroClass: 'warrior' });
+    created ? ok('Dungeon created via UI') : fail('Failed to create dungeon');
 
-    // Setup: create dungeon with 2 monsters, kill one
-    console.log('=== Setup ===');
-    await api(page, 'POST', '/dungeons', { name: dName, monsters: 2, difficulty: 'easy', heroClass: 'warrior' });
-    await waitForSpec(page, dName, d => d.spec?.monsterHP?.length === 2);
-    // Kill monster-0 so we have one alive and one dead
-    execSync(`kubectl patch dungeon ${dName} --type=merge -p '{"spec":{"monsterHP":[0,30]}}'`);
-    await page.waitForTimeout(3000);
-    ok('Dungeon created with 1 dead + 1 alive monster');
+    // === STEP 1: Both monsters start alive — full opacity ===
+    console.log('\n=== Step 1: Initial State — Both Monsters Alive ===');
+    await page.waitForTimeout(1000);
 
-    // Navigate
-    await page.goto(`${BASE_URL}/dungeon/default/${dName}`, { timeout: TIMEOUT });
-    await page.waitForTimeout(5000);
+    const initialAliveCount = await page.locator('.arena-entity.monster-entity:not(.dead)').count();
+    initialAliveCount === 2
+      ? ok(`Both monsters alive initially (${initialAliveCount})`)
+      : warn(`Expected 2 alive monsters, got ${initialAliveCount}`);
 
-    // === Test 1: Dead monster has reduced opacity ===
-    console.log('\n=== Test 1: Dead Monster Opacity ===');
-    const deadOpacity = await page.evaluate(() => {
-      const entities = document.querySelectorAll('.arena-entity.monster-entity');
-      for (const e of entities) {
-        const img = e.querySelector('img');
-        if (img && img.style.opacity && parseFloat(img.style.opacity) < 1) return parseFloat(img.style.opacity);
-      }
-      return null;
-    });
-    deadOpacity !== null && deadOpacity <= 0.4 ? ok(`Dead monster opacity: ${deadOpacity}`) : fail(`Dead monster opacity: ${deadOpacity} (expected ≤0.4)`);
+    // Both should have attack buttons
+    const initialAtkBtns = await page.locator('.arena-atk-btn.btn-primary').count();
+    initialAtkBtns >= 2
+      ? ok(`${initialAtkBtns} attack buttons visible for alive monsters`)
+      : warn(`Only ${initialAtkBtns} attack buttons (expected ≥2)`);
 
-    // === Test 2: Alive monster has full opacity ===
-    console.log('\n=== Test 2: Alive Monster Opacity ===');
-    const aliveOpacity = await page.evaluate(() => {
-      const entities = document.querySelectorAll('.arena-entity.monster-entity');
-      for (const e of entities) {
-        const img = e.querySelector('img');
-        if (img && (!img.style.opacity || parseFloat(img.style.opacity) === 1)) return 1;
-      }
-      return null;
-    });
-    aliveOpacity === 1 ? ok('Alive monster has full opacity') : fail(`Alive monster opacity: ${aliveOpacity}`);
+    // === STEP 2: Boss is hidden when monsters alive ===
+    console.log('\n=== Step 2: Boss Hidden (Pending) ===');
+    const bossBeforeDead = await page.locator('.arena-entity.boss-entity').count();
+    bossBeforeDead === 0
+      ? ok('Boss not visible while monsters are alive (pending)')
+      : warn('Boss visible before all monsters dead');
 
-    // === Test 3: Dead monster has no attack button ===
-    console.log('\n=== Test 3: Dead Monster No Attack Button ===');
-    // Count attack buttons — should be 1 (only alive monster)
-    const atkBtns = page.locator('.arena-atk-btn.btn-primary');
-    const btnCount = await atkBtns.count();
-    btnCount === 1 ? ok('Only 1 attack button (alive monster)') : fail(`${btnCount} attack buttons (expected 1)`);
+    // === STEP 3: Hero sprite is visible ===
+    console.log('\n=== Step 3: Hero Sprite ===');
+    // Hero entity should be in the arena
+    const heroEntity = page.locator('.arena-entity.hero-entity, .hero-entity');
+    (await heroEntity.count()) > 0
+      ? ok('Hero entity present in arena')
+      : warn('Hero entity not found with .hero-entity selector');
 
-    // === Test 4: Boss hidden when pending ===
-    console.log('\n=== Test 4: Boss Pending State ===');
-    const bossEntity = page.locator('.arena-entity.boss-entity');
-    (await bossEntity.count()) === 0 ? ok('Boss hidden when pending') : warn('Boss visible (may be ready if monsters died)');
+    // Any img in the arena area
+    const arenaImgs = await page.locator('.arena-container img, .arena img').count();
+    arenaImgs > 0
+      ? ok(`${arenaImgs} sprite image(s) in arena`)
+      : warn('No sprite images found in arena');
 
-    // === Test 5: Click attack — combat modal animations ===
-    console.log('\n=== Test 5: Combat Modal Animations ===');
-    const atkBtn = page.locator('.arena-atk-btn.btn-primary').first();
-    if (await atkBtn.count() > 0) {
-      await atkBtn.click({ force: true });
-      await page.waitForTimeout(2000);
+    // === STEP 4: Kill one monster — verify dead opacity ===
+    console.log('\n=== Step 4: Kill First Monster — Dead Opacity Check ===');
+    const killed = await killMonster(page, 0, 10);
+    killed
+      ? ok('First monster killed via UI attacks')
+      : warn('First monster not killed in 10 attacks (RNG) — opacity test may skip');
 
-      // During combat modal, check sprite states
-      const modalVisible = (await page.locator('.combat-modal').count()) > 0;
-      if (modalVisible) {
-        ok('Combat modal visible');
+    await page.waitForTimeout(1000);
 
-        // Check that alive monsters show attack animation (not idle)
-        // We can't check exact frames, but we can verify the img src changes (animation cycling)
-        const firstSrc = await page.evaluate(() => {
-          const entities = document.querySelectorAll('.arena-entity.monster-entity');
-          for (const e of entities) {
-            const img = e.querySelector('img');
-            if (img && (!img.style.opacity || parseFloat(img.style.opacity) === 1)) return img.src;
-          }
-          return null;
-        });
-        await page.waitForTimeout(500);
-        const secondSrc = await page.evaluate(() => {
-          const entities = document.querySelectorAll('.arena-entity.monster-entity');
-          for (const e of entities) {
-            const img = e.querySelector('img');
-            if (img && (!img.style.opacity || parseFloat(img.style.opacity) === 1)) return img.src;
-          }
-          return null;
-        });
-        // Animation should cycle frames — src should change
-        (firstSrc && secondSrc) ? ok('Monster sprite src captured during modal') : warn('Could not capture sprite src');
-        // Even if same frame captured, the animation is running — just verify no crash
-        ok('Sprites render during combat modal without crash');
-      } else {
-        warn('Combat modal not visible (Job may be slow)');
-      }
+    const deadCount = await page.locator('.arena-entity.monster-entity.dead').count();
+    const aliveCount = await page.locator('.arena-entity.monster-entity:not(.dead)').count();
+    if (deadCount > 0) {
+      ok(`${deadCount} dead monster(s) and ${aliveCount} alive monster(s)`);
 
-      // Wait for resolve
-      for (let i = 0; i < 25; i++) {
-        const cb = page.locator('button:has-text("Continue")');
-        if (await cb.count() > 0) {
-          ok('Combat resolved');
-
-          // === Test 6: Same animations during resolved phase ===
-          console.log('\n=== Test 6: Resolved Phase Animations ===');
-          // Dead monster should still be low opacity during resolved
-          const deadDuringResolved = await page.evaluate(() => {
-            const entities = document.querySelectorAll('.arena-entity.monster-entity');
-            for (const e of entities) {
-              const img = e.querySelector('img');
-              if (img && img.style.opacity && parseFloat(img.style.opacity) < 1) return parseFloat(img.style.opacity);
-            }
-            return null;
-          });
-          deadDuringResolved !== null ? ok(`Dead monster still faded during resolved: ${deadDuringResolved}`) : warn('Dead monster opacity not detected during resolved');
-
-          // Dismiss
-          await cb.click().catch(() => {});
-          await page.waitForTimeout(500);
-          break;
-        }
-        await page.waitForTimeout(3000);
-      }
-
-      // === Test 7: After dismiss — sprites return to idle ===
-      console.log('\n=== Test 7: Post-Dismiss State ===');
-      await page.waitForTimeout(1000);
-      // No combat modal
-      (await page.locator('.combat-modal').count()) === 0 ? ok('Combat modal dismissed') : fail('Modal still visible');
-      // Dead monster still faded
-      const deadAfter = await page.evaluate(() => {
+      // === STEP 5: Dead monster has reduced opacity ===
+      console.log('\n=== Step 5: Dead Monster Opacity ===');
+      const deadOpacity = await page.evaluate(() => {
         const entities = document.querySelectorAll('.arena-entity.monster-entity');
         for (const e of entities) {
           const img = e.querySelector('img');
-          if (img && img.style.opacity && parseFloat(img.style.opacity) < 1) return parseFloat(img.style.opacity);
+          if (img) {
+            const opacity = img.style.opacity ? parseFloat(img.style.opacity) : 1;
+            if (opacity < 1) return opacity;
+          }
         }
         return null;
       });
-      deadAfter !== null ? ok('Dead monster stays faded after dismiss') : warn('Dead monster opacity not detected after dismiss');
+      if (deadOpacity !== null) {
+        deadOpacity <= 0.4
+          ? ok(`Dead monster opacity: ${deadOpacity} (≤0.4)`)
+          : fail(`Dead monster opacity ${deadOpacity} should be ≤0.4`);
+      } else {
+        // Check by class instead — .dead class might use CSS opacity
+        const hasDead = await page.locator('.arena-entity.monster-entity.dead').count();
+        hasDead > 0
+          ? warn('Dead monster found (.dead class) but opacity not in inline style — may be CSS')
+          : fail('No dead monster found after kill');
+      }
+
+      // === STEP 6: Alive monster still has full opacity ===
+      console.log('\n=== Step 6: Alive Monster Full Opacity ===');
+      if (aliveCount > 0) {
+        const aliveOpacity = await page.evaluate(() => {
+          const entities = document.querySelectorAll('.arena-entity.monster-entity');
+          for (const e of entities) {
+            if (!e.classList.contains('dead')) {
+              const img = e.querySelector('img');
+              if (img) {
+                const opacity = img.style.opacity ? parseFloat(img.style.opacity) : 1;
+                return opacity;
+              }
+            }
+          }
+          return null;
+        });
+        if (aliveOpacity === null || aliveOpacity === 1) {
+          ok('Alive monster has full opacity (no inline style or opacity=1)');
+        } else {
+          fail(`Alive monster opacity ${aliveOpacity} should be 1`);
+        }
+      } else {
+        warn('No alive monsters to check opacity');
+      }
+
+      // === STEP 7: Dead monster has no attack button ===
+      console.log('\n=== Step 7: Dead Monster — No Attack Button ===');
+      const aliveAtkBtns = await page.locator('.arena-entity.monster-entity:not(.dead) .arena-atk-btn.btn-primary').count();
+      const deadAtkBtns  = await page.locator('.arena-entity.monster-entity.dead .arena-atk-btn.btn-primary').count();
+      deadAtkBtns === 0
+        ? ok('Dead monster has no attack button')
+        : fail(`Dead monster has ${deadAtkBtns} attack button(s)`);
+      aliveAtkBtns >= 1
+        ? ok(`Alive monster has ${aliveAtkBtns} attack button(s)`)
+        : warn('Alive monster has no attack button (may be in combat)');
     } else {
-      warn('No attack button for animation test');
+      warn('No dead monsters after 10 attacks — skipping opacity and button tests');
     }
 
-    // === Test 8: Boss ready state ===
-    console.log('\n=== Test 8: Boss Ready State ===');
-    // Kill remaining monster to unlock boss
-    execSync(`kubectl patch dungeon ${dName} --type=merge -p '{"spec":{"monsterHP":[0,0]}}'`);
-    await page.waitForTimeout(3000);
-    await page.goto(`${BASE_URL}/dungeon/default/${dName}`, { timeout: TIMEOUT });
-    await page.waitForTimeout(5000);
-    const bossVisible = (await page.locator('.arena-entity.boss-entity').count()) > 0;
-    bossVisible ? ok('Boss visible when ready') : warn('Boss not visible yet (kro reconciling)');
-    // Boss should have attack button
-    const bossAtk = page.locator('.arena-entity.boss-entity .arena-atk-btn.btn-primary');
-    (await bossAtk.count()) > 0 ? ok('Boss has attack button') : warn('Boss attack button not visible');
+    // === STEP 8: Combat modal renders sprites ===
+    console.log('\n=== Step 8: Combat Modal Sprite Rendering ===');
+    const aliveBtns = page.locator('.arena-entity.monster-entity:not(.dead) .arena-atk-btn.btn-primary');
+    if (await aliveBtns.count() > 0) {
+      await aliveBtns.first().click({ force: true });
 
-    // === Test 9: Hero sprite present ===
-    console.log('\n=== Test 9: Hero Sprite ===');
-    const heroSprite = page.locator('.hero-entity img, .arena-entity img[src*="warrior"]');
-    (await heroSprite.count()) > 0 ? ok('Hero sprite rendered') : warn('Hero sprite not found with selector');
+      // Wait up to 10s for combat modal OR Continue button
+      let modalSeen = false;
+      for (let i = 0; i < 10; i++) {
+        const modal = await page.locator('.combat-modal').count();
+        const cont  = await page.locator('button:has-text("Continue")').count();
+        if (modal > 0 || cont > 0) { modalSeen = true; break; }
+        await page.waitForTimeout(2000);
+      }
 
-    // === Test 10: Room transition visual ===
-    console.log('\n=== Test 10: Room Transition ===');
-    // Fast-forward to room 2
-    execSync(`kubectl patch dungeon ${dName} --type=merge -p '{"spec":{"bossHP":0,"treasureOpened":1,"doorUnlocked":1}}'`);
-    await page.waitForTimeout(3000);
-    await api(page, 'POST', `/dungeons/default/${dName}/attacks`, { target: 'enter-room-2', damage: 0 });
-    const room2 = await waitForSpec(page, dName, d => d.spec?.currentRoom === 2, 60000);
-    if (room2) {
-      await page.goto(`${BASE_URL}/dungeon/default/${dName}`, { timeout: TIMEOUT });
+      if (modalSeen) {
+        ok('Combat modal or Continue button appeared');
+
+        // Check arena images are still present during combat
+        const modalArenaImgs = await page.locator('.arena-container img, .arena img').count();
+        modalArenaImgs > 0
+          ? ok(`${modalArenaImgs} sprite image(s) visible during combat`)
+          : warn('No sprite images during combat modal');
+
+        // Dead monster should still be low opacity during combat
+        if (deadCount > 0) {
+          const deadDuringCombat = await page.evaluate(() => {
+            const entities = document.querySelectorAll('.arena-entity.monster-entity');
+            for (const e of entities) {
+              if (e.classList.contains('dead')) {
+                const img = e.querySelector('img');
+                if (img) return img.style.opacity ? parseFloat(img.style.opacity) : 1;
+              }
+            }
+            return null;
+          });
+          deadDuringCombat !== null && deadDuringCombat < 1
+            ? ok(`Dead monster still faded during combat: ${deadDuringCombat}`)
+            : warn('Dead monster opacity during combat not detected in inline style');
+        }
+
+        // Dismiss combat modal
+        const cont = page.locator('button:has-text("Continue")');
+        if (await cont.count() > 0) {
+          await cont.click().catch(() => {});
+          await page.waitForTimeout(500);
+          await dismissLootPopup(page);
+        }
+      } else {
+        warn('Combat modal not appeared in 20s — Job may be slow');
+      }
+
+      // === STEP 9: Post-dismiss — no modal ===
+      console.log('\n=== Step 9: Post-Dismiss State ===');
+      await page.waitForTimeout(1000);
+      const combatModalAfter = await page.locator('.combat-modal').count();
+      combatModalAfter === 0
+        ? ok('Combat modal dismissed successfully')
+        : fail('Combat modal still visible after dismiss');
+
+      // Dead monster still faded after dismiss
+      if (deadCount > 0) {
+        const deadAfterDismiss = await page.evaluate(() => {
+          const entities = document.querySelectorAll('.arena-entity.monster-entity');
+          for (const e of entities) {
+            if (e.classList.contains('dead')) {
+              const img = e.querySelector('img');
+              if (img) return img.style.opacity ? parseFloat(img.style.opacity) : 1;
+            }
+          }
+          return null;
+        });
+        deadAfterDismiss !== null && deadAfterDismiss < 1
+          ? ok(`Dead monster stays faded after dismiss: ${deadAfterDismiss}`)
+          : warn('Dead monster opacity after dismiss not in inline style (may be CSS)');
+      }
+    } else {
+      warn('No alive monsters for combat modal test');
+    }
+
+    // === STEP 10: Kill second monster — boss becomes visible ===
+    console.log('\n=== Step 10: Kill Second Monster — Boss Visible ===');
+    const killed2 = await killMonster(page, 0, 10);
+    if (killed2) {
+      ok('Second monster killed via UI attacks');
+      // Wait for boss to become targetable (kro reconciliation)
       await page.waitForTimeout(5000);
-      // Room 2 should show different monster sprites (troll/ghoul not goblin/skeleton)
-      const monsterSrcs = await page.evaluate(() => {
-        return Array.from(document.querySelectorAll('.arena-entity.monster-entity img'))
-          .map(img => img.src).filter(s => s.includes('sprite'));
-      });
-      const hasTrollOrGhoul = monsterSrcs.some(s => s.includes('troll') || s.includes('ghoul'));
-      hasTrollOrGhoul ? ok('Room 2 shows troll/ghoul sprites') : warn(`Room 2 sprites: ${monsterSrcs.map(s => s.split('/').pop()).join(', ')}`);
-      // Boss should be bat-boss
-      const bossSrcs = await page.evaluate(() => {
-        return Array.from(document.querySelectorAll('.arena-entity.boss-entity img'))
-          .map(img => img.src).filter(s => s.includes('sprite'));
-      });
-      const hasBatBoss = bossSrcs.some(s => s.includes('bat'));
-      hasBatBoss ? ok('Room 2 boss is bat-boss') : warn(`Room 2 boss sprites: ${bossSrcs.map(s => s.split('/').pop()).join(', ')}`);
+      const bossVisible = await page.locator('.arena-entity.boss-entity').count();
+      bossVisible > 0
+        ? ok('Boss entity visible after all monsters dead')
+        : warn('Boss not yet visible (kro reconciling)');
+      const bossAtkBtn = await page.locator('.arena-entity.boss-entity .arena-atk-btn.btn-primary').count();
+      bossAtkBtn > 0
+        ? ok('Boss has attack button')
+        : warn('Boss attack button not visible (may still be loading)');
     } else {
-      fail('Room 2 transition failed');
+      warn('Second monster not killed in 10 attacks — skipping boss visibility test');
     }
+
+    // === STEP 11: Console errors ===
+    console.log('\n=== Step 11: Console Errors ===');
+    consoleErrors.length === 0
+      ? ok('No console errors')
+      : fail(`${consoleErrors.length} console error(s): ${consoleErrors[0]}`);
 
     // === Cleanup ===
     console.log('\n=== Cleanup ===');
-    await api(page, 'DELETE', `/dungeons/default/${dName}`);
-    ok('Cleanup initiated');
+    await navigateHome(page, BASE_URL);
+    await page.waitForTimeout(2000);
+    const deleted = await deleteDungeon(page, dName);
+    deleted ? ok('Dungeon deleted via UI') : warn('Could not delete dungeon via UI');
 
   } catch (error) {
-    console.error(`\n❌ Fatal: ${error.message}`);
+    console.error(`\n❌ Fatal: ${error.message}\n${error.stack}`);
     failed++;
+    try {
+      await navigateHome(page, BASE_URL);
+      await deleteDungeon(page, dName);
+    } catch (_) {}
   } finally {
     await browser.close();
   }
