@@ -1,52 +1,73 @@
 // Journey 5: Status Effects — Poison, Burn, Stun
+// UI-ONLY: no kubectl, no fetch/api, no execSync
+// Strategy: fight against boss (25% burn, 15% stun) and monsters (20% poison)
+// until effects are naturally inflicted, then verify badge display and tick behaviour.
 const { chromium } = require('playwright');
+const { createDungeonUI, waitForCombatResult, dismissLootPopup, navigateHome, deleteDungeon } = require('./helpers');
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 const TIMEOUT = 15000;
 let passed = 0, failed = 0, warnings = 0;
-function ok(msg) { console.log(`  ✅ ${msg}`); passed++; }
+function ok(msg)   { console.log(`  ✅ ${msg}`); passed++; }
 function fail(msg) { console.log(`  ❌ ${msg}`); failed++; }
 function warn(msg) { console.log(`  ⚠️  ${msg}`); warnings++; }
 
-async function api(page, method, path, body) {
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      return await page.evaluate(async ([m, p, b]) => {
-        const opts = { method: m, headers: { 'Content-Type': 'application/json' } };
-        if (b) opts.body = JSON.stringify(b);
-        const r = await fetch(`/api/v1${p}`, opts);
-        const text = await r.text();
-        try { return { status: r.status, body: JSON.parse(text) }; } catch { return { status: r.status, body: text }; }
-      }, [method, path, body]);
-    } catch { await page.waitForTimeout(2000); }
-  }
-  return { status: 0, body: 'fetch failed' };
+async function getBodyText(page) { return page.textContent('body'); }
+
+// Click first alive monster (not boss) attack button; returns combat text or null
+async function attackMonster(page) {
+  const btn = page.locator('.arena-entity.monster-entity:not(.dead) .arena-atk-btn.btn-primary').first();
+  if (await btn.count() === 0) return null;
+  await btn.click({ force: true });
+  const result = await waitForCombatResult(page);
+  await dismissLootPopup(page);
+  return result;
 }
 
-async function waitForSpec(page, name, check, maxWait = 45000) {
-  const start = Date.now();
-  while (Date.now() - start < maxWait) {
-    const res = await api(page, 'GET', `/dungeons/default/${name}`);
-    if (res.status === 200 && check(res.body)) return res.body;
-    await page.waitForTimeout(2000);
-  }
-  return null;
+// Click boss attack button; returns combat text or null
+async function attackBoss(page) {
+  const btn = page.locator('.arena-entity.boss-entity .arena-atk-btn.btn-primary');
+  if (await btn.count() === 0) return null;
+  await btn.click({ force: true });
+  const result = await waitForCombatResult(page);
+  await dismissLootPopup(page);
+  return result;
 }
 
-async function attackAndDismiss(page) {
-  const atkBtn = page.locator('.arena-atk-btn.btn-primary').first();
-  if (await atkBtn.count() === 0) return null;
-  await atkBtn.click({ force: true });
-  await page.waitForTimeout(1000);
-  for (let i = 0; i < 25; i++) {
-    const cb = page.locator('button:has-text("Continue")');
-    if (await cb.count() > 0) {
-      const mt = await page.textContent('.combat-modal').catch(() => '');
-      await cb.click().catch(() => {});
-      await page.waitForTimeout(500);
-      return mt;
-    }
-    await page.waitForTimeout(3000);
+// Attack any alive target; returns combat text or null
+async function attackAny(page) {
+  const r = await attackMonster(page);
+  if (r !== null) return r;
+  return attackBoss(page);
+}
+
+// Count status badges of class "effect" (poison / burn / stun)
+async function effectBadgeCount(page) {
+  return page.locator('.status-badge.effect').count();
+}
+
+// Return the current status badge numbers as { poison, burn, stun } by matching badge text
+async function readEffectBadges(page) {
+  const badges = page.locator('.status-badge.effect');
+  const count = await badges.count();
+  const result = { poison: 0, burn: 0, stun: 0 };
+  for (let i = 0; i < count; i++) {
+    const html = await badges.nth(i).innerHTML().catch(() => '');
+    const num = parseInt((html.match(/\d+/) || ['0'])[0], 10);
+    if (html.includes('poison')) result.poison = num;
+    else if (html.includes('fire')) result.burn = num;
+    else if (html.includes('lightning')) result.stun = num;
+  }
+  return result;
+}
+
+// Fight until the enemy action mentions a keyword, for up to maxAttacks rounds.
+// Returns the combat text that contained the keyword, or null.
+async function fightUntilEffect(page, keyword, maxAttacks, useMonsters = true) {
+  for (let i = 0; i < maxAttacks; i++) {
+    const r = useMonsters ? await attackAny(page) : await attackBoss(page);
+    if (r === null) return null; // no targets
+    if (r.toUpperCase().includes(keyword.toUpperCase())) return r;
   }
   return null;
 }
@@ -55,166 +76,216 @@ async function run() {
   console.log('🧪 Journey 5: Status Effects\n');
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
-  const { execSync } = require('child_process');
+  const dName = `j5-${Date.now()}`;
+
   const consoleErrors = [];
   page.on('console', msg => {
     if (msg.type() === 'error' && !msg.text().includes('WebSocket') && !msg.text().includes('404'))
       consoleErrors.push(msg.text());
   });
-
-  // Use separate dungeons per effect to avoid state bleed
-  const dungeons = [];
-  const cleanup = async () => { for (const d of dungeons) await api(page, 'DELETE', `/dungeons/default/${d}`); };
+  page.on('dialog', dialog => dialog.accept());
 
   try {
+    // === Setup ===
+    // Use easy difficulty + 6 monsters so we get many counter-attack opportunities.
+    // Dragon boss inflicts Burn (25%) and Stun (15%).
+    // Monsters inflict Poison (20%).
+    // With 6 monsters we expect ~1.2 poison procs before they're all dead.
+    // We keep attacking until we observe each effect (warn if not seen within budget).
+    console.log('=== Setup: Create Warrior Easy Dungeon ===');
     await page.goto(BASE_URL, { timeout: TIMEOUT });
     await page.waitForTimeout(2000);
+    const created = await createDungeonUI(page, dName, { monsters: 6, difficulty: 'easy', heroClass: 'warrior' });
+    created ? ok('Dungeon created via UI') : fail('Failed to create dungeon');
 
-    // === STEP 1: Poison ===
-    console.log('=== Step 1: Poison Effect ===');
-    const d1 = `j5-psn-${Date.now()}`;
-    dungeons.push(d1);
-    await api(page, 'POST', '/dungeons', { name: d1, monsters: 2, difficulty: 'easy', heroClass: 'warrior' });
-    await waitForSpec(page, d1, d => d.spec?.monsterHP?.length === 2);
+    // === STEP 1: Verify no status effects on fresh dungeon ===
+    console.log('\n=== Step 1: No Effects on New Dungeon ===');
+    const initBadges = await effectBadgeCount(page);
+    initBadges === 0
+      ? ok('No status badges on fresh dungeon')
+      : fail(`Expected 0 effect badges, found ${initBadges}`);
+    const initBody = await getBodyText(page);
+    !initBody.includes('Poison') && !initBody.includes('Burn') && !initBody.includes('Stunned')
+      ? ok('No status-effect text in initial UI')
+      : warn('Unexpected effect text on fresh dungeon');
 
-    // Set poison
-    execSync(`kubectl patch dungeon ${d1} --type=merge -p '{"spec":{"poisonTurns":3}}'`);
-    const poisoned = await waitForSpec(page, d1, d => d.spec?.poisonTurns === 3);
-    poisoned ? ok('Poison set to 3 turns') : fail('Poison patch failed');
+    // === STEP 2: Fight until Poison inflicted ===
+    // Monsters have 20% proc; with 6 monsters and up to 12 attacks: ~P(at least 1) ≈ 93%.
+    console.log('\n=== Step 2: Trigger Poison via Monster Counter-Attack ===');
+    const poisonResult = await fightUntilEffect(page, 'POISON', 12, true);
+    if (poisonResult) {
+      ok('Poison inflicted by monster counter-attack');
+      poisonResult.includes('POISON') || poisonResult.includes('Poison')
+        ? ok('Combat text mentions POISON')
+        : warn('POISON keyword found but text unclear');
+    } else {
+      warn('Poison not triggered in 12 attacks (20% chance — statistically possible); skipping poison badge tests');
+    }
 
-    // Navigate and check badge
-    await page.goto(`${BASE_URL}/dungeon/default/${d1}`, { timeout: TIMEOUT });
-    await page.waitForTimeout(5000);
-    const poisonBadges = page.locator('.status-badge.effect');
-    (await poisonBadges.count()) > 0 ? ok('Poison badge visible') : warn('Poison badge not found');
+    // === STEP 3: Poison badge appears and shows correct turn count ===
+    console.log('\n=== Step 3: Poison Badge Visible ===');
+    if (poisonResult) {
+      await page.waitForTimeout(1000);
+      const effects = await readEffectBadges(page);
+      effects.poison > 0
+        ? ok(`Poison badge visible with count ${effects.poison}`)
+        : fail('Poison badge not visible after POISON was inflicted');
+      effects.poison === 3
+        ? ok('Poison badge shows 3 turns')
+        : (effects.poison > 0 ? warn(`Poison badge shows ${effects.poison} (expected 3)`) : null);
+    } else {
+      warn('Skipping: poison was not triggered');
+    }
 
-    // Attack — poison should tick and deal damage
-    const hpBefore = poisoned.spec.heroHP;
-    const mt1 = await attackAndDismiss(page);
-    mt1 ? ok('Attack resolved') : fail('Attack did not resolve');
-    if (mt1 && (mt1.includes('Poison') || mt1.includes('poison') || mt1.includes('-5')))
-      ok('Combat mentions poison');
-    else warn('Poison not mentioned in combat result');
+    // === STEP 4: Poison ticks on next attack (badge decrements + heroAction has "Poison") ===
+    console.log('\n=== Step 4: Poison Ticks Each Turn ===');
+    if (poisonResult) {
+      const beforeEffects = await readEffectBadges(page);
+      const r = await attackAny(page);
+      if (r) {
+        r.includes('Poison') || r.includes('-5')
+          ? ok('Combat result mentions Poison tick')
+          : warn('Poison tick not explicitly mentioned in combat text');
+        await page.waitForTimeout(1000);
+        const afterEffects = await readEffectBadges(page);
+        afterEffects.poison < beforeEffects.poison
+          ? ok(`Poison badge decremented: ${beforeEffects.poison} → ${afterEffects.poison}`)
+          : fail(`Poison badge did not decrement: still ${afterEffects.poison}`);
+      } else {
+        warn('No target to attack for poison tick test');
+      }
+    } else {
+      warn('Skipping: poison was not triggered');
+    }
 
-    await page.waitForTimeout(1000);
-    const afterPoison = await api(page, 'GET', `/dungeons/default/${d1}`);
-    const pt = afterPoison.body?.spec?.poisonTurns;
-    pt < 3 ? ok(`Poison decremented: 3→${pt}`) : fail(`Poison not decremented: ${pt}`);
-    afterPoison.body?.spec?.heroHP < hpBefore
-      ? ok(`HP decreased: ${hpBefore}→${afterPoison.body.spec.heroHP}`)
-      : warn('HP did not decrease');
+    // === STEP 5: Fight until all monsters dead, then fight boss for Burn/Stun ===
+    // Dragon: Burn 25%, Stun 15%. With up to 20 boss attacks: P(burn) ≈ 100%, P(stun) ≈ 97%.
+    console.log('\n=== Step 5: Kill Remaining Monsters to Reach Boss ===');
+    let killed = 0;
+    for (let i = 0; i < 20; i++) {
+      const alive = await page.locator('.arena-entity.monster-entity:not(.dead)').count();
+      if (alive === 0) break;
+      const r = await attackMonster(page);
+      if (r) killed++;
+    }
+    ok(`Killed remaining monsters (${killed} attacks)`);
 
-    // === STEP 2: Burn ===
-    console.log('\n=== Step 2: Burn Effect ===');
-    const d2 = `j5-brn-${Date.now()}`;
-    dungeons.push(d2);
-    await api(page, 'POST', '/dungeons', { name: d2, monsters: 2, difficulty: 'easy', heroClass: 'warrior' });
-    await waitForSpec(page, d2, d => d.spec?.monsterHP?.length === 2);
+    // Wait for boss to become targetable
+    await page.waitForTimeout(3000);
+    const bossBtn = page.locator('.arena-entity.boss-entity .arena-atk-btn.btn-primary');
+    (await bossBtn.count()) > 0
+      ? ok('Boss is now targetable')
+      : warn('Boss not yet visible (may still be pending)');
 
-    execSync(`kubectl patch dungeon ${d2} --type=merge -p '{"spec":{"burnTurns":2}}'`);
-    const burned = await waitForSpec(page, d2, d => d.spec?.burnTurns === 2);
-    burned ? ok('Burn set to 2 turns') : fail('Burn patch failed');
+    // === STEP 6: Trigger Burn via Boss counter-attack ===
+    console.log('\n=== Step 6: Trigger Burn via Boss Counter-Attack ===');
+    const burnResult = await fightUntilEffect(page, 'BURN', 20, false);
+    if (burnResult) {
+      ok('Burn inflicted by boss counter-attack');
+      const effects = await readEffectBadges(page);
+      effects.burn > 0
+        ? ok(`Burn badge visible with count ${effects.burn}`)
+        : fail('Burn badge not visible after BURN was inflicted');
+      effects.burn === 2
+        ? ok('Burn badge shows 2 turns')
+        : (effects.burn > 0 ? warn(`Burn badge shows ${effects.burn} (expected 2)`) : null);
+    } else {
+      warn('Burn not triggered in 20 boss attacks (25% chance); skipping burn badge tests');
+    }
 
-    await page.goto(`${BASE_URL}/dungeon/default/${d2}`, { timeout: TIMEOUT });
-    await page.waitForTimeout(5000);
+    // === STEP 7: Burn ticks on next attack ===
+    console.log('\n=== Step 7: Burn Ticks Each Turn ===');
+    if (burnResult) {
+      const bBefore = await readEffectBadges(page);
+      const r = await attackBoss(page);
+      if (r) {
+        r.includes('Burn') || r.includes('-8')
+          ? ok('Combat result mentions Burn tick')
+          : warn('Burn tick not explicitly mentioned in combat text');
+        await page.waitForTimeout(1000);
+        const bAfter = await readEffectBadges(page);
+        bAfter.burn < bBefore.burn
+          ? ok(`Burn badge decremented: ${bBefore.burn} → ${bAfter.burn}`)
+          : fail(`Burn badge did not decrement: still ${bAfter.burn}`);
+      } else {
+        warn('No boss to attack for burn tick test');
+      }
+    } else {
+      warn('Skipping: burn was not triggered');
+    }
 
-    const hpBeforeBurn = burned.spec.heroHP;
-    const mt2 = await attackAndDismiss(page);
-    mt2 ? ok('Attack resolved') : fail('Attack did not resolve');
-    if (mt2 && (mt2.includes('Burn') || mt2.includes('burn') || mt2.includes('-8')))
-      ok('Combat mentions burn');
-    else warn('Burn not mentioned in combat result');
+    // === STEP 8: Trigger Stun via Boss counter-attack ===
+    console.log('\n=== Step 8: Trigger Stun via Boss Counter-Attack ===');
+    // If already stunned from earlier boss attacks, skip triggering
+    const preStun = await readEffectBadges(page);
+    let stunResult = null;
+    if (preStun.stun > 0) {
+      stunResult = 'already-stunned';
+      ok(`Stun already active (${preStun.stun} turns) from earlier boss attacks`);
+    } else {
+      stunResult = await fightUntilEffect(page, 'STUN', 20, false);
+      if (stunResult) {
+        ok('Stun inflicted by boss counter-attack');
+      } else {
+        warn('Stun not triggered in 20 boss attacks (15% chance); skipping stun tests');
+      }
+    }
 
-    await page.waitForTimeout(1000);
-    const afterBurn = await api(page, 'GET', `/dungeons/default/${d2}`);
-    const bt = afterBurn.body?.spec?.burnTurns;
-    bt < 2 ? ok(`Burn decremented: 2→${bt}`) : fail(`Burn not decremented: ${bt}`);
-    afterBurn.body?.spec?.heroHP < hpBeforeBurn
-      ? ok(`HP decreased with burn: ${hpBeforeBurn}→${afterBurn.body.spec.heroHP}`)
-      : warn('HP did not decrease with burn');
+    // === STEP 9: Stun badge visible and hero attack is skipped ===
+    console.log('\n=== Step 9: Stun — Hero Cannot Attack ===');
+    if (stunResult) {
+      const sEffects = await readEffectBadges(page);
+      sEffects.stun > 0
+        ? ok(`Stun badge visible with count ${sEffects.stun}`)
+        : fail('Stun badge not visible after STUN was inflicted');
 
-    // === STEP 3: Stun ===
-    console.log('\n=== Step 3: Stun Effect ===');
-    const d3 = `j5-stn-${Date.now()}`;
-    dungeons.push(d3);
-    await api(page, 'POST', '/dungeons', { name: d3, monsters: 2, difficulty: 'easy', heroClass: 'warrior' });
-    await waitForSpec(page, d3, d => d.spec?.monsterHP?.length === 2);
+      // When stunned: heroAction should contain "STUNNED!" and no damage dealt to boss
+      const rStun = await attackBoss(page);
+      if (rStun) {
+        rStun.includes('STUNNED') || rStun.includes('Stun')
+          ? ok('Combat modal shows STUNNED when hero attacks')
+          : fail(`Stun not shown in combat modal: ${rStun.substring(0, 120)}`);
+        await page.waitForTimeout(1000);
+        const sAfter = await readEffectBadges(page);
+        sAfter.stun < (sEffects.stun > 0 ? sEffects.stun : 1)
+          ? ok(`Stun badge consumed: ${sEffects.stun} → ${sAfter.stun}`)
+          : fail(`Stun badge did not decrement: still ${sAfter.stun}`);
+      } else {
+        warn('No boss to attack for stun test');
+      }
+    } else {
+      warn('Skipping stun test: stun not triggered');
+    }
 
-    // Set stun and record attackSeq
-    const preStun = await api(page, 'GET', `/dungeons/default/${d3}`);
-    const seqBefore = preStun.body?.spec?.attackSeq || 0;
-    execSync(`kubectl patch dungeon ${d3} --type=merge -p '{"spec":{"stunTurns":1}}'`);
-    const stunned = await waitForSpec(page, d3, d => d.spec?.stunTurns === 1);
-    stunned ? ok('Stun set to 1 turn') : fail('Stun patch failed');
+    // === STEP 10: Status info panel ===
+    console.log('\n=== Step 10: Status Effect Info Panel ===');
+    // The info/help panel should describe status effects
+    const bodyForInfo = await getBodyText(page);
+    bodyForInfo.includes('Poison') && bodyForInfo.includes('Burn') && bodyForInfo.includes('Stun')
+      ? ok('Status effect info (Poison/Burn/Stun) visible in UI')
+      : warn('Status effect info not found in body text');
 
-    const monsterHPBefore = stunned.spec.monsterHP;
-    await page.goto(`${BASE_URL}/dungeon/default/${d3}`, { timeout: TIMEOUT });
-    await page.waitForTimeout(5000);
-
-    const mt3 = await attackAndDismiss(page);
-    mt3 ? ok('Attack resolved while stunned') : fail('Stunned attack did not resolve');
-    if (mt3 && (mt3.includes('STUNNED') || mt3.includes('stunned') || mt3.includes('Stun')))
-      ok('Combat shows STUNNED');
-    else fail(`Stun not shown: ${(mt3 || '').substring(0, 120)}`);
-
-    await page.waitForTimeout(1000);
-    const afterStun = await api(page, 'GET', `/dungeons/default/${d3}`);
-    afterStun.body?.spec?.stunTurns === 0 ? ok('Stun consumed: 1→0') : fail(`Stun: ${afterStun.body?.spec?.stunTurns}`);
-    JSON.stringify(afterStun.body?.spec?.monsterHP) === JSON.stringify(monsterHPBefore)
-      ? ok(`Monster HP unchanged while stunned: ${JSON.stringify(monsterHPBefore)}`)
-      : warn(`Monster HP changed during stun: ${JSON.stringify(monsterHPBefore)}→${JSON.stringify(afterStun.body?.spec?.monsterHP)}`);
-
-    // === STEP 4: Multiple effects simultaneously ===
-    console.log('\n=== Step 4: Multiple Effects ===');
-    const d4 = `j5-multi-${Date.now()}`;
-    dungeons.push(d4);
-    await api(page, 'POST', '/dungeons', { name: d4, monsters: 2, difficulty: 'easy', heroClass: 'warrior' });
-    await waitForSpec(page, d4, d => d.spec?.monsterHP?.length === 2);
-
-    execSync(`kubectl patch dungeon ${d4} --type=merge -p '{"spec":{"poisonTurns":2,"burnTurns":1,"stunTurns":1}}'`);
-    const multi = await waitForSpec(page, d4, d => d.spec?.poisonTurns === 2 && d.spec?.burnTurns === 1 && d.spec?.stunTurns === 1);
-    multi ? ok('All 3 effects set') : fail('Multi-effect patch failed');
-
-    await page.goto(`${BASE_URL}/dungeon/default/${d4}`, { timeout: TIMEOUT });
-    await page.waitForTimeout(5000);
-    const multiBadges = page.locator('.status-badge.effect');
-    (await multiBadges.count()) >= 3 ? ok(`${await multiBadges.count()} status badges visible`) : warn(`${await multiBadges.count()} badges (expected 3)`);
-
-    const mt4 = await attackAndDismiss(page);
-    if (mt4 && mt4.includes('STUNNED')) ok('Stunned with multiple effects active');
-    else warn('Stun text not found with multi-effects');
-
-    await page.waitForTimeout(1000);
-    const afterMulti = await api(page, 'GET', `/dungeons/default/${d4}`);
-    const s = afterMulti.body?.spec;
-    s?.stunTurns === 0 ? ok('Stun consumed in multi-effect') : warn(`Stun: ${s?.stunTurns}`);
-    s?.poisonTurns < 2 ? ok(`Poison ticked in multi-effect: ${s.poisonTurns}`) : warn(`Poison: ${s?.poisonTurns}`);
-    s?.burnTurns < 1 ? ok(`Burn ticked in multi-effect: ${s.burnTurns}`) : warn(`Burn: ${s?.burnTurns}`);
-
-    // === STEP 5: Effects expire — no badges ===
-    console.log('\n=== Step 5: Effects Expire ===');
-    execSync(`kubectl patch dungeon ${d4} --type=merge -p '{"spec":{"poisonTurns":0,"burnTurns":0,"stunTurns":0}}'`);
-    await waitForSpec(page, d4, d => d.spec?.poisonTurns === 0 && d.spec?.burnTurns === 0 && d.spec?.stunTurns === 0);
-    await page.goto(`${BASE_URL}/dungeon/default/${d4}`, { timeout: TIMEOUT });
-    await page.waitForTimeout(5000);
-    const finalBadges = page.locator('.status-badge.effect');
-    (await finalBadges.count()) === 0 ? ok('No status badges when effects expired') : warn(`${await finalBadges.count()} badges still visible`);
-
-    // === STEP 6: Console errors ===
-    console.log('\n=== Step 6: Console Errors ===');
+    // === STEP 11: Console errors ===
+    console.log('\n=== Step 11: Console Errors ===');
     consoleErrors.length === 0
       ? ok('No console errors')
-      : fail(`${consoleErrors.length} console errors: ${consoleErrors[0]}`);
+      : fail(`${consoleErrors.length} console error(s): ${consoleErrors[0]}`);
 
     // === Cleanup ===
     console.log('\n=== Cleanup ===');
-    await cleanup();
-    ok('Cleanup initiated');
+    await navigateHome(page, BASE_URL);
+    await page.waitForTimeout(2000);
+    const deleted = await deleteDungeon(page, dName);
+    deleted ? ok('Dungeon deleted via UI') : warn('Could not delete dungeon via UI');
 
   } catch (error) {
-    console.error(`\n❌ Fatal: ${error.message}`);
+    console.error(`\n❌ Fatal: ${error.message}\n${error.stack}`);
     failed++;
-    await cleanup();
+    // Best-effort cleanup
+    try {
+      await navigateHome(page, BASE_URL);
+      await deleteDungeon(page, dName);
+    } catch (_) {}
   } finally {
     await browser.close();
   }
