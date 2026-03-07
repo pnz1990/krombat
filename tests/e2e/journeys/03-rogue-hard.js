@@ -1,36 +1,69 @@
 // Journey 3: Rogue Hard — Dodge & Backstab
+// UI-ONLY: no kubectl, no fetch/api, no execSync
+// Tests: rogue creation, initial state, backstab 3x, cooldown tracking,
+//        cooldown natural decrement over 3 turns, second backstab, dodge mechanic,
+//        hard difficulty dice/boss HP, no mana display
 const { chromium } = require('playwright');
+const { createDungeonUI, waitForCombatResult, dismissLootPopup, navigateHome, deleteDungeon } = require('./helpers');
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 const TIMEOUT = 15000;
 let passed = 0, failed = 0, warnings = 0;
-function ok(msg) { console.log(`  ✅ ${msg}`); passed++; }
+function ok(msg)   { console.log(`  ✅ ${msg}`); passed++; }
 function fail(msg) { console.log(`  ❌ ${msg}`); failed++; }
 function warn(msg) { console.log(`  ⚠️  ${msg}`); warnings++; }
 
-async function api(page, method, path, body) {
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      return await page.evaluate(async ([m, p, b]) => {
-        const opts = { method: m, headers: { 'Content-Type': 'application/json' } };
-        if (b) opts.body = JSON.stringify(b);
-        const r = await fetch(`/api/v1${p}`, opts);
-        const text = await r.text();
-        try { return { status: r.status, body: JSON.parse(text) }; } catch { return { status: r.status, body: text }; }
-      }, [method, path, body]);
-    } catch { await page.waitForTimeout(2000); }
-  }
-  return { status: 0, body: 'fetch failed' };
+async function getBodyText(page) { return page.textContent('body'); }
+
+// Click the first Backstab button on a live entity
+async function doBackstab(page) {
+  const btn = page.locator('.arena-entity:not(.dead) button:has-text("Backstab")').first();
+  if (await btn.count() === 0) return null;
+  await btn.click({ force: true });
+  const result = await waitForCombatResult(page);
+  await dismissLootPopup(page);
+  return result;
 }
 
-async function waitForSpec(page, name, check, maxWait = 45000) {
-  const start = Date.now();
-  while (Date.now() - start < maxWait) {
-    const res = await api(page, 'GET', `/dungeons/default/${name}`);
-    if (res.status === 200 && check(res.body)) return res.body;
-    await page.waitForTimeout(2000);
+// Normal attack — monster only (not boss), returns combat text or null
+async function doAttackMonster(page) {
+  const alive = page.locator('.arena-entity.monster-entity:not(.dead) .arena-atk-btn.btn-primary');
+  if (await alive.count() === 0) return null;
+  await alive.first().click({ force: true });
+  const result = await waitForCombatResult(page);
+  await dismissLootPopup(page);
+  return result;
+}
+
+// Normal attack — any target (monster or boss)
+async function doAttackAny(page) {
+  const alive = page.locator('.arena-entity.monster-entity:not(.dead) .arena-atk-btn.btn-primary');
+  const boss  = page.locator('.arena-entity.boss-entity .arena-atk-btn.btn-primary');
+  if (await alive.count() > 0) {
+    await alive.first().click({ force: true });
+  } else if (await boss.count() > 0) {
+    await boss.click({ force: true });
+  } else {
+    return null;
   }
+  const result = await waitForCombatResult(page);
+  await dismissLootPopup(page);
+  return result;
+}
+
+// Return current backstab cooldown (number) or null
+async function getBackstabCD(page) {
+  const text = await getBodyText(page);
+  const cdMatch = text.match(/Backstab:\s*(\d+)\s*CD/);
+  if (cdMatch) return parseInt(cdMatch[1], 10);
+  if (text.includes('Backstab: Ready') || text.includes('Backstab:Ready')) return 0;
   return null;
+}
+
+// Return current hero HP
+async function getHeroHP(page) {
+  const m = (await getBodyText(page)).match(/HP:\s*(\d+)\s*\/\s*\d+/);
+  return m ? parseInt(m[1], 10) : null;
 }
 
 async function run() {
@@ -38,203 +71,207 @@ async function run() {
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
   const dName = `j3-${Date.now()}`;
-  const { execSync } = require('child_process');
   const consoleErrors = [];
   page.on('console', msg => {
     if (msg.type() === 'error' && !msg.text().includes('WebSocket') && !msg.text().includes('404'))
       consoleErrors.push(msg.text());
   });
+  page.on('dialog', dialog => dialog.accept());
 
   try {
     // === STEP 1: Create rogue hard dungeon via UI ===
-    console.log('=== Step 1: Create Rogue Dungeon ===');
+    console.log('=== Step 1: Create Rogue Hard Dungeon ===');
     await page.goto(BASE_URL, { timeout: TIMEOUT });
     await page.waitForTimeout(2000);
-    await page.fill('input[placeholder="my-dungeon"]', dName);
-    await page.selectOption('select >> nth=0', 'hard');
-    await page.selectOption('select >> nth=1', 'rogue');
-    const monsterInput = page.locator('input[type="number"]');
-    if (await monsterInput.count() > 0) await monsterInput.fill('3');
-    await page.click('button:has-text("Create Dungeon")');
-    await page.waitForTimeout(3000);
-
-    for (let i = 0; i < 30; i++) {
-      const text = await page.textContent('body');
-      if (text.includes('ROGUE') && text.includes(dName)) break;
-      await page.waitForTimeout(2000);
-    }
-    const body = await page.textContent('body');
-    body.includes('ROGUE') ? ok('Rogue dungeon created') : fail('Dungeon did not load as rogue');
+    // 5 monsters on hard: gives enough targets for CD decrement + dodge tests
+    // without running out of monsters too quickly
+    const created = await createDungeonUI(page, dName, { monsters: 5, difficulty: 'hard', heroClass: 'rogue' });
+    created ? ok('Rogue hard dungeon created via UI') : fail('Dungeon did not load as rogue');
 
     // === STEP 2: Verify rogue initial state ===
     console.log('\n=== Step 2: Rogue Initial State ===');
-    body.includes('150') ? ok('Hero HP: 150') : fail('Hero HP not 150');
+    const initBody = await getBodyText(page);
+    initBody.includes('ROGUE')  ? ok('Hero class shown as ROGUE') : fail('Hero class not ROGUE');
+    initBody.includes('150')    ? ok('Hero HP: 150')               : fail('Hero HP not 150');
+    !initBody.includes('Mana:') ? ok('No mana display (rogue)')    : fail('Mana display visible for rogue');
 
-    // Backstab info should be visible
-    const backstabText = page.locator('text=Backstab');
-    (await backstabText.count()) > 0 ? ok('Backstab display present') : fail('Backstab display missing');
-    body.includes('Ready') ? ok('Backstab shows Ready') : warn('Backstab may not show Ready');
+    const backstabIndicator = page.locator('.cooldown-text');
+    (await backstabIndicator.count()) > 0 ? ok('Backstab indicator present') : fail('Backstab indicator missing');
+    initBody.includes('Ready')  ? ok('Backstab shows Ready')       : warn('Backstab Ready text not found');
 
-    // No heal or taunt buttons
-    const healBtn = page.locator('button:has-text("Heal")');
-    const tauntBtn = page.locator('button:has-text("Taunt")');
-    (await healBtn.count()) === 0 ? ok('No Heal button (rogue only)') : fail('Heal button visible for rogue');
-    (await tauntBtn.count()) === 0 ? ok('No Taunt button (rogue only)') : fail('Taunt button visible for rogue');
+    (await page.locator('button:has-text("Heal")').count()) === 0
+      ? ok('No Heal button (rogue)')  : fail('Heal button visible for rogue');
+    (await page.locator('button:has-text("Taunt")').count()) === 0
+      ? ok('No Taunt button (rogue)') : fail('Taunt button visible for rogue');
 
-    // No mana display
-    body.includes('Mana:') ? fail('Mana display visible for rogue') : ok('No mana display');
+    initBody.includes('/80') ? ok('Monsters show /80 HP (hard)') : warn('Monster HP /80 not found');
 
-    // Hard difficulty — monsters should have 80 HP
-    body.includes('/80') ? ok('Monsters have 80 HP (hard)') : warn('Monster HP may not show /80');
+    // === STEP 3: First backstab — verify 3x damage note ===
+    console.log('\n=== Step 3: First Backstab ===');
+    const backstabBtnCount = await page.locator('.arena-entity:not(.dead) button:has-text("Backstab")').count();
+    backstabBtnCount > 0 ? ok('Backstab button on entity card') : fail('Backstab button not found');
 
-    // === STEP 3: Backstab attack ===
-    console.log('\n=== Step 3: Backstab Attack ===');
-    // Backstab button should be on monster entity cards
-    const backstabBtn = page.locator('button:has-text("Backstab")').first();
-    if (await backstabBtn.count() > 0) {
-      await backstabBtn.click({ force: true });
-      await page.waitForTimeout(1000);
-
-      let resolved = false;
-      for (let i = 0; i < 25; i++) {
-        const cb = page.locator('button:has-text("Continue")');
-        if (await cb.count() > 0) {
-          resolved = true;
-          const mt = await page.textContent('.combat-modal').catch(() => '');
-          mt.includes('Backstab') || mt.includes('3x') || mt.includes('damage')
-            ? ok('Backstab result shown')
-            : fail(`Backstab result unexpected: ${mt.substring(0, 150)}`);
-          await cb.click().catch(() => {});
-          await page.waitForTimeout(500);
-          break;
-        }
-        await page.waitForTimeout(3000);
-      }
-      resolved ? ok('Backstab resolved') : fail('Backstab did not resolve');
+    const bsResult1 = await doBackstab(page);
+    if (!bsResult1) {
+      fail('Backstab did not resolve');
     } else {
-      fail('Backstab button not found on entity card');
+      ok('Backstab resolved');
+      bsResult1.includes('Backstab') || bsResult1.includes('3x') || bsResult1.includes('damage') || bsResult1.includes('HP')
+        ? ok('Backstab result contains damage info')
+        : fail(`Backstab result missing damage info: ${bsResult1.substring(0, 150)}`);
     }
 
-    // === STEP 4: Backstab cooldown ===
-    console.log('\n=== Step 4: Backstab Cooldown ===');
+    // === STEP 4: Backstab cooldown set to 3 after use ===
+    console.log('\n=== Step 4: Backstab Cooldown After Use ===');
+    await page.waitForTimeout(1000);
+    const cdAfterBS = await getBackstabCD(page);
+    if (cdAfterBS !== null) {
+      cdAfterBS === 3
+        ? ok('Backstab cooldown set to 3 after use')
+        : fail(`Expected CD=3 after backstab, got ${cdAfterBS}`);
+    } else {
+      warn('Could not read backstab CD from page');
+    }
+
+    const backstabBtnDuringCD = page.locator('.arena-entity:not(.dead) button:has-text("Backstab")');
+    (await backstabBtnDuringCD.count()) === 0
+      ? ok('Backstab button hidden during cooldown')
+      : fail('Backstab button still visible during cooldown');
+
+    // === STEP 5: Cooldown decrements over 3 normal attacks ===
+    // Attack MONSTERS only (not boss) to avoid 800 HP boss eating all our time
+    console.log('\n=== Step 5: Cooldown Decrements Over 3 Turns ===');
+    for (let turn = 1; turn <= 3; turn++) {
+      const monsterCount = await page.locator('.arena-entity.monster-entity:not(.dead)').count();
+      if (monsterCount === 0) {
+        warn(`No monsters alive for turn ${turn} of CD decrement test`);
+        break;
+      }
+      const cdBefore = await getBackstabCD(page);
+      const r = await doAttackMonster(page);
+      if (!r) { warn(`Monster attack ${turn} did not resolve`); break; }
+      await page.waitForTimeout(1000);
+      const cdAfter = await getBackstabCD(page);
+      if (cdBefore !== null && cdAfter !== null) {
+        const expectedCD = Math.max(0, cdBefore - 1);
+        cdAfter === expectedCD
+          ? ok(`Turn ${turn}: CD ${cdBefore} → ${cdAfter}`)
+          : fail(`Turn ${turn}: expected CD ${expectedCD}, got ${cdAfter}`);
+      } else {
+        warn(`Turn ${turn}: could not read CD (before=${cdBefore} after=${cdAfter})`);
+      }
+    }
+
+    // After 3 attacks CD should be 0
+    const cdAfter3 = await getBackstabCD(page);
+    if (cdAfter3 !== null) {
+      cdAfter3 === 0
+        ? ok('Backstab ready after 3 turns (CD=0)')
+        : warn(`Expected CD=0 after 3 attacks, got ${cdAfter3}`);
+    }
+
+    const bsReady = page.locator('.arena-entity:not(.dead) button:has-text("Backstab")');
+    (await bsReady.count()) > 0
+      ? ok('Backstab button reappears when ready')
+      : warn('Backstab button not visible after CD (no alive targets?)');
+
+    // === STEP 6: Second backstab — verify CD resets to 3 ===
+    console.log('\n=== Step 6: Second Backstab + CD Reset ===');
+    const bsBtn2 = page.locator('.arena-entity:not(.dead) button:has-text("Backstab")').first();
+    if (await bsBtn2.count() > 0) {
+      const bsResult2 = await doBackstab(page);
+      if (!bsResult2) {
+        fail('Second backstab did not resolve');
+      } else {
+        ok('Second backstab resolved');
+        bsResult2.includes('Backstab') || bsResult2.includes('3x') || bsResult2.includes('damage') || bsResult2.includes('HP')
+          ? ok('Second backstab has damage result')
+          : warn(`Second backstab result unclear: ${bsResult2.substring(0, 100)}`);
+      }
+      await page.waitForTimeout(1000);
+      const cdAfterBS2 = await getBackstabCD(page);
+      if (cdAfterBS2 !== null) {
+        cdAfterBS2 === 3
+          ? ok('Backstab CD reset to 3 after second use')
+          : fail(`Expected CD=3 after second backstab, got ${cdAfterBS2}`);
+      } else {
+        warn('Could not read CD after second backstab');
+      }
+      const bsHidden2 = page.locator('.arena-entity:not(.dead) button:has-text("Backstab")');
+      (await bsHidden2.count()) === 0
+        ? ok('Backstab button hidden after second use')
+        : fail('Backstab button still visible after second use');
+    } else {
+      warn('No targets with Backstab available for second test');
+    }
+
+    // === STEP 7: Dodge mechanic — monsters only, limited attempts ===
+    // 25% chance per attack. With 5 attempts we have 76% probability of seeing at least one.
+    console.log('\n=== Step 7: Dodge Mechanic (25% chance) ===');
+    let dodgeObserved = false;
+    for (let i = 0; i < 5; i++) {
+      const monsters = await page.locator('.arena-entity.monster-entity:not(.dead)').count();
+      if (monsters === 0) break; // don't attack boss — too slow
+      const r = await doAttackMonster(page);
+      if (!r) break;
+      if (r.includes('dodged') || r.toLowerCase().includes('rogue dodged')) {
+        dodgeObserved = true;
+        ok(`Dodge observed in combat result`)
+        break;
+      }
+    }
+    if (!dodgeObserved) {
+      warn('No dodge observed in 5 monster attacks (25% chance — statistically possible)');
+    }
+
+    // === STEP 8: Hard difficulty — boss HP 800 visible ===
+    console.log('\n=== Step 8: Hard Difficulty Boss HP ===');
+    // Kill remaining monsters to reveal boss (limited to avoid timeout)
+    for (let i = 0; i < 8; i++) {
+      const alive = await page.locator('.arena-entity.monster-entity:not(.dead)').count();
+      if (alive === 0) break;
+      await doAttackMonster(page);
+    }
     await page.waitForTimeout(2000);
-    const bodyAfterBS = await page.textContent('body');
-    // Should show cooldown (e.g. "3 CD")
-    bodyAfterBS.includes('CD') ? ok('Backstab shows cooldown') : warn('Backstab cooldown text not found');
+    const bodyHard = await getBodyText(page);
+    bodyHard.includes('800') || bodyHard.includes('/800')
+      ? ok('Boss HP 800 visible (hard difficulty)')
+      : warn('Boss HP 800 not in page text (boss may still be pending)');
 
-    // Backstab button should NOT be on entity cards during cooldown
-    const backstabBtnCD = page.locator('.arena-entity button:has-text("Backstab")');
-    (await backstabBtnCD.count()) === 0 ? ok('Backstab button hidden during cooldown') : fail('Backstab button still visible during cooldown');
+    // Hard dice formula — shown in entity dice display
+    bodyHard.includes('3d20+5') ? ok('Dice formula 3d20+5 visible') : warn('Dice formula 3d20+5 not found in body');
 
-    // === STEP 5: Normal attack — cooldown decrements ===
-    console.log('\n=== Step 5: Normal Attack + CD Decrement ===');
-    const atkBtn = page.locator('.arena-atk-btn.btn-primary').first();
-    if (await atkBtn.count() > 0) {
-      await atkBtn.click({ force: true });
-      await page.waitForTimeout(1000);
-      for (let i = 0; i < 25; i++) {
-        const cb = page.locator('button:has-text("Continue")');
-        if (await cb.count() > 0) {
-          const mt = await page.textContent('.combat-modal').catch(() => '');
-          mt.includes('damage') || mt.includes('HP') ? ok('Normal attack resolved') : fail('Normal attack empty');
-          await cb.click().catch(() => {});
-          break;
-        }
-        await page.waitForTimeout(3000);
+    // === STEP 9: Rogue 1.1x damage note in combat (attack the boss) ===
+    console.log('\n=== Step 9: Rogue 1.1x Strike Note ===');
+    const bossBtn9 = page.locator('.arena-entity.boss-entity .arena-atk-btn.btn-primary');
+    if (await bossBtn9.count() > 0) {
+      const r9 = await doAttackAny(page);
+      if (r9) {
+        r9.includes('Rogue') || r9.includes('rogue') || r9.includes('strike') || r9.includes('damage')
+          ? ok('Rogue class note or damage in boss attack result')
+          : warn(`Rogue note not found: ${r9.substring(0, 100)}`);
+      } else {
+        warn('Boss attack in step 9 did not resolve');
       }
-
-      // Check cooldown decremented (3 → 2)
-      await page.waitForTimeout(1000);
-      const bodyAfterAtk = await page.textContent('body');
-      bodyAfterAtk.includes('2 CD') ? ok('Backstab cooldown decremented to 2') : warn('Cooldown may not show 2 CD yet');
     } else {
-      warn('All monsters dead from backstab (3x on hard can one-shot)');
-    }
-
-    // === STEP 6: Verify dodge mechanic via kubectl ===
-    console.log('\n=== Step 6: Dodge Mechanic ===');
-    // We can't guarantee dodge procs, but we can verify the rogue class is applied
-    // Check the dungeon spec to confirm rogue class
-    const res = await api(page, 'GET', `/dungeons/default/${dName}`);
-    res.status === 200 && res.body?.spec?.heroClass === 'rogue'
-      ? ok('Dungeon confirms rogue class')
-      : fail('Dungeon heroClass not rogue');
-
-    // Verify backstabCooldown is tracked in spec
-    const cd = res.body?.spec?.backstabCooldown;
-    typeof cd === 'number' ? ok(`Backstab cooldown in spec: ${cd}`) : fail('backstabCooldown not in spec');
-
-    // === STEP 7: Backstab ready after cooldown expires ===
-    console.log('\n=== Step 7: Backstab Ready After Cooldown ===');
-    // Patch cooldown to 0 to test re-availability
-    execSync(`kubectl patch dungeon ${dName} --type=merge -p '{"spec":{"backstabCooldown":0}}'`);
-    await page.waitForTimeout(5000);
-    await page.goto(`${BASE_URL}/dungeon/default/${dName}`, { timeout: TIMEOUT });
-    await page.waitForTimeout(5000);
-
-    const bodyReady = await page.textContent('body');
-    bodyReady.includes('Ready') ? ok('Backstab shows Ready after cooldown reset') : warn('Backstab Ready text not found');
-
-    // Backstab button should reappear on entity cards
-    const backstabBtn2 = page.locator('.arena-entity button:has-text("Backstab")');
-    (await backstabBtn2.count()) > 0 ? ok('Backstab button reappears when ready') : warn('Backstab button not visible yet');
-
-    // === STEP 8: Hard difficulty dice ===
-    console.log('\n=== Step 8: Hard Difficulty ===');
-    // Dice formula should be 3d20+5
-    const diceText = await page.textContent('body');
-    diceText.includes('3d20+5') ? ok('Dice formula: 3d20+5 (hard)') : warn('Dice formula not found');
-
-    // Boss should have 800 HP
-    // Boss is pending so not visible, check via API
-    const dungeonState = await api(page, 'GET', `/dungeons/default/${dName}`);
-    dungeonState.body?.spec?.bossHP === 800
-      ? ok('Boss HP: 800 (hard)')
-      : fail(`Boss HP: ${dungeonState.body?.spec?.bossHP} (expected 800)`);
-
-    // === STEP 9: Second backstab ===
-    console.log('\n=== Step 9: Second Backstab ===');
-    const backstabBtn3 = page.locator('.arena-entity button:has-text("Backstab")').first();
-    if (await backstabBtn3.count() > 0) {
-      await backstabBtn3.click({ force: true });
-      await page.waitForTimeout(1000);
-      let resolved2 = false;
-      for (let i = 0; i < 25; i++) {
-        const cb = page.locator('button:has-text("Continue")');
-        if (await cb.count() > 0) {
-          resolved2 = true;
-          const mt = await page.textContent('.combat-modal').catch(() => '');
-          mt.includes('Backstab') || mt.includes('3x') || mt.includes('damage')
-            ? ok('Second backstab has result')
-            : warn('Second backstab result unclear');
-          await cb.click().catch(() => {});
-          break;
-        }
-        await page.waitForTimeout(3000);
-      }
-      resolved2 ? ok('Second backstab resolved') : fail('Second backstab did not resolve');
-
-      // Cooldown should be back to 3
-      await page.waitForTimeout(1000);
-      const bodyAfterBS2 = await page.textContent('body');
-      bodyAfterBS2.includes('3 CD') ? ok('Backstab cooldown reset to 3') : warn('Cooldown may not show 3 CD');
-    } else {
-      warn('Backstab button not available for second test');
+      warn('Boss not yet visible for rogue strike note test');
     }
 
     // === STEP 10: Console errors ===
     console.log('\n=== Step 10: Console Errors ===');
     consoleErrors.length === 0
       ? ok('No console errors')
-      : fail(`${consoleErrors.length} console errors: ${consoleErrors[0]}`);
+      : fail(`${consoleErrors.length} console error(s): ${consoleErrors[0]}`);
 
     // === Cleanup ===
     console.log('\n=== Cleanup ===');
-    await api(page, 'DELETE', `/dungeons/default/${dName}`);
-    ok('Cleanup initiated');
+    await navigateHome(page, BASE_URL);
+    await page.waitForTimeout(2000);
+    const deleted = await deleteDungeon(page, dName);
+    deleted ? ok('Dungeon deleted via UI') : warn('Could not delete dungeon via UI');
 
   } catch (error) {
-    console.error(`\n❌ Fatal: ${error.message}`);
+    console.error(`\n❌ Fatal: ${error.message}\n${error.stack}`);
     failed++;
   } finally {
     await browser.close();
