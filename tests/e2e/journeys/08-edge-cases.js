@@ -192,22 +192,19 @@ async function run() {
       const doorBtn = page.locator('button:has-text("Enter"), .door-entity');
       if (await doorBtn.count() > 0) {
         await doorBtn.first().click({ force: true });
-        // Wait for room 2 to load
-        for (let i = 0; i < 30; i++) {
+        // Wait for room 2 to fully load — action Job + kro reconciliation
+        for (let i = 0; i < 45; i++) {
           const body = await page.textContent('body');
-          if (body.includes('Room 2') || body.includes('room 2')) break;
+          // Room 2 is ready when we see "Room 2" AND attack buttons are available
+          const hasR2 = body.includes('Room 2') || body.includes('room 2');
+          const atkCount = await page.locator('.arena-atk-btn.btn-primary').count();
+          if (hasR2 && atkCount > 0) break;
           await page.waitForTimeout(2000);
         }
         const r2Text = await page.textContent('body');
         r2Text.includes('2') ? ok('Room 2 loaded') : fail('Room 2 did not load');
-        // Should NOT show victory banner
         !r2Text.includes('VICTORY') ? ok('No victory banner in room 2') : fail('Victory banner showing in room 2');
-        // Monsters should be attackable
         const r2Atk = page.locator('.arena-atk-btn.btn-primary');
-        for (let i = 0; i < 10; i++) {
-          if (await r2Atk.count() > 0) break;
-          await page.waitForTimeout(2000);
-        }
         (await r2Atk.count()) > 0 ? ok('Room 2 monsters attackable') : fail('No attack buttons in room 2');
       } else {
         fail('Door not found after room 1 victory');

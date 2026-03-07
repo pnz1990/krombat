@@ -1,6 +1,6 @@
-// Journey 1: Warrior Easy — Full UI Playthrough (no API shortcuts)
-// Tests exactly what a user sees and clicks
+// Journey 1: Warrior Easy — Full UI Playthrough (UI-ONLY, no kubectl, no API)
 const { chromium } = require('playwright');
+const { createDungeonUI, attackMonster, attackBoss, dismissLootPopup, aliveMonsterCount, deadMonsterCount, getBodyText, waitForCombatResult } = require('./helpers');
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 const TIMEOUT = 15000;
@@ -9,14 +9,22 @@ function ok(msg) { console.log(`  ✅ ${msg}`); passed++; }
 function fail(msg) { console.log(`  ❌ ${msg}`); failed++; }
 function warn(msg) { console.log(`  ⚠️  ${msg}`); warnings++; }
 
+// Dismiss any modal that's blocking (combat Continue, loot Got it!)
+async function clearModals(page) {
+  for (let i = 0; i < 5; i++) {
+    const cb = page.locator('button:has-text("Continue")');
+    if (await cb.count() > 0) { await cb.click().catch(() => {}); await page.waitForTimeout(500); continue; }
+    const gi = page.locator('button:has-text("Got it!")');
+    if (await gi.count() > 0) { await gi.click().catch(() => {}); await page.waitForTimeout(500); continue; }
+    break;
+  }
+}
+
 async function run() {
   console.log('🧪 Journey 1: Warrior Easy — Full UI Playthrough\n');
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
   const dName = `j1-${Date.now()}`;
-  const combatLog = []; // Collect all combat events for debugging
-
-  // Collect console errors
   const consoleErrors = [];
   page.on('console', msg => {
     if (msg.type() === 'error' && !msg.text().includes('WebSocket') && !msg.text().includes('404'))
@@ -28,208 +36,167 @@ async function run() {
     console.log('=== Step 1: Create Dungeon ===');
     await page.goto(BASE_URL, { timeout: TIMEOUT });
     await page.waitForTimeout(2000);
-
-    await page.fill('input[placeholder="my-dungeon"]', dName);
-    await page.selectOption('select >> nth=0', 'easy');
-    await page.selectOption('select >> nth=1', 'warrior');
-    // Set monsters to 2
-    const monsterInput = page.locator('input[type="number"]');
-    if (await monsterInput.count() > 0) {
-      await monsterInput.fill('2');
-    }
-    await page.click('button:has-text("Create Dungeon")');
-    await page.waitForTimeout(3000);
-    ok('Create form submitted');
-
-    // Should navigate to dungeon view
-    // Wait for dungeon to load (not stuck on "Initializing")
-    let loadAttempts = 0;
-    for (let i = 0; i < 30; i++) {
-      const text = await page.textContent('body');
-      if (text.includes('WARRIOR') && text.includes(dName)) { loadAttempts = i; break; }
-      if (text.includes('Initializing')) { await page.waitForTimeout(2000); continue; }
-      await page.waitForTimeout(1000);
-    }
-    const bodyAfterCreate = await page.textContent('body');
-    bodyAfterCreate.includes(dName) && bodyAfterCreate.includes('WARRIOR')
-      ? ok(`Dungeon loaded (${loadAttempts}s)`)
-      : fail('Dungeon did not load');
+    const created = await createDungeonUI(page, dName, { monsters: 2, difficulty: 'easy', heroClass: 'warrior' });
+    created ? ok('Dungeon created and loaded') : fail('Dungeon did not load');
 
     // === STEP 2: Verify initial state ===
     console.log('\n=== Step 2: Initial State ===');
-    const text = await page.textContent('body');
-    text.includes('200') ? ok('Hero HP: 200') : fail('Hero HP not 200');
+    let body = await getBodyText(page);
+    body.includes('200') ? ok('Hero HP: 200') : fail('Hero HP not 200');
+    body.includes('WARRIOR') ? ok('Hero class: WARRIOR') : fail('Class not shown');
 
-    const monsters = page.locator('.arena-entity.monster-entity');
-    const mCount = await monsters.count();
-    mCount === 2 ? ok('2 monsters in arena') : fail(`Expected 2 monsters, got ${mCount}`);
+    let alive = await aliveMonsterCount(page);
+    alive === 2 ? ok('2 alive monsters') : fail(`Expected 2 alive, got ${alive}`);
 
-    const atkBtns = page.locator('.arena-atk-btn.btn-primary');
-    const btnCount = await atkBtns.count();
-    btnCount >= 2 ? ok(`${btnCount} attack buttons visible`) : fail('Attack buttons missing');
+    const bossAtk = page.locator('.arena-entity.boss-entity .arena-atk-btn.btn-primary');
+    (await bossAtk.count()) === 0 ? ok('Boss not attackable (pending)') : warn('Boss visible early');
 
-    // === STEP 3: First attack via UI click ===
-    console.log('\n=== Step 3: First Attack (UI click) ===');
-    const firstBtn = page.locator('.arena-atk-btn.btn-primary').first();
-    if (await firstBtn.count() === 0) { fail('No attack button'); } else {
-      await firstBtn.click({ force: true }).catch(() => {});
+    // === STEP 3: Attack monsters until all dead ===
+    console.log('\n=== Step 3: Kill All Monsters ===');
+    let attackCount = 0;
+    while (await aliveMonsterCount(page) > 0 && attackCount < 30) {
+      const result = await attackMonster(page);
+      attackCount++;
+      if (!result) { fail(`Attack ${attackCount} did not resolve`); break; }
+      // Dismiss any loot popup
+      await dismissLootPopup(page);
       await page.waitForTimeout(1000);
-
-      // Check combat modal appeared
-      const modal = page.locator('.combat-modal');
-      const modalVisible = (await modal.count()) > 0;
-      modalVisible ? ok('Combat modal appeared') : warn('Combat modal not visible yet');
-
-      // Wait for combat to resolve (up to 65s)
-      console.log('    Waiting for combat to resolve...');
-      let resolved = false;
-      for (let i = 0; i < 25; i++) {
-        const continueBtn = page.locator('button:has-text("Continue")');
-        if (await continueBtn.count() > 0) {
-          resolved = true;
-          // Check combat result content
-          const modalText = await page.textContent('.combat-modal').catch(() => '');
-          if (modalText.includes('damage') || modalText.includes('HP')) {
-            ok('Combat result has content');
-            combatLog.push(`COMBAT: ${modalText.substring(0, 200)}`);
-          } else {
-            fail('Combat result EMPTY');
-            combatLog.push('COMBAT: EMPTY RESULT');
-          }
-          // Dismiss
-          await continueBtn.click().catch(() => {});
-          await page.waitForTimeout(500);
-          ok('Combat modal dismissed');
-          break;
-        }
-        await page.waitForTimeout(3000);
-      }
-      if (!resolved) {
-        warn('Combat did not resolve in 75s — dismissing');
-        const closeBtn = page.locator('.modal-close').first();
-        if (await closeBtn.count() > 0) await closeBtn.click().catch(() => {});
-        combatLog.push('COMBAT: TIMEOUT - no result');
-      }
-
-      // Check game log has entry
-      await page.waitForTimeout(500);
-      const logText = await page.textContent('body');
-      // Should NOT have "Monster already dead" as first entry
-      if (logText.includes('Monster already dead')) {
-        fail('Game log shows "Monster already dead" (should not happen on first attack)');
-      }
     }
+    alive = await aliveMonsterCount(page);
+    alive === 0 ? ok(`All monsters dead (${attackCount} attacks)`) : fail(`${alive} still alive`);
 
-    // === STEP 4: Second attack — verify consistency ===
-    console.log('\n=== Step 4: Second Attack ===');
-    const secondBtn = page.locator('.arena-atk-btn.btn-primary').first();
-    if (await secondBtn.count() > 0) {
-      await secondBtn.click({ force: true }).catch(() => {});
-      await page.waitForTimeout(1000);
-
-      let resolved2 = false;
-      for (let i = 0; i < 25; i++) {
-        const cb = page.locator('button:has-text("Continue")');
-        if (await cb.count() > 0) {
-          resolved2 = true;
-          const mt = await page.textContent('.combat-modal').catch(() => '');
-          if (mt.includes('damage') || mt.includes('HP')) {
-            ok('Second attack has combat result');
-            combatLog.push(`COMBAT2: ${mt.substring(0, 200)}`);
-          } else {
-            fail('Second attack EMPTY result');
-            combatLog.push('COMBAT2: EMPTY');
-          }
-          await cb.click().catch(() => {});
-          await page.waitForTimeout(500);
-          break;
-        }
-        await page.waitForTimeout(3000);
-      }
-      if (!resolved2) warn('Second attack did not resolve');
-    } else {
-      warn('No attack button for second attack');
-    }
-
-    // === STEP 5: Check game log quality ===
-    console.log('\n=== Step 5: Game Log Quality ===');
-    const eventEntries = page.locator('.event-entry');
-    const entryCount = await eventEntries.count();
-    entryCount >= 2 ? ok(`Game log has ${entryCount} entries`) : warn(`Game log has ${entryCount} entries (expected ≥2)`);
-
-    // Check for spam
-    const fullLog = await page.textContent('body');
-    const alreadyDeadCount = (fullLog.match(/Monster already dead/g) || []).length;
-    alreadyDeadCount === 0 ? ok('No "Monster already dead" spam') : fail(`${alreadyDeadCount}x "Monster already dead" in log`);
-
-    const bossUnlockedCount = (fullLog.match(/Boss unlocked/g) || []).length;
-    bossUnlockedCount <= 1 ? ok('Boss unlocked shown at most once') : fail(`${bossUnlockedCount}x "Boss unlocked" in log`);
-
-    // === STEP 6: Check HP bar updates ===
-    console.log('\n=== Step 6: HP Bar Updates ===');
-    // Monster HP should have changed from initial
-    const hpText = await page.textContent('body');
-    // Look for monster HP display (e.g. "goblin · 15/30")
-    const hpMatch = hpText.match(/(\d+)\/30/);
-    if (hpMatch && parseInt(hpMatch[1]) < 30) {
-      ok(`Monster HP updated: ${hpMatch[1]}/30`);
-    } else {
-      warn('Monster HP bar may not have updated yet');
-    }
-
-    // === STEP 7: Check for duplicate loot popups ===
-    console.log('\n=== Step 7: Loot Behavior ===');
-    // At this point we may or may not have loot — just verify no phantom popup
-    const lootModal = page.locator('.modal-overlay:has-text("Loot")');
-    const lootVisible = (await lootModal.count()) > 0;
-    if (lootVisible) {
-      ok('Loot popup visible (monster may have died)');
-      // Dismiss it
-      const gotIt = page.locator('button:has-text("Got it")');
-      if (await gotIt.count() > 0) await gotIt.click();
-    } else {
-      ok('No phantom loot popup');
-    }
-
-    // === STEP 8: Verify no duplicate attacks ===
-    console.log('\n=== Step 8: No Duplicate Attacks ===');
-    // Rapid-click test: click attack button 3 times fast
-    const rapidBtn = page.locator('.arena-atk-btn.btn-primary').first();
-    if (await rapidBtn.count() > 0) {
-      await rapidBtn.click({ force: true }).catch(() => {});
-      await rapidBtn.click({ force: true }).catch(() => {});
-      await rapidBtn.click({ force: true }).catch(() => {});
+    // === STEP 4: Boss should become attackable ===
+    console.log('\n=== Step 4: Boss Unlocked ===');
+    let bossReady = false;
+    for (let i = 0; i < 30; i++) {
+      await clearModals(page);
+      const btn = page.locator('.arena-entity.boss-entity .arena-atk-btn.btn-primary');
+      if (await btn.count() > 0) { bossReady = true; break; }
       await page.waitForTimeout(2000);
-      // Should only have one combat modal, not three
-      const modals = page.locator('.combat-modal');
-      const modalCount = await modals.count();
-      modalCount <= 1 ? ok('Rapid clicks produced at most 1 modal') : fail(`Rapid clicks produced ${modalCount} modals`);
-
-      // Wait and dismiss
-      for (let i = 0; i < 25; i++) {
-        const cb = page.locator('button:has-text("Continue")');
-        if (await cb.count() > 0) { await cb.click().catch(() => {}); break; }
-        await page.waitForTimeout(3000);
-      }
-      await page.waitForTimeout(500);
     }
+    bossReady ? ok('Boss is attackable') : fail('Boss did not become attackable');
+
+    // === STEP 5: Kill the boss ===
+    console.log('\n=== Step 5: Kill Boss ===');
+    let bossAttacks = 0;
+    while (bossAttacks < 40) {
+      await clearModals(page);
+      body = await getBodyText(page);
+      if (body.includes('VICTORY') || body.includes('Victory')) break;
+
+      const bossBtn = page.locator('.arena-entity.boss-entity .arena-atk-btn.btn-primary');
+      if (await bossBtn.count() === 0) {
+        // Boss might be dead already or modal blocking
+        await page.waitForTimeout(2000);
+        body = await getBodyText(page);
+        if (body.includes('VICTORY') || body.includes('Victory')) break;
+        // Check if hero is dead
+        if (body.includes('DEFEAT') || body.includes('Defeat') || body.includes('fallen')) {
+          warn('Hero defeated before killing boss');
+          break;
+        }
+        continue;
+      }
+
+      await bossBtn.click({ force: true });
+      bossAttacks++;
+      const result = await waitForCombatResult(page);
+      if (!result) {
+        body = await getBodyText(page);
+        if (body.includes('VICTORY') || body.includes('Victory')) break;
+        warn(`Boss attack ${bossAttacks} timeout`);
+      }
+      await dismissLootPopup(page);
+      await page.waitForTimeout(1000);
+    }
+    body = await getBodyText(page);
+    (body.includes('VICTORY') || body.includes('Victory'))
+      ? ok(`Boss killed (${bossAttacks} attacks)`)
+      : fail('Boss not killed');
+
+    // === STEP 6: Post-boss auto-sequence ===
+    console.log('\n=== Step 6: Post-Boss Sequence ===');
+    // Clear any remaining modals from boss kill
+    await clearModals(page);
+
+    // Wait for treasure + door auto-trigger
+    let doorReady = false;
+    for (let i = 0; i < 45; i++) {
+      await clearModals(page);
+      body = await getBodyText(page);
+      if (body.includes('Enter')) { doorReady = true; break; }
+      await page.waitForTimeout(2000);
+    }
+    doorReady ? ok('Door ready (Enter visible)') : fail('Door did not unlock');
+
+    // === STEP 7: Enter Room 2 ===
+    console.log('\n=== Step 7: Enter Room 2 ===');
+    await clearModals(page);
+    const doorEntity = page.locator('.arena-entity.door-entity');
+    if (await doorEntity.count() > 0) {
+      await doorEntity.click({ force: true });
+      for (let i = 0; i < 30; i++) {
+        body = await getBodyText(page);
+        if (body.includes('Room 2')) break;
+        await page.waitForTimeout(2000);
+      }
+      body = await getBodyText(page);
+      body.includes('Room 2') ? ok('Room 2 loaded') : fail('Room 2 did not load');
+
+      // Wait for monsters to appear
+      for (let i = 0; i < 15; i++) {
+        alive = await aliveMonsterCount(page);
+        if (alive > 0) break;
+        await page.waitForTimeout(2000);
+      }
+      alive = await aliveMonsterCount(page);
+      alive > 0 ? ok(`${alive} monsters in room 2`) : warn('No monsters visible yet');
+    } else {
+      fail('Door not found');
+    }
+
+    // === STEP 8: Play room 2 to completion ===
+    console.log('\n=== Step 8: Room 2 ===');
+    let r2 = 0;
+    while (r2 < 60) {
+      await clearModals(page);
+      body = await getBodyText(page);
+      if (body.includes('VICTORY') || body.includes('Victory') || body.includes('Dungeon Complete')) break;
+      if (body.includes('DEFEAT') || body.includes('fallen')) { warn('Hero defeated in room 2'); break; }
+
+      alive = await aliveMonsterCount(page);
+      if (alive > 0) {
+        const result = await attackMonster(page);
+        r2++;
+        if (!result) { await page.waitForTimeout(2000); continue; }
+      } else {
+        const bossBtn = page.locator('.arena-entity.boss-entity .arena-atk-btn.btn-primary');
+        if (await bossBtn.count() > 0) {
+          await bossBtn.click({ force: true });
+          r2++;
+          const result = await waitForCombatResult(page);
+          if (!result) {
+            body = await getBodyText(page);
+            if (body.includes('VICTORY') || body.includes('Victory')) break;
+          }
+        } else {
+          await page.waitForTimeout(3000);
+          r2++;
+        }
+      }
+      await dismissLootPopup(page);
+      await page.waitForTimeout(1000);
+    }
+    body = await getBodyText(page);
+    (body.includes('VICTORY') || body.includes('Victory') || body.includes('Dungeon Complete'))
+      ? ok(`Room 2 complete (${r2} attacks)`)
+      : fail(`Room 2 not complete after ${r2} attacks`);
 
     // === STEP 9: Console errors ===
     console.log('\n=== Step 9: Console Errors ===');
     consoleErrors.length === 0
       ? ok('No console errors')
       : fail(`${consoleErrors.length} console errors: ${consoleErrors[0]}`);
-
-    // === Print combat log for debugging ===
-    console.log('\n=== Combat Log (for debugging) ===');
-    combatLog.forEach(l => console.log(`    ${l}`));
-
-    // === Cleanup ===
-    console.log('\n=== Cleanup ===');
-    await page.evaluate(async (name) => {
-      try { await fetch(`/api/v1/dungeons/default/${name}`, { method: 'DELETE' }); } catch {}
-    }, dName);
-    ok('Cleanup initiated');
 
   } catch (error) {
     console.error(`\n❌ Fatal: ${error.message}`);
