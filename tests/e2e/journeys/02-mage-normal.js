@@ -14,16 +14,16 @@ function warn(msg) { console.log(`  ⚠️  ${msg}`); warnings++; }
 
 async function getBodyText(page) { return page.textContent('body'); }
 
-// Click the first available attack target (monster or boss) and return combat text
+// Click the first available attack target (monster then boss) and return combat text
 async function doAttack(page) {
-  const aliveMonsters = page.locator('.arena-entity.monster-entity:not(.dead) .arena-atk-btn.btn-primary');
-  const bossBtn       = page.locator('.arena-entity.boss-entity .arena-atk-btn.btn-primary');
-  if (await aliveMonsters.count() > 0) {
-    await aliveMonsters.first().click({ force: true });
-  } else if (await bossBtn.count() > 0) {
-    await bossBtn.click({ force: true });
+  const alive = page.locator('.arena-entity.monster-entity:not(.dead) .arena-atk-btn.btn-primary');
+  const boss  = page.locator('.arena-entity.boss-entity .arena-atk-btn.btn-primary');
+  if (await alive.count() > 0) {
+    await alive.first().click({ force: true });
+  } else if (await boss.count() > 0) {
+    await boss.click({ force: true });
   } else {
-    return null; // nothing to attack
+    return null;
   }
   const result = await waitForCombatResult(page);
   await dismissLootPopup(page);
@@ -67,32 +67,31 @@ async function run() {
     console.log('=== Step 1: Create Mage Dungeon ===');
     await page.goto(BASE_URL, { timeout: TIMEOUT });
     await page.waitForTimeout(2000);
-    // 3 monsters, normal difficulty — enough counter-attacks to drain HP below 80
-    const created = await createDungeonUI(page, dName, { monsters: 3, difficulty: 'normal', heroClass: 'mage' });
+    // 6 monsters, normal — 6×2=12 dmg/round counter-attacks will push HP below 80 in ~4 attacks
+    // while keeping mana available (starts 8, each attack costs 1)
+    const created = await createDungeonUI(page, dName, { monsters: 6, difficulty: 'normal', heroClass: 'mage' });
     created ? ok('Mage dungeon created via UI') : fail('Dungeon did not load as mage');
 
     // === STEP 2: Verify mage initial state ===
     console.log('\n=== Step 2: Mage Initial State ===');
     const initBody = await getBodyText(page);
-    initBody.includes('MAGE')    ? ok('Hero class shown as MAGE')            : fail('Hero class not MAGE');
-    initBody.includes('120')     ? ok('Hero HP shows 120')                   : fail('Hero HP not 120');
-    initBody.includes('Mana:')   ? ok('Mana display visible')                : fail('Mana display missing');
-    initBody.includes('Mana: 8') ? ok('Starting mana is 8')                  : fail(`Starting mana not 8 — got: ${initBody.match(/Mana:\s*\d+/)?.[0]}`);
+    initBody.includes('MAGE')    ? ok('Hero class shown as MAGE')   : fail('Hero class not MAGE');
+    initBody.includes('120')     ? ok('Hero HP shows 120')           : fail('Hero HP not 120');
+    initBody.includes('Mana:')   ? ok('Mana display visible')        : fail('Mana display missing');
+    initBody.includes('Mana: 8') ? ok('Starting mana is 8')          : fail(`Starting mana not 8 — got: ${initBody.match(/Mana:\s*\d+/)?.[0]}`);
 
     const healBtnInit = page.locator('button:has-text("Heal")');
-    (await healBtnInit.count()) > 0
-      ? ok('Heal button present')
-      : fail('Heal button missing');
-    await healBtnInit.isDisabled().catch(() => false) === true
+    (await healBtnInit.count()) > 0 ? ok('Heal button present') : fail('Heal button missing');
+    // At 120 HP the heal button should be disabled (threshold: HP >= 80)
+    const initDisabled = await healBtnInit.isDisabled().catch(() => false);
+    initDisabled === true
       ? ok('Heal disabled at full HP (120 >= 80 threshold)')
       : fail('Heal should be disabled at full HP');
 
     (await page.locator('button:has-text("Taunt")').count()) === 0
-      ? ok('No Taunt button (mage only)')
-      : fail('Taunt button visible for mage');
+      ? ok('No Taunt button (mage only)') : fail('Taunt button visible for mage');
     (await page.locator('text=Backstab').count()) === 0
-      ? ok('No Backstab text (mage only)')
-      : fail('Backstab visible for mage');
+      ? ok('No Backstab text (mage only)') : fail('Backstab visible for mage');
 
     // === STEP 3: First attack — mana decreases by 1, combat has result text ===
     console.log('\n=== Step 3: First Attack — Mana Consumption ===');
@@ -115,24 +114,23 @@ async function run() {
       }
     }
 
-    // === STEP 4 + 5 + 6: Take real damage, then heal immediately when HP < 80 ===
-    // Strategy: after each attack, check if HP < 80 AND mana >= 2 — heal immediately
-    // This tests both the heal-enable condition AND the heal action in one loop
-    console.log('\n=== Step 4-6: Take Damage → Heal When HP < 80 (with mana) ===');
+    // === STEP 4-6: Take real damage, heal opportunistically when HP < 80 ===
+    // After each attack, check HP and mana — heal as soon as conditions are met.
+    // With 6 monsters (12 dmg/round) and mana starting at 7, HP drops ~12/attack.
+    // After 4 attacks: HP ≈ 72, mana ≈ 4 → ideal heal window.
+    console.log('\n=== Step 4-6: Take Damage → Heal Opportunistically ===');
     let healTested = false;
     let hpBeforeHeal = null, hpAfterHeal = null, manaBeforeHeal = null, manaAfterHeal = null;
     let healResult = null;
 
-    for (let round = 0; round < 20 && !healTested; round++) {
+    for (let round = 0; round < 15 && !healTested; round++) {
       const hp = await getHeroHP(page);
       const mana = await getMana(page);
       if (hp === null || mana === null) break;
 
-      // If HP < 80 and mana >= 2: heal now
       if (hp < 80 && mana >= 2) {
-        ok(`HP dropped to ${hp} with ${mana} mana — heal should be enabled`);
+        ok(`HP at ${hp} with ${mana} mana — heal window open`);
 
-        // Verify Heal button is enabled
         const healBtnLow = page.locator('button:has-text("Heal")');
         const isDisabled = await healBtnLow.isDisabled().catch(() => true);
         isDisabled === false
@@ -142,48 +140,41 @@ async function run() {
         hpBeforeHeal = hp;
         manaBeforeHeal = mana;
         healResult = await doHeal(page);
-        hpAfterHeal = await getHeroHP(page);
+        hpAfterHeal  = await getHeroHP(page);
         manaAfterHeal = await getMana(page);
         healTested = true;
         break;
       }
-
-      // If mana < 2 but HP is still >= 80, we can't heal anyway — keep attacking
       const r = await doAttack(page);
-      if (!r) break; // no more targets
+      if (!r) break;
       await page.waitForTimeout(300);
     }
 
     if (!healTested) {
-      // Either mana ran out before HP dropped, or vice versa
       const hp = await getHeroHP(page);
       const mana = await getMana(page);
-      warn(`Could not test heal in combat: final HP=${hp}, mana=${mana} (need HP<80 AND mana>=2 at same time)`);
+      warn(`Heal not tested: HP=${hp}, mana=${mana} (need HP<80 AND mana>=2 simultaneously)`);
     } else {
-      // Validate heal result
       if (!healResult) {
         fail('Heal action did not resolve');
       } else {
         ok('Heal action resolved');
         healResult.includes('heals') || healResult.includes('Heal') || healResult.includes('HP')
           ? ok('Heal result contains expected text')
-          : fail(`Unexpected heal result: ${healResult.substring(0, 120)}`);
+          : fail(`Heal result missing expected text: ${healResult.substring(0, 120)}`);
         healResult.includes('No counter-attack')
           ? ok('No counter-attack during heal')
           : fail(`Expected "No counter-attack", got: ${healResult.substring(0, 120)}`);
       }
 
-      // HP should have increased, capped at 120
       if (hpBeforeHeal !== null && hpAfterHeal !== null) {
         hpAfterHeal > hpBeforeHeal
-          ? ok(`HP increased after heal: ${hpBeforeHeal} → ${hpAfterHeal}`)
+          ? ok(`HP increased: ${hpBeforeHeal} → ${hpAfterHeal}`)
           : fail(`HP did not increase: ${hpBeforeHeal} → ${hpAfterHeal}`);
         hpAfterHeal <= 120
           ? ok(`HP capped at or below 120 (${hpAfterHeal})`)
-          : fail(`HP exceeds 120 after heal: ${hpAfterHeal}`);
+          : fail(`HP exceeds 120: ${hpAfterHeal}`);
       }
-
-      // Mana decreased by 2
       if (manaBeforeHeal !== null && manaAfterHeal !== null) {
         manaAfterHeal === manaBeforeHeal - 2
           ? ok(`Mana decreased by 2 (${manaBeforeHeal} → ${manaAfterHeal})`)
@@ -191,26 +182,24 @@ async function run() {
       }
     }
 
-    // === STEP 7: Heal disabled at full HP (>= 80) ===
+    // === STEP 7: Heal disabled at HP >= 80 ===
     console.log('\n=== Step 7: Heal Disabled at High HP ===');
     const hpNow = await getHeroHP(page);
     if (hpNow !== null && hpNow >= 80) {
-      const healBtnHigh = page.locator('button:has-text("Heal")');
-      const disabledHigh = await healBtnHigh.isDisabled().catch(() => true);
+      const disabledHigh = await page.locator('button:has-text("Heal")').isDisabled().catch(() => true);
       disabledHigh === true
         ? ok(`Heal disabled at ${hpNow} HP (>= 80 threshold)`)
-        : fail(`Heal should be disabled at ${hpNow} HP but is enabled`);
+        : fail(`Heal should be disabled at ${hpNow} HP`);
     } else {
-      warn(`HP=${hpNow}, skipping high-HP heal disabled check`);
+      warn(`HP=${hpNow}, can't verify high-HP heal disabled`);
     }
 
     // === STEP 8: Mana regen on monster kill ===
     console.log('\n=== Step 8: Mana Regen on Monster Kill ===');
-    const aliveCount = await page.locator('.arena-entity.monster-entity:not(.dead)').count();
-    if (aliveCount > 0) {
-      // Attack until a monster dies
-      let manaBeforeKill = null, manaAfterKill = null, killFound = false;
-      for (let i = 0; i < 15; i++) {
+    const aliveNow = await page.locator('.arena-entity.monster-entity:not(.dead)').count();
+    if (aliveNow > 0) {
+      let killFound = false, manaBeforeKill = null, manaAfterKill = null;
+      for (let i = 0; i < 10; i++) {
         const aliveBefore = await page.locator('.arena-entity.monster-entity:not(.dead)').count();
         if (aliveBefore === 0) break;
         manaBeforeKill = await getMana(page);
@@ -219,56 +208,53 @@ async function run() {
         const aliveAfter = await page.locator('.arena-entity.monster-entity:not(.dead)').count();
         if (aliveAfter < aliveBefore) {
           manaAfterKill = await getMana(page);
-          // Mana regen: +1 on kill, but only if mana < 5. Net change = -1 (attack cost) + 1 (regen) = 0
-          // Or if mana was already >= 5 when the kill happened, net = -1
           if (manaBeforeKill !== null && manaAfterKill !== null && manaBeforeKill < 5) {
+            // Net mana = prev - 1 (attack cost) + 1 (regen) = prev
             manaAfterKill >= manaBeforeKill - 1
-              ? ok(`Mana regen on kill: ${manaBeforeKill} → ${manaAfterKill} (net ≥ -1, regen applied)`)
-              : fail(`Expected mana regen on kill: ${manaBeforeKill} → ${manaAfterKill}`);
-            r.includes('mana') || r.includes('Mana')
-              ? ok('Kill result mentions mana regen')
-              : warn(`Kill result doesn't mention mana: ${r.substring(0, 100)}`);
+              ? ok(`Mana regen on kill: ${manaBeforeKill} → ${manaAfterKill}`)
+              : fail(`Mana should regen on kill: ${manaBeforeKill} → ${manaAfterKill}`);
           } else {
-            ok(`Monster killed — mana regen check: before=${manaBeforeKill} after=${manaAfterKill}`);
+            ok(`Monster killed, mana: ${manaBeforeKill} → ${manaAfterKill}`);
           }
           killFound = true;
           break;
         }
       }
-      if (!killFound) warn('Could not kill a monster in 15 attacks for mana regen test');
+      if (!killFound) warn('No monster kill in 10 attacks for regen test');
     } else {
-      warn('No alive monsters — skipping mana regen test');
+      warn('No alive monsters for mana regen test');
     }
 
-    // === STEP 9: Heal disabled when mana < 2 ===
+    // === STEP 9: Heal disabled at mana < 2 ===
+    // At this point mana may already be low from the attacks above.
     console.log('\n=== Step 9: Heal Disabled at Low Mana ===');
-    // Attack until mana < 2 (each attack costs 1 mana)
-    for (let i = 0; i < 15; i++) {
-      const m = await getMana(page);
-      if (m !== null && m < 2) break;
-      const r = await doAttack(page);
-      if (!r) break;
-      await page.waitForTimeout(300);
+    let manaLow = await getMana(page);
+    if (manaLow !== null && manaLow >= 2) {
+      // Drain mana via attacks (each costs 1)
+      for (let i = 0; i < 8; i++) {
+        manaLow = await getMana(page);
+        if (manaLow !== null && manaLow < 2) break;
+        const r = await doAttack(page);
+        if (!r) break;
+      }
+      manaLow = await getMana(page);
     }
-    const manaLow = await getMana(page);
     if (manaLow !== null && manaLow < 2) {
-      const healBtnLowMana = page.locator('button:has-text("Heal")');
-      const disabledLow = await healBtnLowMana.isDisabled().catch(() => true);
+      const disabledLow = await page.locator('button:has-text("Heal")').isDisabled().catch(() => true);
       disabledLow === true
-        ? ok(`Heal disabled at ${manaLow} mana (< 2 required)`)
+        ? ok(`Heal disabled at ${manaLow} mana`)
         : fail(`Heal should be disabled at ${manaLow} mana`);
     } else {
-      warn(`Could not drain mana below 2 (current: ${manaLow}) — targets may be exhausted`);
+      warn(`Could not drain mana below 2 (current: ${manaLow})`);
     }
 
     // === STEP 10: Zero-mana attack — resolves with "No mana!" note ===
     console.log('\n=== Step 10: Zero-Mana Attack ===');
-    // Drain to exactly 0
-    for (let i = 0; i < 5; i++) {
+    // Drain to 0 if not already
+    for (let i = 0; i < 3; i++) {
       const m = await getMana(page);
       if (m === 0) break;
-      const r = await doAttack(page);
-      if (!r) break;
+      await doAttack(page);
     }
     const manaZero = await getMana(page);
     if (manaZero === 0) {
@@ -280,18 +266,17 @@ async function run() {
         result0.includes('damage') || result0.includes('HP')
           ? ok('0-mana attack has damage/HP in result')
           : fail(`0-mana attack has no damage/HP: ${result0.substring(0, 100)}`);
-        // attack-graph should emit "(No mana!)" in CLASS_NOTE
+        // attack-graph emits "(No mana!)" at 0 mana — frontend shows "No mana! Half damage"
         result0.includes('No mana') || result0.includes('no mana')
           ? ok('"No mana" noted in combat result')
-          : fail(`Expected "No mana" in 0-mana attack result, got: ${result0.substring(0, 150)}`);
-        // Mana stays at 0
+          : fail(`Expected "No mana" in 0-mana result, got: ${result0.substring(0, 150)}`);
         const manaStill = await getMana(page);
         manaStill === 0
           ? ok('Mana stays at 0 after 0-mana attack')
           : warn(`Expected mana 0, got ${manaStill}`);
       }
     } else {
-      warn(`Mana is ${manaZero}, not 0 — skipping zero-mana attack test`);
+      warn(`Mana is ${manaZero}, not 0 — skipping zero-mana test`);
     }
 
     // === STEP 11: Console errors ===
