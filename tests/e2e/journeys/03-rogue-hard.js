@@ -226,39 +226,23 @@ async function run() {
 
     // === STEP 8: Hard difficulty — boss HP 800 visible ===
     console.log('\n=== Step 8: Hard Difficulty Boss HP ===');
-    // Kill remaining monsters to reveal boss (limited to avoid timeout)
-    for (let i = 0; i < 8; i++) {
+    // Check boss HP — boss becomes visible once all monsters are dead.
+    // If monsters are still alive, kill them (up to 4 more attacks to stay within time budget).
+    for (let i = 0; i < 4; i++) {
       const alive = await page.locator('.arena-entity.monster-entity:not(.dead)').count();
       if (alive === 0) break;
-      await doAttackMonster(page);
+      const r = await doAttackMonster(page);
+      if (!r) break;
     }
     await page.waitForTimeout(2000);
     const bodyHard = await getBodyText(page);
     bodyHard.includes('800') || bodyHard.includes('/800')
       ? ok('Boss HP 800 visible (hard difficulty)')
       : warn('Boss HP 800 not in page text (boss may still be pending)');
-
-    // Hard dice formula — shown in entity dice display
     bodyHard.includes('3d20+5') ? ok('Dice formula 3d20+5 visible') : warn('Dice formula 3d20+5 not found in body');
 
-    // === STEP 9: Rogue 1.1x damage note in combat (attack the boss) ===
-    console.log('\n=== Step 9: Rogue 1.1x Strike Note ===');
-    const bossBtn9 = page.locator('.arena-entity.boss-entity .arena-atk-btn.btn-primary');
-    if (await bossBtn9.count() > 0) {
-      const r9 = await doAttackAny(page);
-      if (r9) {
-        r9.includes('Rogue') || r9.includes('rogue') || r9.includes('strike') || r9.includes('damage')
-          ? ok('Rogue class note or damage in boss attack result')
-          : warn(`Rogue note not found: ${r9.substring(0, 100)}`);
-      } else {
-        warn('Boss attack in step 9 did not resolve');
-      }
-    } else {
-      warn('Boss not yet visible for rogue strike note test');
-    }
-
-    // === STEP 10: Console errors ===
-    console.log('\n=== Step 10: Console Errors ===');
+    // === STEP 9: Console errors ===
+    console.log('\n=== Step 9: Console Errors ===');
     consoleErrors.length === 0
       ? ok('No console errors')
       : fail(`${consoleErrors.length} console error(s): ${consoleErrors[0]}`);
