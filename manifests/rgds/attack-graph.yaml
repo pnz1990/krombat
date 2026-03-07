@@ -199,8 +199,8 @@ spec:
                             HERO_MANA=$((HERO_MANA - 1))
                             MANA_PATCH=",\"heroMana\":$HERO_MANA"
                           else
-                            CLASS_NOTE=""
-                            EFFECTIVE_DAMAGE=$BASE_DAMAGE
+                            CLASS_NOTE=" (No mana!)"
+                            EFFECTIVE_DAMAGE=$((BASE_DAMAGE / 2))
                           fi
                         elif [ "$HERO_CLASS" = "rogue" ]; then
                           EFFECTIVE_DAMAGE=$((BASE_DAMAGE * 11 / 10))
