@@ -47,6 +47,7 @@ spec:
                   args:
                     - |
                       set -e
+                      sleep 2
                       for i in 1 2 3 4 5; do
                         DUNGEON_JSON=$(kubectl get dungeon "$DUNGEON" -n "$DUNGEON_NS" -o json)
                         HERO_HP=$(echo "$DUNGEON_JSON" | jq -r '.spec.heroHP // 100')
