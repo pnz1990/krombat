@@ -364,6 +364,13 @@ export default function App() {
         const nowAllDead = (updated.spec.monsterHP || []).every((hp: number) => hp <= 0)
         if (nowAllDead && !prevAllDead) { addEvent('🐉', 'Boss unlocked! All monsters slain!'); triggerInsight('boss-ready') }
         if (newBossHP <= 0 && prevBossHP > 0) { addEvent('🏆', 'VICTORY! Boss defeated!'); triggerInsight('boss-killed') }
+        // Boss phase transitions
+        const prevMaxBossHP = Number(detail?.status?.maxBossHP) || (prevBossHP > 0 ? prevBossHP : 1)
+        const newMaxBossHP = Number(updated.status?.maxBossHP) || prevMaxBossHP
+        const prevPct = newMaxBossHP > 0 ? (prevBossHP / newMaxBossHP) * 100 : 100
+        const newPct = newMaxBossHP > 0 ? (newBossHP / newMaxBossHP) * 100 : 100
+        if (prevPct > 50 && newPct <= 50 && newBossHP > 0) addEvent('🔥', '⚠️ The boss becomes ENRAGED! (Phase 2: ×1.5 damage)')
+        if (prevPct > 25 && newPct <= 25 && newBossHP > 0) addEvent('💀', '💀 BERSERK MODE! Boss attacks with fury! (Phase 3: ×2.0 damage)')
         if ((updated.spec.heroHP ?? 100) <= 0 && (detail?.spec.heroHP ?? 100) > 0) addEvent('💀', 'Hero has fallen...')
         // Detect monster kill
         const prevDeadCount = (detail?.spec.monsterHP || []).filter((hp: number) => hp <= 0).length
@@ -954,6 +961,18 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
   const isDefeated = status?.defeated || heroHP <= 0
   const allMonstersDead = (spec.monsterHP || []).every((hp: number) => hp <= 0)
   const bossState = spec.bossHP <= 0 ? 'defeated' : allMonstersDead ? 'ready' : 'pending'
+  // Boss phase — read from kro-derived status (boss-graph CEL), fallback to local derivation
+  const bossPhase: 'phase1' | 'phase2' | 'phase3' | 'defeated' = (() => {
+    if (spec.bossHP <= 0) return 'defeated'
+    const fromStatus = status?.bossPhase as string | undefined
+    if (fromStatus && fromStatus !== 'phase1') return fromStatus as 'phase2' | 'phase3'
+    if (maxBossHP > 0) {
+      const pct = (spec.bossHP / maxBossHP) * 100
+      if (pct <= 25) return 'phase3'
+      if (pct <= 50) return 'phase2'
+    }
+    return 'phase1'
+  })()
   // During room 2 transition, bossHP=0 is stale from room 1 — not a real victory
   const inRoomTransition = (spec.currentRoom || 1) === 2 && spec.bossHP <= 0 && allMonstersDead && (spec.room2BossHP || 0) > 0
   const gameOver = isDefeated || (!inRoomTransition && spec.bossHP <= 0 && allMonstersDead)
@@ -1229,14 +1248,20 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
               else if (inCombatB && bossState === 'ready') bAction = 'attack'
               if (!inCombatB && (status?.victory || spec.bossHP <= 0)) bAction = 'victory'
               const bossName = `${dungeonName}-boss`
+              const phaseClass = bossState === 'ready' ? (bossPhase === 'phase3' ? ' boss-phase3' : bossPhase === 'phase2' ? ' boss-phase2' : '') : ''
               return (
-                <div className={`arena-entity boss-entity`}
+                <div className={`arena-entity boss-entity${phaseClass}`}
                   style={{ top: '40%', left: '50%' }}
                   role={bossState === 'ready' && !gameOver && !attackPhase ? 'button' : undefined}
                   tabIndex={bossState === 'ready' && !gameOver && !attackPhase ? 0 : undefined}
                   aria-label={`Boss · HP: ${spec.bossHP}/${maxBossHP}${bossState === 'defeated' ? ' (defeated)' : ''}`}
                   onKeyDown={bossState === 'ready' && !gameOver && !attackPhase ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onAttack(bossName, 0) } } : undefined}>
                   {floatingDmg?.target?.includes('boss') && <div className="floating-dmg" style={{ color: '#e94560' }}>{floatingDmg.amount}</div>}
+                  {bossState === 'ready' && bossPhase !== 'phase1' && (
+                    <div className={`boss-phase-badge ${bossPhase}`}>
+                      {bossPhase === 'phase2' ? '🔥 ENRAGED' : '💀 BERSERK'}
+                    </div>
+                  )}
                   <Sprite spriteType={(spec.currentRoom || 1) === 2 ? 'bat-boss' : 'dragon'} action={bAction} size={144} />
                   <div className="arena-shadow" style={{ width: 120 }} />
                   <div className="arena-hover-ui">

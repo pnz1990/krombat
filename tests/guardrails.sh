@@ -339,6 +339,17 @@ grep -q "KRO_STATUS_TIPS" frontend/src/App.tsx && pass "Status bar kro tooltips 
 [ -f "frontend/src/KroTeach.tsx" ] && pass "KroTeach.tsx exists" || fail "KroTeach.tsx missing"
 [ -f "frontend/src/KroGraph.tsx" ] && pass "KroGraph.tsx exists" || fail "KroGraph.tsx missing"
 
+# --- Multi-phase boss guardrails ---
+echo "=== Multi-phase boss guardrails"
+grep -q "phase.*phase1\|phase.*phase2\|phase.*phase3" manifests/rgds/boss-graph.yaml && pass "boss-graph derives phase from HP thresholds" || fail "boss-graph missing phase derivation"
+grep -q "damageMultiplier" manifests/rgds/boss-graph.yaml && pass "boss-graph exposes damageMultiplier in status" || fail "boss-graph missing damageMultiplier"
+grep -q "bossPhase" manifests/rgds/dungeon-graph.yaml && pass "dungeon-graph exposes bossPhase in status" || fail "dungeon-graph missing bossPhase status field"
+grep -q "bossDamageMultiplier" manifests/rgds/dungeon-graph.yaml && pass "dungeon-graph exposes bossDamageMultiplier in status" || fail "dungeon-graph missing bossDamageMultiplier status field"
+grep -q "bossDamageMultiplier\|bossDmgMultiplier" backend/internal/handlers/handlers.go && pass "Backend reads bossDamageMultiplier and applies to counter-attack" || fail "Backend not reading bossDamageMultiplier"
+grep -q "boss-phase2\|boss-phase3" frontend/src/App.tsx && pass "Frontend applies boss phase CSS classes" || fail "Frontend missing boss phase CSS classes"
+grep -q "boss-phase-badge" frontend/src/App.tsx && pass "Frontend renders boss phase badge" || fail "Frontend missing boss phase badge"
+grep -q "ENRAGED\|BERSERK" frontend/src/App.tsx && pass "Frontend emits phase transition events to combat log" || fail "Frontend missing phase transition log events"
+
 # --- Summary ---
 
 echo ""
