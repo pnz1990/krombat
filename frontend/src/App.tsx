@@ -212,6 +212,7 @@ export default function App() {
   }
 
   const [floatingDmg, setFloatingDmg] = useState<{ target: string; amount: string; color: string } | null>(null)
+  const [bossPhaseFlash, setBossPhaseFlash] = useState<'enraged' | 'berserk' | null>(null)
 
   const [combatModal, setCombatModal] = useState<{ phase: 'rolling' | 'resolved'; formula: string; heroAction: string; enemyAction: string; spec: any; oldHP: number } | null>(null)
 
@@ -382,9 +383,32 @@ export default function App() {
         const newMaxBossHP = Number(updated.status?.maxBossHP) || prevMaxBossHP
         const prevPct = newMaxBossHP > 0 ? (prevBossHP / newMaxBossHP) * 100 : 100
         const newPct = newMaxBossHP > 0 ? (newBossHP / newMaxBossHP) * 100 : 100
-        if (prevPct > 50 && newPct <= 50 && newBossHP > 0) addEvent('🔥', '⚠️ The boss becomes ENRAGED! (Phase 2: ×1.5 damage)')
-        if (prevPct > 25 && newPct <= 25 && newBossHP > 0) addEvent('💀', '💀 BERSERK MODE! Boss attacks with fury! (Phase 3: ×2.0 damage)')
+        if (prevPct > 50 && newPct <= 50 && newBossHP > 0) {
+          addEvent('🔥', '⚠️ The boss becomes ENRAGED! (Phase 2: ×1.5 damage)')
+          setBossPhaseFlash('enraged')
+          setTimeout(() => setBossPhaseFlash(null), 1500)
+        }
+        if (prevPct > 25 && newPct <= 25 && newBossHP > 0) {
+          addEvent('💀', '💀 BERSERK MODE! Boss attacks with fury! (Phase 3: ×2.0 damage)')
+          setBossPhaseFlash('berserk')
+          setTimeout(() => setBossPhaseFlash(null), 1500)
+        }
         if ((updated.spec.heroHP ?? 100) <= 0 && (detail?.spec.heroHP ?? 100) > 0) addEvent('💀', 'Hero has fallen...')
+        // DoT floating damage on hero
+        const prevHeroHP = detail?.spec.heroHP ?? 100
+        const newHeroHP = updated.spec.heroHP ?? 100
+        const hpDropped = newHeroHP < prevHeroHP
+        const poisonActive = (detail?.spec.poisonTurns ?? 0) > 0
+        const burnActive = (detail?.spec.burnTurns ?? 0) > 0
+        if (hpDropped && (poisonActive || burnActive)) {
+          const dotDmg = prevHeroHP - newHeroHP
+          // Only show DoT float if the drop is consistent with DoT amounts
+          if (dotDmg === 5 || dotDmg === 8 || (dotDmg > 0 && dotDmg <= 13)) {
+            const color = poisonActive ? '#2ecc71' : '#e74c3c'
+            setFloatingDmg({ target: 'hero', amount: `-${dotDmg}`, color })
+            setTimeout(() => setFloatingDmg(null), 1200)
+          }
+        }
         // Detect monster kill
         const prevDeadCount = (detail?.spec.monsterHP || []).filter((hp: number) => hp <= 0).length
         const newDeadCount = (updated.spec.monsterHP || []).filter((hp: number) => hp <= 0).length
@@ -511,6 +535,7 @@ export default function App() {
           animPhase={animPhase}
           attackTarget={attackTarget}
           floatingDmg={floatingDmg}
+          bossPhaseFlash={bossPhaseFlash}
           combatModal={combatModal}
           onDismissCombat={dismissCombat}
           lootDrop={lootDrop}
@@ -955,7 +980,7 @@ function HelpModal({ onClose, onCheat }: { onClose: () => void; onCheat: () => v
     </div>
   )
 }
-function DungeonView({ cr, prevCr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoot, onCloseLoot, attackPhase, roomLoading, animPhase, attackTarget, showHelp, onToggleHelp, showCheat, onToggleCheat, floatingDmg, combatModal, onDismissCombat, lootDrop, onDismissLoot, wsConnected, apiError, kroUnlocked, onViewKroConcept, reconciling }: {
+function DungeonView({ cr, prevCr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoot, onCloseLoot, attackPhase, roomLoading, animPhase, attackTarget, showHelp, onToggleHelp, showCheat, onToggleCheat, floatingDmg, bossPhaseFlash, combatModal, onDismissCombat, lootDrop, onDismissLoot, wsConnected, apiError, kroUnlocked, onViewKroConcept, reconciling }: {
   cr: DungeonCR; prevCr?: DungeonCR | null; onBack: () => void; onAttack: (t: string, d: number) => void; events: WSEvent[]; k8sLog: { ts: string; cmd: string; res: string; yaml?: string }[]
   showLoot: boolean; onOpenLoot: () => void; onCloseLoot: () => void
   attackPhase: string | null; roomLoading: boolean
@@ -963,6 +988,7 @@ function DungeonView({ cr, prevCr, onBack, onAttack, events, k8sLog, showLoot, o
   showHelp: boolean; onToggleHelp: () => void
   showCheat: boolean; onToggleCheat: () => void
   floatingDmg: { target: string; amount: string; color: string } | null
+  bossPhaseFlash: 'enraged' | 'berserk' | null
   combatModal: { phase: string; formula: string; heroAction: string; enemyAction: string; spec: any; oldHP: number } | null
   onDismissCombat: () => void
   lootDrop: string | null; onDismissLoot: () => void
@@ -1329,14 +1355,20 @@ function DungeonView({ cr, prevCr, onBack, onAttack, events, k8sLog, showLoot, o
               if (!inCombatB && (status?.victory || spec.bossHP <= 0)) bAction = 'victory'
               const bossName = `${dungeonName}-boss`
               const phaseClass = bossState === 'ready' ? (bossPhase === 'phase3' ? ' boss-phase3' : bossPhase === 'phase2' ? ' boss-phase2' : '') : ''
+              const phaseFlashClass = bossPhaseFlash ? ` boss-phase-flash-${bossPhaseFlash}` : ''
               return (
-                <div className={`arena-entity boss-entity${phaseClass}`}
+                <div className={`arena-entity boss-entity${phaseClass}${phaseFlashClass}`}
                   style={{ top: '40%', left: '50%' }}
                   role={bossState === 'ready' && !gameOver && !attackPhase ? 'button' : undefined}
                   tabIndex={bossState === 'ready' && !gameOver && !attackPhase ? 0 : undefined}
                   aria-label={`Boss · HP: ${spec.bossHP}/${maxBossHP}${bossState === 'defeated' ? ' (defeated)' : ''}`}
                   onKeyDown={bossState === 'ready' && !gameOver && !attackPhase ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onAttack(bossName, 0) } } : undefined}>
                   {floatingDmg?.target?.includes('boss') && <div className="floating-dmg" style={{ color: '#e94560' }}>{floatingDmg.amount}</div>}
+                  {bossPhaseFlash && (
+                    <div className={`boss-phase-flash-overlay ${bossPhaseFlash}`}>
+                      {bossPhaseFlash === 'enraged' ? '🔥 ENRAGED!' : '💀 BERSERK!'}
+                    </div>
+                  )}
                   {bossState === 'ready' && bossPhase !== 'phase1' && (
                     <div className={`boss-phase-badge ${bossPhase}`}>
                       {bossPhase === 'phase2' ? '🔥 ENRAGED' : '💀 BERSERK'}
