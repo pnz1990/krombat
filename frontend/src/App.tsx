@@ -343,7 +343,7 @@ export default function App() {
 
       {error && <div className="card" style={{ borderColor: '#e94560', color: '#e94560', fontSize: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span>{error}</span>
-        <button onClick={() => setError('')} style={{ background: 'none', border: 'none', color: '#e94560', cursor: 'pointer', fontFamily: 'inherit', fontSize: '10px' }}>✕</button>
+        <button aria-label="Dismiss error" onClick={() => setError('')} style={{ background: 'none', border: 'none', color: '#e94560', cursor: 'pointer', fontFamily: 'inherit', fontSize: '10px' }}>✕</button>
       </div>}
 
       {!selected ? (
@@ -436,7 +436,7 @@ function DungeonList({ dungeons, onSelect, onDelete, deleting }: {
             {deleting.has(d.name) ? (
               <span style={{ fontSize: '7px', color: 'var(--accent)' }}>Deleting...</span>
             ) : (
-              <button className="tile-delete-btn" title="Delete dungeon" onClick={e => { e.stopPropagation(); onDelete(d.namespace, d.name) }}><PixelIcon name="damage" size={12} /></button>
+              <button className="tile-delete-btn" aria-label={`Delete dungeon ${d.name}`} title="Delete dungeon" onClick={e => { e.stopPropagation(); onDelete(d.namespace, d.name) }}><PixelIcon name="damage" size={12} /></button>
             )}
           </div>
           <div className="stats">
@@ -522,14 +522,14 @@ function EventLogTabs({ events, k8sLog }: { events: WSEvent[]; k8sLog: { ts: str
       </div>
       {yamlModal && (
         <div className="modal-overlay" onClick={() => setYamlModal(null)}>
-          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 500, textAlign: 'left' }}>
+          <div className="modal" role="dialog" aria-modal="true" aria-label="YAML viewer" onClick={e => e.stopPropagation()} style={{ maxWidth: 500, textAlign: 'left' }}>
             <pre className="yaml-view">{yamlModal}</pre>
             <button className="btn btn-gold" style={{ marginTop: 8 }} onClick={() => setYamlModal(null)}>Close</button>
           </div>
         </div>
       )}
       {tab === 'game' ? (
-        <div className="event-log">
+        <div className="event-log" aria-live="polite" aria-atomic="false" aria-label="Game event log">
           {events.length === 0 && <div className="event-entry">Waiting for events...</div>}
           {events.map((e, i) => (
             <div key={i} className="event-entry">
@@ -584,7 +584,7 @@ function CheatModal({ onClose, onAction }: { onClose: () => void; onAction: (tar
   ]
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal help-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 500 }}>
+      <div className="modal help-modal" role="dialog" aria-modal="true" aria-label="Cheat mode" onClick={e => e.stopPropagation()} style={{ maxWidth: 500 }}>
         <h2 style={{ color: '#e94560', fontSize: 12, marginBottom: 8 }}>🔧 CHEAT MODE</h2>
         <p style={{ fontSize: 7, color: '#666', marginBottom: 12 }}>Items are added to inventory then used/equipped via Attack CR pipeline.</p>
         {sections.map(s => (
@@ -715,7 +715,7 @@ function HelpModal({ onClose, onCheat }: { onClose: () => void; onCheat: () => v
   ]
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal help-modal" onClick={e => e.stopPropagation()}>
+      <div className="modal help-modal" role="dialog" aria-modal="true" aria-label={`Help: ${pages[page].title}`} onClick={e => e.stopPropagation()}>
         <h2 style={{ color: 'var(--gold)', fontSize: 12, marginBottom: 4 }}>📖 {pages[page].title}</h2>
         <div className="help-page-indicator">{page + 1} / {pages.length}</div>
         <div className="help-section">{pages[page].content}</div>
@@ -802,7 +802,7 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
       <div className="dungeon-header">
         <h2><PixelIcon name="sword" size={14} /> {dungeonName}</h2>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <button className="help-btn" onClick={onToggleHelp}>?</button>
+          <button className="help-btn" aria-label="Help" onClick={onToggleHelp}>?</button>
           <button className="back-btn" onClick={onBack}>← Back</button>
         </div>
       </div>
@@ -830,7 +830,7 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
 
       {combatModal && (
         <div className="modal-overlay combat-overlay">
-          <div className="modal combat-modal" onClick={e => e.stopPropagation()}>
+          <div className="modal combat-modal" role="dialog" aria-modal="true" aria-label="Combat" onClick={e => e.stopPropagation()}>
             {combatModal.phase === 'rolling' ? (
               <>
                 <h2 style={{ color: 'var(--gold)', fontSize: 14, marginBottom: 16 }}>COMBAT</h2>
@@ -839,7 +839,7 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
               </>
             ) : (
               <>
-                <button className="modal-close" onClick={onDismissCombat}>✕</button>
+                <button className="modal-close" aria-label="Close combat results" onClick={onDismissCombat}>✕</button>
                 <h2 style={{ color: 'var(--gold)', fontSize: 14, marginBottom: 12 }}>COMBAT RESULTS</h2>
                 <CombatBreakdown heroAction={combatModal.heroAction} enemyAction={combatModal.enemyAction} spec={combatModal.spec} oldHP={combatModal.oldHP} />
                 <button className="btn btn-gold" style={{ marginTop: 16 }} onClick={onDismissCombat}>Continue</button>
@@ -871,7 +871,7 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
 
       {lootDrop && !combatModal && (
         <div className="modal-overlay" onClick={onDismissLoot}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
+          <div className="modal" role="dialog" aria-modal="true" aria-label="Loot drop" onClick={e => e.stopPropagation()}>
             <div style={{ marginBottom: 12 }}><PixelIcon name="chest" size={48} /></div>
             <h2 style={{ color: 'var(--gold)', fontSize: 12, marginBottom: 8 }}>LOOT DROP!</h2>
             <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8 }}>
@@ -978,7 +978,11 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
               const bossName = `${dungeonName}-boss`
               return (
                 <div className={`arena-entity boss-entity`}
-                  style={{ top: '40%', left: '50%' }}>
+                  style={{ top: '40%', left: '50%' }}
+                  role={bossState === 'ready' && !gameOver && !attackPhase ? 'button' : undefined}
+                  tabIndex={bossState === 'ready' && !gameOver && !attackPhase ? 0 : undefined}
+                  aria-label={`Boss · HP: ${spec.bossHP}/${maxBossHP}${bossState === 'defeated' ? ' (defeated)' : bossState === 'pending' ? ' (locked)' : ''}`}
+                  onKeyDown={bossState === 'ready' && !gameOver && !attackPhase ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onAttack(bossName, 0) } } : undefined}>
                   {floatingDmg?.target?.includes('boss') && <div className="floating-dmg" style={{ color: '#e94560' }}>{floatingDmg.amount}</div>}
                   <Sprite spriteType={(spec.currentRoom || 1) === 2 ? 'bat-boss' : 'dragon'} action={bAction} size={144} />
                   <div className="arena-shadow" style={{ width: 120 }} />
@@ -1019,7 +1023,11 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
 
               return (
                 <div key={mName} className={`arena-entity monster-entity ${state}`}
-                  style={{ left: `${cx}%`, top: `${cy}%` }}>
+                  style={{ left: `${cx}%`, top: `${cy}%` }}
+                  role={state === 'alive' && !gameOver && !attackPhase ? 'button' : undefined}
+                  tabIndex={state === 'alive' && !gameOver && !attackPhase ? 0 : undefined}
+                  aria-label={`${mSprite} · HP: ${hp}/${maxMonsterHP}${state === 'dead' ? ' (dead)' : ''}`}
+                  onKeyDown={state === 'alive' && !gameOver && !attackPhase ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onAttack(mName, 0) } } : undefined}>
                   {floatingDmg?.target === mName && <div className="floating-dmg" style={{ color: '#e94560' }}>{floatingDmg.amount}</div>}
                   <Sprite spriteType={mSprite} action={mAction} size={72} flip={!facingRight} />
                   <div className="arena-shadow" />
