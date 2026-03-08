@@ -97,6 +97,21 @@ var defaultHP = map[string]struct{ monster, boss int64 }{
 // Must be lowercase alphanumeric or hyphens, start/end with alphanumeric, max 63 chars.
 var validDNSLabel = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
 
+// allowedNamespaces is the application-layer allowlist of namespaces where
+// Dungeon CRs may be created, read, updated, or deleted. This prevents
+// namespace injection attacks (e.g. writing into kube-system).
+var allowedNamespaces = map[string]bool{"default": true}
+
+// validateNamespace returns true if the namespace is allowed, and writes a
+// 400 Bad Request response and returns false if it is not.
+func validateNamespace(w http.ResponseWriter, ns string) bool {
+	if !allowedNamespaces[ns] {
+		writeError(w, "invalid namespace", http.StatusBadRequest)
+		return false
+	}
+	return true
+}
+
 type CreateDungeonReq struct {
 	Name       string `json:"name"`
 	Monsters   int64  `json:"monsters"`
@@ -125,6 +140,9 @@ func (h *Handler) CreateDungeon(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Namespace == "" {
 		req.Namespace = "default"
+	}
+	if !validateNamespace(w, req.Namespace) {
+		return
 	}
 
 	hp, _ := defaultHP[req.Difficulty]
@@ -231,6 +249,9 @@ func (h *Handler) ListDungeons(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) GetDungeon(w http.ResponseWriter, r *http.Request) {
 	ns := r.PathValue("namespace")
 	name := r.PathValue("name")
+	if !validateNamespace(w, ns) {
+		return
+	}
 
 	dungeon, err := h.client.Dynamic.Resource(k8s.DungeonGVR).Namespace(ns).Get(
 		context.Background(), name, metav1.GetOptions{})
@@ -246,6 +267,9 @@ func (h *Handler) GetDungeon(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) DeleteDungeon(w http.ResponseWriter, r *http.Request) {
 	ns := r.PathValue("namespace")
 	name := r.PathValue("name")
+	if !validateNamespace(w, ns) {
+		return
+	}
 
 	err := h.client.Dynamic.Resource(k8s.DungeonGVR).Namespace(ns).Delete(
 		context.Background(), name, metav1.DeleteOptions{})
@@ -271,6 +295,9 @@ type CreateAttackReq struct {
 func (h *Handler) CreateAttack(w http.ResponseWriter, r *http.Request) {
 	ns := r.PathValue("namespace")
 	name := r.PathValue("name")
+	if !validateNamespace(w, ns) {
+		return
+	}
 
 	var req CreateAttackReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -309,7 +336,8 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 	// Step 1: read current dungeon spec
 	dungeon, err := h.client.Dynamic.Resource(k8s.DungeonGVR).Namespace(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
-		writeError(w, "dungeon not found: "+err.Error(), http.StatusNotFound)
+		slog.Error("failed to get dungeon for combat", "component", "api", "dungeon", name, "namespace", ns, "error", err)
+		writeError(w, sanitizeK8sError(err), http.StatusNotFound)
 		return err
 	}
 	spec := getMap(dungeon.Object, "spec")
@@ -327,6 +355,9 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 	weaponUses := getInt(spec, "weaponUses")
 	armorBonus := getInt(spec, "armorBonus")
 	shieldBonus := getInt(spec, "shieldBonus")
+	helmetBonus := getInt(spec, "helmetBonus")
+	pantsBonus := getInt(spec, "pantsBonus")
+	bootsBonus := getInt(spec, "bootsBonus")
 	poisonTurns := getInt(spec, "poisonTurns")
 	burnTurns := getInt(spec, "burnTurns")
 	stunTurns := getInt(spec, "stunTurns")
@@ -375,7 +406,8 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 		ctx, attackCRName, types.ApplyPatchType, attackData,
 		metav1.PatchOptions{FieldManager: "rpg-backend", Force: boolPtr(true)})
 	if err != nil {
-		writeError(w, "failed to upsert attack: "+err.Error(), http.StatusInternalServerError)
+		slog.Error("failed to upsert attack CR", "component", "api", "dungeon", name, "namespace", ns, "error", err)
+		writeError(w, sanitizeK8sError(err), http.StatusInternalServerError)
 		return err
 	}
 	attacksSubmitted.WithLabelValues(name).Inc()
@@ -461,7 +493,8 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 			},
 		}
 		if err := h.patchDungeon(ctx, ns, name, patch); err != nil {
-			writeError(w, err.Error(), http.StatusInternalServerError)
+			slog.Error("failed to patch dungeon after heal", "component", "api", "dungeon", name, "namespace", ns, "error", err)
+			writeError(w, sanitizeK8sError(err), http.StatusInternalServerError)
 			return err
 		}
 		return h.respondDungeon(ctx, ns, name, w)
@@ -540,6 +573,14 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 		}
 	}
 
+	// Helmet bonus: crit chance (double damage)
+	if helmetBonus > 0 {
+		if seededRoll(attackUID+"-helmet-crit", 100) < helmetBonus {
+			effectiveDamage *= 2
+			classNote += fmt.Sprintf(" [CRIT! helmet +%d%% crit]", helmetBonus)
+		}
+	}
+
 	// Stun zeroes damage
 	if isStunned {
 		effectiveDamage = 0
@@ -603,31 +644,56 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 					classNote += " Rogue dodged!"
 				}
 			}
+			// Pants: bonus dodge chance (any class)
+			if pantsBonus > 0 && counter > 0 {
+				if seededRoll(attackUID+"-pants-dodge", 100) < pantsBonus {
+					counter = 0
+					classNote += fmt.Sprintf(" [DODGED! pants +%d%% dodge]", pantsBonus)
+				}
+			}
 			if tauntActive == 2 && counter > 0 {
 				counter = counter * 2 / 5
 			}
 			heroHP = max64(heroHP-counter, 0)
 			enemyAction = fmt.Sprintf("Boss strikes back for %d damage! (Hero HP: %d)", counter, heroHP)
 
-			// Status effects from boss
+			// Status effects from boss — boots provide status resist
 			effectRoll := seededRoll(attackUID+"-fx", 100)
+			resistRoll := seededRoll(attackUID+"-boots-resist", 100)
+			resisted := bootsBonus > 0 && resistRoll < bootsBonus
 			if currentRoom == 2 {
 				// Bat-boss: poison 30%, stun 15%
 				if effectRoll < 15 && stunTurns == 0 {
-					stunTurns = 1
-					effectNote = " Bat Boss inflicts STUN! (1 turn)"
+					if resisted {
+						effectNote = fmt.Sprintf(" [RESISTED stun! boots +%d%% resist]", bootsBonus)
+					} else {
+						stunTurns = 1
+						effectNote = " Bat Boss inflicts STUN! (1 turn)"
+					}
 				} else if effectRoll < 45 && poisonTurns == 0 {
-					poisonTurns = 3
-					effectNote = " Bat Boss inflicts POISON! (3 turns, -5 HP/turn)"
+					if resisted {
+						effectNote = fmt.Sprintf(" [RESISTED poison! boots +%d%% resist]", bootsBonus)
+					} else {
+						poisonTurns = 3
+						effectNote = " Bat Boss inflicts POISON! (3 turns, -5 HP/turn)"
+					}
 				}
 			} else {
 				// Dragon: stun 15%, burn 25%
 				if effectRoll < 15 && stunTurns == 0 {
-					stunTurns = 1
-					effectNote = " Boss inflicts STUN! (1 turn)"
+					if resisted {
+						effectNote = fmt.Sprintf(" [RESISTED stun! boots +%d%% resist]", bootsBonus)
+					} else {
+						stunTurns = 1
+						effectNote = " Boss inflicts STUN! (1 turn)"
+					}
 				} else if effectRoll < 40 && burnTurns == 0 {
-					burnTurns = 2
-					effectNote = " Boss inflicts BURN! (2 turns, -8 HP/turn)"
+					if resisted {
+						effectNote = fmt.Sprintf(" [RESISTED burn! boots +%d%% resist]", bootsBonus)
+					} else {
+						burnTurns = 2
+						effectNote = " Boss inflicts BURN! (2 turns, -8 HP/turn)"
+					}
 				}
 			}
 		} else {
@@ -740,6 +806,13 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 					classNote += " Rogue dodged!"
 				}
 			}
+			// Pants: bonus dodge chance (any class)
+			if pantsBonus > 0 && totalCounter > 0 {
+				if seededRoll(attackUID+"-pants-dodge", 100) < pantsBonus {
+					totalCounter = 0
+					classNote += fmt.Sprintf(" [DODGED! pants +%d%% dodge]", pantsBonus)
+				}
+			}
 			if tauntActive == 2 && totalCounter > 0 {
 				totalCounter = totalCounter * 2 / 5
 			}
@@ -751,12 +824,17 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 			enemyAction = "Monsters counter-attack absorbed!"
 		}
 
-		// Status effects from monster counter
+		// Status effects from monster counter — boots provide status resist
 		effectNote := ""
 		if aliveCount > 0 && poisonTurns == 0 {
+			resistRoll := seededRoll(attackUID+"-boots-resist", 100)
 			if seededRoll(attackUID+"-fx", 100) < 20 {
-				poisonTurns = 3
-				effectNote = " Monsters inflict POISON! (3 turns, -5 HP/turn)"
+				if bootsBonus > 0 && resistRoll < bootsBonus {
+					effectNote = fmt.Sprintf(" [RESISTED poison! boots +%d%% resist]", bootsBonus)
+				} else {
+					poisonTurns = 3
+					effectNote = " Monsters inflict POISON! (3 turns, -5 HP/turn)"
+				}
 			}
 		}
 
@@ -781,7 +859,8 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 func (h *Handler) processAction(ctx context.Context, ns, name, action string, w http.ResponseWriter) error {
 	dungeon, err := h.client.Dynamic.Resource(k8s.DungeonGVR).Namespace(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
-		writeError(w, "dungeon not found: "+err.Error(), http.StatusNotFound)
+		slog.Error("failed to get dungeon for action", "component", "api", "dungeon", name, "namespace", ns, "error", err)
+		writeError(w, sanitizeK8sError(err), http.StatusNotFound)
 		return err
 	}
 	spec := getMap(dungeon.Object, "spec")
@@ -823,7 +902,8 @@ func (h *Handler) processAction(ctx context.Context, ns, name, action string, w 
 		ctx, actionCRName, types.ApplyPatchType, actionData,
 		metav1.PatchOptions{FieldManager: "rpg-backend", Force: boolPtr(true)})
 	if err != nil {
-		writeError(w, "failed to upsert action: "+err.Error(), http.StatusInternalServerError)
+		slog.Error("failed to upsert action CR", "component", "api", "dungeon", name, "namespace", ns, "error", err)
+		writeError(w, sanitizeK8sError(err), http.StatusInternalServerError)
 		return err
 	}
 
@@ -922,6 +1002,33 @@ func (h *Handler) processAction(ctx context.Context, ns, name, action string, w 
 		case "shield-epic":
 			patchSpec["shieldBonus"] = int64(25)
 			patchSpec["lastHeroAction"] = "Equipped shield-epic! +25% block chance"
+		case "helmet-common":
+			patchSpec["helmetBonus"] = int64(5)
+			patchSpec["lastHeroAction"] = "Equipped helmet-common! +5% crit chance"
+		case "helmet-rare":
+			patchSpec["helmetBonus"] = int64(10)
+			patchSpec["lastHeroAction"] = "Equipped helmet-rare! +10% crit chance"
+		case "helmet-epic":
+			patchSpec["helmetBonus"] = int64(15)
+			patchSpec["lastHeroAction"] = "Equipped helmet-epic! +15% crit chance"
+		case "pants-common":
+			patchSpec["pantsBonus"] = int64(5)
+			patchSpec["lastHeroAction"] = "Equipped pants-common! +5% dodge chance"
+		case "pants-rare":
+			patchSpec["pantsBonus"] = int64(10)
+			patchSpec["lastHeroAction"] = "Equipped pants-rare! +10% dodge chance"
+		case "pants-epic":
+			patchSpec["pantsBonus"] = int64(15)
+			patchSpec["lastHeroAction"] = "Equipped pants-epic! +15% dodge chance"
+		case "boots-common":
+			patchSpec["bootsBonus"] = int64(20)
+			patchSpec["lastHeroAction"] = "Equipped boots-common! +20% status resist"
+		case "boots-rare":
+			patchSpec["bootsBonus"] = int64(40)
+			patchSpec["lastHeroAction"] = "Equipped boots-rare! +40% status resist"
+		case "boots-epic":
+			patchSpec["bootsBonus"] = int64(60)
+			patchSpec["lastHeroAction"] = "Equipped boots-epic! +60% status resist"
 		default:
 			writeError(w, "cannot equip: "+item, http.StatusBadRequest)
 			return fmt.Errorf("cannot equip item")
@@ -1015,7 +1122,8 @@ func (h *Handler) patchDungeon(ctx context.Context, ns, name string, patch map[s
 
 func (h *Handler) patchAndRespond(ctx context.Context, ns, name string, patch map[string]interface{}, w http.ResponseWriter) error {
 	if err := h.patchDungeon(ctx, ns, name, patch); err != nil {
-		writeError(w, err.Error(), http.StatusInternalServerError)
+		slog.Error("failed to patch dungeon", "component", "api", "dungeon", name, "namespace", ns, "error", err)
+		writeError(w, sanitizeK8sError(err), http.StatusInternalServerError)
 		return err
 	}
 	return h.respondDungeon(ctx, ns, name, w)
@@ -1024,7 +1132,8 @@ func (h *Handler) patchAndRespond(ctx context.Context, ns, name string, patch ma
 func (h *Handler) respondDungeon(ctx context.Context, ns, name string, w http.ResponseWriter) error {
 	dungeon, err := h.client.Dynamic.Resource(k8s.DungeonGVR).Namespace(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
-		writeError(w, err.Error(), http.StatusInternalServerError)
+		slog.Error("failed to get dungeon for response", "component", "api", "dungeon", name, "namespace", ns, "error", err)
+		writeError(w, sanitizeK8sError(err), http.StatusInternalServerError)
 		return err
 	}
 	slog.Info("attack submitted", "component", "api", "dungeon", name, "namespace", ns)
@@ -1060,7 +1169,25 @@ func writeError(w http.ResponseWriter, msg string, code int) {
 	http.Error(w, msg, code)
 }
 
-// ---- game math helpers -------------------------------------------------------
+// sanitizeK8sError converts a raw Kubernetes error into a user-friendly message,
+// preventing internal details (GVR paths, namespace names, K8s internals) from
+// leaking to the browser. The original error must be logged server-side before
+// calling this function.
+func sanitizeK8sError(err error) string {
+	msg := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(msg, "not found"):
+		return "Dungeon not found"
+	case strings.Contains(msg, "already exists"):
+		return "A dungeon with that name already exists"
+	case strings.Contains(msg, "forbidden") || strings.Contains(msg, "unauthorized"):
+		return "Permission denied"
+	case strings.Contains(msg, "invalid"):
+		return "Invalid request"
+	default:
+		return "Internal server error"
+	}
+}
 
 // rollDice rolls dice based on difficulty using seeded randomness.
 func rollDice(difficulty string, isBoss bool, uid string) int64 {
@@ -1124,8 +1251,8 @@ func computeMonsterLoot(dungeonName string, idx int, difficulty string) (bool, s
 	} else if rarRoll >= 22 {
 		rarity = "rare"
 	}
-	typRoll := int(seededRoll(seed+"-typ", 5))
-	types := []string{"weapon", "armor", "hppotion", "manapotion", "shield"}
+	typRoll := int(seededRoll(seed+"-typ", 8))
+	types := []string{"weapon", "armor", "hppotion", "manapotion", "shield", "helmet", "pants", "boots"}
 	return true, types[typRoll] + "-" + rarity
 }
 
@@ -1136,8 +1263,8 @@ func computeBossLoot(dungeonName string) string {
 	if rarRoll >= 18 {
 		rarity = "epic"
 	}
-	typRoll := int(seededRoll(dungeonName+"-boss-typ", 4))
-	types := []string{"weapon", "armor", "hppotion", "shield"}
+	typRoll := int(seededRoll(dungeonName+"-boss-typ", 7))
+	types := []string{"weapon", "armor", "hppotion", "shield", "helmet", "pants", "boots"}
 	return types[typRoll] + "-" + rarity
 }
 
