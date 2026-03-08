@@ -350,6 +350,20 @@ grep -q "boss-phase2\|boss-phase3" frontend/src/App.tsx && pass "Frontend applie
 grep -q "boss-phase-badge" frontend/src/App.tsx && pass "Frontend renders boss phase badge" || fail "Frontend missing boss phase badge"
 grep -q "ENRAGED\|BERSERK" frontend/src/App.tsx && pass "Frontend emits phase transition events to combat log" || fail "Frontend missing phase transition log events"
 
+# --- KroTeach concept sync guardrails ---
+echo "=== KroTeach concept sync guardrails"
+# Count KroConceptId union members (lines matching "  | '")
+UNION_COUNT=$(grep -c "^  | '" frontend/src/KroTeach.tsx || true)
+# Count KRO_CONCEPTS keys (lines matching "  'xxx': {")
+CONCEPTS_COUNT=$(grep -c "^  '[a-z].*': {" frontend/src/KroTeach.tsx || true)
+# Count CONCEPT_ORDER entries (each quoted ID)
+ORDER_COUNT=$(node -e "const f=require('fs').readFileSync('frontend/src/KroTeach.tsx','utf8'); const m=f.match(/const CONCEPT_ORDER[^=]*=\s*\[([^\]]+)\]/s); console.log(m ? (m[1].match(/'[^']+'/g)||[]).length : 0)" 2>/dev/null || echo "0")
+
+[ "$UNION_COUNT" -eq "$CONCEPTS_COUNT" ] && pass "KroConceptId union count ($UNION_COUNT) matches KRO_CONCEPTS keys ($CONCEPTS_COUNT)" || fail "KroConceptId union ($UNION_COUNT) != KRO_CONCEPTS keys ($CONCEPTS_COUNT) — add missing concept definition or union member"
+[ "$UNION_COUNT" -eq "$ORDER_COUNT" ] && pass "KroConceptId union count ($UNION_COUNT) matches CONCEPT_ORDER length ($ORDER_COUNT)" || fail "KroConceptId union ($UNION_COUNT) != CONCEPT_ORDER ($ORDER_COUNT) — update CONCEPT_ORDER array"
+INSIGHT_COUNT=$(grep -c "return { conceptId:" frontend/src/KroTeach.tsx || true)
+[ "$INSIGHT_COUNT" -ge 10 ] && pass "getInsightForEvent has $INSIGHT_COUNT trigger mappings (>= 10 required)" || fail "getInsightForEvent only has $INSIGHT_COUNT mappings — too few concepts are triggered by game events"
+
 # --- Summary ---
 
 echo ""
