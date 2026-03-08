@@ -79,6 +79,12 @@ body {
 .dungeon-tile .stats span { margin-right: 12px; }
 .dungeon-tile .victory { color: var(--green); }
 .dungeon-tile.deleting { opacity: 0.4; pointer-events: none; }
+.dungeon-tile.last-played { border-color: #f5c518; box-shadow: 0 0 8px rgba(245,197,24,0.25); }
+.last-played-badge {
+  font-size: 6px; color: #f5c518; background: rgba(245,197,24,0.12);
+  border: 1px solid #f5c518; border-radius: 2px; padding: 1px 5px;
+  letter-spacing: 0.5px; white-space: nowrap;
+}
 .tile-delete-btn {
   font-size: 10px; background: none; border: none; cursor: pointer;
   opacity: 0.3; transition: opacity 0.15s; padding: 4px;
