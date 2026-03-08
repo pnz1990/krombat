@@ -1196,6 +1196,14 @@ function DungeonView({ cr, prevCr, onBack, onAttack, events, k8sLog, showLoot, o
         <div className="defeat-banner">
           <h2><PixelIcon name="skull" size={18} /> DEFEAT <PixelIcon name="skull" size={18} /></h2>
           <p className="defeat-text">Your hero has fallen...</p>
+          <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap', margin: '8px 0', fontSize: 7, color: 'var(--text-dim)' }}>
+            <span>Turns: <span style={{ color: 'var(--gold)' }}>{spec.attackSeq ?? 0}</span></span>
+            <span>Hero: <span style={{ color: 'var(--gold)' }}>{spec.heroClass ?? 'warrior'}</span></span>
+            <span>Difficulty: <span style={{ color: 'var(--gold)' }}>{spec.difficulty}</span></span>
+            <span>Room: <span style={{ color: 'var(--gold)' }}>{spec.currentRoom ?? 1}</span></span>
+            {spec.weaponBonus ? <span>⚔ Weapon +{spec.weaponBonus}</span> : null}
+            {spec.armorBonus ? <span>🛡 Armor {spec.armorBonus}%</span> : null}
+          </div>
           <div style={{ marginTop: 8 }}>
             <button className="btn" style={{ fontSize: 7 }} onClick={onBack}>← New Dungeon</button>
           </div>
