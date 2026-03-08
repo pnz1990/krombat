@@ -265,16 +265,24 @@ spec:
           shieldBonusEpic:   "25"
 
           # === ROOM 2 HP ARRAYS ===
-          # Monster count preserved from current room
+          # Room 2 HP scales from Room 1 base: monsters ×1.5, boss ×1.3
+          # Modifier adjustments: blessing ×0.9, curse ×1.1
+          # Base values — easy: m=30 b=200, normal: m=50 b=400, hard: m=80 b=800
           room2MonsterHPValue: >-
             ${
-              schema.spec.difficulty == 'easy'   ? '50' :
-              schema.spec.difficulty == 'hard'   ? '120' : '80'
+              schema.spec.difficulty == 'easy'   ?
+                (schema.spec.modifier.contains('blessing') ? '40' : schema.spec.modifier.contains('curse') ? '49' : '45') :
+              schema.spec.difficulty == 'hard'   ?
+                (schema.spec.modifier.contains('blessing') ? '108' : schema.spec.modifier.contains('curse') ? '132' : '120') :
+                (schema.spec.modifier.contains('blessing') ? '67' : schema.spec.modifier.contains('curse') ? '82' : '75')
             }
           room2BossHP: >-
             ${
-              schema.spec.difficulty == 'easy'   ? '400' :
-              schema.spec.difficulty == 'hard'   ? '1200' : '800'
+              schema.spec.difficulty == 'easy'   ?
+                (schema.spec.modifier.contains('blessing') ? '234' : schema.spec.modifier.contains('curse') ? '286' : '260') :
+              schema.spec.difficulty == 'hard'   ?
+                (schema.spec.modifier.contains('blessing') ? '936' : schema.spec.modifier.contains('curse') ? '1144' : '1040') :
+                (schema.spec.modifier.contains('blessing') ? '468' : schema.spec.modifier.contains('curse') ? '572' : '520')
             }
           monsterCount: "${string(size(schema.spec.monsterHP))}"
 
