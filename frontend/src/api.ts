@@ -74,8 +74,12 @@ export class ApiError extends Error {
   }
 }
 
-export async function getDungeonResource(ns: string, name: string, kind: string): Promise<any> {
-  const r = await fetch(`${BASE}/dungeons/${ns}/${name}/resources?kind=${encodeURIComponent(kind)}`)
+const VALID_RESOURCE_KINDS = ['dungeon', 'hero', 'herostate', 'boss', 'bossstate', 'namespace', 'gameconfig'] as const
+export type ResourceKind = typeof VALID_RESOURCE_KINDS[number]
+
+export async function getDungeonResource(ns: string, name: string, kind: ResourceKind): Promise<any> {
+  // kind is a compile-time enum — not user-supplied input
+  const r = await fetch(`${BASE}/dungeons/${ns}/${name}/resources?kind=${kind}`)
   if (!r.ok) return null
   return r.json()
 }

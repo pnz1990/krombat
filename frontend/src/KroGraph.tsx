@@ -21,7 +21,7 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import type { DungeonCR } from './api'
+import type { DungeonCR, ResourceKind } from './api'
 import type { KroConceptId } from './KroTeach'
 
 // ─── Node types ──────────────────────────────────────────────────────────────
@@ -835,7 +835,7 @@ export function KroGraphPanel({ cr, prevCr, reconciling, onViewConcept }: KroGra
   const [inspectorLoading, setInspectorLoading] = useState(false)
 
   const handleNodeSelect = useCallback(async (nodeId: string, nodeKind: string) => {
-    const kindMap: Record<string, string> = {
+    const kindMap: Record<string, ResourceKind> = {
       'dungeon': 'dungeon',
       'hero': 'hero',
       'hero-state': 'herostate',
