@@ -780,3 +780,107 @@ body {
   25% { transform: translateX(-3px); }
   75% { transform: translateX(3px); }
 }
+
+/* ===== RESPONSIVE — MOBILE (< 768px) ===== */
+@media (max-width: 768px) {
+  /* App container — remove side padding so arena can breathe */
+  .app { padding: 8px; }
+
+  /* Header — shrink logo and title */
+  .logo { max-width: 180px; }
+  .header h1 { font-size: 14px; }
+  .header { padding: 12px 0; margin-bottom: 12px; }
+
+  /* Buttons — WCAG minimum 44px touch target */
+  .btn { min-height: 44px; padding: 10px 12px; font-size: 8px; }
+  .arena-atk-btn { min-height: 36px !important; }
+  .btn-ability { min-height: 36px !important; }
+  .log-tab { min-height: 36px; }
+  .help-btn { width: 36px; height: 36px; }
+
+  /* Two-column game layout → vertical stack on mobile */
+  .game-layout {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  /* Left panel — full width */
+  .left-panel { flex: none; width: 100%; }
+
+  /* Right panel — full width, remove sticky/fixed sizing */
+  .right-panel {
+    flex: none;
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+    position: static;
+  }
+
+  /* Arena — scale to viewport width, preserve aspect ratio */
+  .dungeon-arena {
+    width: 100%;
+    /* Cap at viewport width minus padding, so it scales down proportionally */
+    max-width: min(100vw - 16px, 600px);
+    margin: 0 auto;
+  }
+
+  /* Status bar — allow wrapping on small screens */
+  .status-bar {
+    flex-wrap: wrap;
+    gap: 8px;
+    font-size: 7px;
+    padding: 8px;
+  }
+
+  /* Dungeon header — smaller gap, wrap if needed */
+  .dungeon-header { flex-wrap: wrap; gap: 6px; }
+  .dungeon-header h2 { font-size: 11px; }
+
+  /* Event log — fixed scrollable height so it doesn't dominate mobile */
+  .event-log {
+    max-height: 140px;
+    overflow-y: auto;
+  }
+
+  /* Turn bar — allow wrap */
+  .turn-bar { flex-wrap: wrap; gap: 6px; }
+
+  /* Hero bar — wrap gracefully */
+  .hero-bar { flex-wrap: wrap; }
+
+  /* Create form — stack fields vertically */
+  .create-form {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .create-form input,
+  .create-form select {
+    width: 100%;
+    min-height: 40px;
+  }
+
+  /* Equipment panel in right panel — horizontal row with wrapping */
+  .right-panel .equip-panel {
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: flex-start;
+  }
+
+  /* Help / loot modals — constrain to viewport */
+  .modal {
+    max-width: calc(100vw - 32px);
+    padding: 20px 16px;
+  }
+  .help-modal { max-height: 80vh; }
+
+  /* Dungeon list — single column on very small screens */
+  .dungeon-list { grid-template-columns: 1fr; }
+
+  /* Backpack grid — larger slots for touch */
+  .backpack-slot { width: 40px; height: 40px; }
+
+  /* K8s log — smaller font to fit */
+  .k8s-cmd { font-size: 6px; }
+  .k8s-res { font-size: 6px; }
+}
