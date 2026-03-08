@@ -960,14 +960,23 @@ func (h *Handler) processAction(ctx context.Context, ns, name, action string, w 
 			writeError(w, "unlock the door first", http.StatusBadRequest)
 			return fmt.Errorf("unlock door first")
 		}
-		var r2MonsterHP, r2BossHP int64
-		switch difficulty {
-		case "easy":
-			r2MonsterHP, r2BossHP = 50, 400
-		case "hard":
-			r2MonsterHP, r2BossHP = 120, 1200
-		default:
-			r2MonsterHP, r2BossHP = 80, 800
+		modifier := getString(spec, "modifier", "none")
+
+		// Scale Room 2 HP from Room 1 base values:
+		//   monsters: Room1Base × 1.5  (×3/2)
+		//   boss:     Room1Base × 1.3  (×13/10)
+		// Then apply modifier adjustment:
+		//   blessing: ×0.9 (×9/10) — dungeon feels more forgiving
+		//   curse:    ×1.1 (×11/10) — dungeon feels more punishing
+		r1 := defaultHP[difficulty]
+		r2MonsterHP := r1.monster * 3 / 2
+		r2BossHP := r1.boss * 13 / 10
+		if strings.Contains(modifier, "blessing") {
+			r2MonsterHP = r2MonsterHP * 9 / 10
+			r2BossHP = r2BossHP * 9 / 10
+		} else if strings.Contains(modifier, "curse") {
+			r2MonsterHP = r2MonsterHP * 11 / 10
+			r2BossHP = r2BossHP * 11 / 10
 		}
 		newMonsterHP := make([]interface{}, len(monsterHPRaw))
 		for i := range newMonsterHP {
