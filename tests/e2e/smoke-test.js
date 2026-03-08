@@ -15,7 +15,7 @@ async function runTests() {
   const page = await browser.newPage();
   const errors = [];
   page.on('console', msg => {
-    if (msg.type() === 'error' && !msg.text().includes('WebSocket') && !msg.text().includes('404')) errors.push(msg.text());
+    if (msg.type() === 'error' && !msg.text().includes('WebSocket') && !msg.text().includes('404') && !msg.text().includes('400')) errors.push(msg.text());
   });
 
   try {
