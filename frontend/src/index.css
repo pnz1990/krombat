@@ -402,6 +402,19 @@ body {
 }
 @keyframes reconnectPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
 
+.engine-warning-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 5px 10px;
+  margin-bottom: 8px;
+  background: rgba(245, 197, 24, 0.1);
+  border: 1px solid #b8860b;
+  color: #f5c518;
+  font-size: 7px;
+  border-radius: 2px;
+}
+
 /* Defeat */
 .defeat-banner {
   text-align: center;

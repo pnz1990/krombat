@@ -6,6 +6,14 @@ export interface DungeonSummary {
 }
 
 // GetDungeon now returns the raw Dungeon CR — all state is in spec + status
+export interface KroCondition {
+  type: string       // e.g. "Ready", "Error"
+  status: string     // "True" or "False"
+  reason?: string
+  message?: string
+  lastTransitionTime?: string
+}
+
 export interface DungeonCR {
   metadata: { name: string; namespace: string }
   spec: {
@@ -26,6 +34,7 @@ export interface DungeonCR {
     loot: string; maxMonsterHP: number; maxBossHP: number
     maxHeroHP: number; diceFormula: string; monsterCounter: number; bossCounter: number
     modifier?: string; modifierType?: string; treasureState?: string
+    conditions?: KroCondition[]
   }
 }
 

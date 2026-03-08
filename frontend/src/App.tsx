@@ -758,6 +758,20 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
   const [showDoorModal, setShowDoorModal] = useState(false)
   const [doorPassword, setDoorPassword] = useState('')
   const autoTriggeredRef = useRef('')
+  const [dismissedEngineWarning, setDismissedEngineWarning] = useState('')
+
+  // Derive kro reconciliation error from status.conditions
+  const engineWarning = (() => {
+    const conditions = (status as any)?.conditions as Array<{ type: string; status: string; message?: string; reason?: string }> | undefined
+    if (!conditions?.length) return null
+    // Prefer explicit Error-type condition
+    const errCond = conditions.find(c => c.type === 'Error' && c.message)
+    if (errCond) return errCond.message!
+    // Fall back to any condition with status=False and a message
+    const falseCond = conditions.find(c => c.status === 'False' && c.message)
+    if (falseCond) return falseCond.message!
+    return null
+  })()
 
   // Auto-open treasure and unlock door after boss kill (room 1 only)
   useEffect(() => {
@@ -800,6 +814,17 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
       {!wsConnected && (
         <div className="ws-reconnecting-banner">
           ○ Reconnecting to server...
+        </div>
+      )}
+
+      {engineWarning && engineWarning !== dismissedEngineWarning && (
+        <div className="engine-warning-banner" role="alert">
+          <span>Engine warning: {engineWarning}</span>
+          <button
+            onClick={() => setDismissedEngineWarning(engineWarning)}
+            aria-label="Dismiss engine warning"
+            style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', fontFamily: 'inherit', fontSize: '10px', marginLeft: 8 }}
+          >✕</button>
         </div>
       )}
 
