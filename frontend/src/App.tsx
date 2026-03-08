@@ -5,6 +5,12 @@ import { useWebSocket, WSEvent } from './useWebSocket'
 
 import { Sprite, getMonsterSprite, SpriteAction, ItemSprite } from './Sprite'
 import { PixelIcon } from './PixelIcon'
+import {
+  InsightCard, KroConceptModal, KroGlossary,
+  useKroGlossary, getInsightForEvent, kroAnnotate,
+  KRO_STATUS_TIPS,
+  type InsightTrigger, type KroConceptId,
+} from './KroTeach'
 
 // 8-bit styled text icons (consistent cross-platform, matches pixel font)
 const ICO = {
@@ -55,6 +61,22 @@ export default function App() {
   const [lootDrop, setLootDrop] = useState<string | null>(null)
   const [attackTarget, setAttackTarget] = useState<string | null>(null)
   const [animPhase, setAnimPhase] = useState<'idle' | 'hero-attack' | 'enemy-attack' | 'item-use' | 'done'>('idle')
+
+  // kro teaching layer
+  const { unlocked, unlock } = useKroGlossary()
+  const [insightQueue, setInsightQueue] = useState<InsightTrigger[]>([])
+  const [kroConceptModal, setKroConceptModal] = useState<KroConceptId | null>(null)
+  const shownInsightsRef = useRef<Set<KroConceptId>>(new Set())
+
+  const triggerInsight = useCallback((event: string) => {
+    const trigger = getInsightForEvent(event)
+    if (!trigger) return
+    unlock(trigger.conceptId)
+    // Only show each concept card once per session
+    if (shownInsightsRef.current.has(trigger.conceptId)) return
+    shownInsightsRef.current.add(trigger.conceptId)
+    setInsightQueue(q => [...q, trigger])
+  }, [unlock])
 
   const { connected, lastEvent } = useWebSocket(selected?.ns, selected?.name)
   const selectedRef = useRef(selected)
@@ -108,7 +130,12 @@ export default function App() {
           if (cancelled) return
           try {
             const d = await getDungeon(selected.ns, selected.name)
-            if (!cancelled) { setDetail(d); setLoading(false) }
+            if (!cancelled) {
+              setDetail(d)
+              setLoading(false)
+              // Teach modifier concept if this dungeon has one
+              if (d.spec.modifier && d.spec.modifier !== 'none') triggerInsight('modifier-present')
+            }
             return
           } catch {
             await new Promise(r => setTimeout(r, 2000))
@@ -157,6 +184,9 @@ export default function App() {
       await createDungeon(name, monsters, difficulty, heroClass, 'default')
       addK8s(`kubectl apply -f dungeon.yaml`, 'dungeon.game.k8s.example created',
         `apiVersion: game.k8s.example/v1alpha1\nkind: Dungeon\nmetadata:\n  name: ${name}\nspec:\n  monsters: ${monsters}\n  difficulty: ${difficulty}\n  heroClass: ${heroClass}`)
+      triggerInsight('dungeon-created')
+      // forEach is always in play when creating a dungeon with multiple monsters
+      if (monsters > 1) triggerInsight('forEach')
       localStorage.setItem('lastDungeon', JSON.stringify({ ns: 'default', name }))
       navigate(`/dungeon/default/${name}`)
     } catch (e: any) { setError(e.message) }
@@ -198,6 +228,8 @@ export default function App() {
       const crField = isItem ? `action: ${target}` : `target: ${target}\n  damage: ${damage}`
       addK8s(`kubectl apply -f ${crKind.toLowerCase()}.yaml`, `${crKind.toLowerCase()}.game.k8s.example created`,
         `apiVersion: game.k8s.example/v1alpha1\nkind: ${crKind}\nmetadata:\n  name: ${selected.name}-${target}-${Date.now() % 100000}\nspec:\n  dungeonName: ${selected.name}\n  dungeonNamespace: ${selected.ns}\n  ${crField}`)
+      // Teach: Attack CR = empty RGD pattern; first combat attack = CEL basics
+      if (!isItem && !isAbility) triggerInsight('attack-cr')
 
       let updated = detail!
 
@@ -231,6 +263,9 @@ export default function App() {
         setAnimPhase('idle')
         setAttackTarget(null)
         attackingRef.current = false
+        // Teach specific item/room events
+        if (target === 'enter-room-2') triggerInsight('enter-room-2')
+        if (target === 'open-treasure') triggerInsight('treasure-opened')
         return // Items done — don't fall through to combat/loot logic
       } else {
         // Combat: backend is synchronous — attackSeq increments before API returns.
@@ -275,7 +310,10 @@ export default function App() {
       }
 
       // Loot drop — only check on combat actions (not items/equip)
-      if (!isItem && pollSucceeded && updated.spec.lastLootDrop) setLootDrop(updated.spec.lastLootDrop)
+      if (!isItem && pollSucceeded && updated.spec.lastLootDrop) {
+        setLootDrop(updated.spec.lastLootDrop)
+        triggerInsight('loot-drop')
+      }
       await new Promise(r => setTimeout(r, 100))
 
       // Read combat log from Dungeon CR — skip "already dead" non-events
@@ -316,9 +354,15 @@ export default function App() {
         const newBossHP = updated.spec.bossHP ?? 1
         const prevAllDead = (detail?.spec.monsterHP || []).every((hp: number) => hp <= 0)
         const nowAllDead = (updated.spec.monsterHP || []).every((hp: number) => hp <= 0)
-        if (nowAllDead && !prevAllDead) addEvent('🐉', 'Boss unlocked! All monsters slain!')
-        if (newBossHP <= 0 && prevBossHP > 0) addEvent('🏆', 'VICTORY! Boss defeated!')
+        if (nowAllDead && !prevAllDead) { addEvent('🐉', 'Boss unlocked! All monsters slain!'); triggerInsight('boss-ready') }
+        if (newBossHP <= 0 && prevBossHP > 0) { addEvent('🏆', 'VICTORY! Boss defeated!'); triggerInsight('boss-killed') }
         if ((updated.spec.heroHP ?? 100) <= 0 && (detail?.spec.heroHP ?? 100) > 0) addEvent('💀', 'Hero has fallen...')
+        // Detect monster kill
+        const prevDeadCount = (detail?.spec.monsterHP || []).filter((hp: number) => hp <= 0).length
+        const newDeadCount = (updated.spec.monsterHP || []).filter((hp: number) => hp <= 0).length
+        if (newDeadCount > prevDeadCount) triggerInsight('monster-killed')
+        // First attack
+        if ((detail?.spec.attackSeq ?? 0) === 0 && (updated.spec.attackSeq ?? 0) > 0) triggerInsight('first-attack')
       }
 
       // Don't clear attackPhase/attackTarget — user must dismiss combat modal
@@ -449,8 +493,24 @@ export default function App() {
           onToggleCheat={() => setShowCheat(c => !c)}
           wsConnected={connected}
           apiError={apiError}
+          kroUnlocked={unlocked}
+          onViewKroConcept={setKroConceptModal}
         />
       ) : null}
+
+      {/* kro Insight Cards — slide in from bottom-right */}
+      {insightQueue.length > 0 && (
+        <InsightCard
+          trigger={insightQueue[0]}
+          onDismiss={() => setInsightQueue(q => q.slice(1))}
+          onViewConcept={setKroConceptModal}
+        />
+      )}
+
+      {/* kro Concept Modal */}
+      {kroConceptModal && (
+        <KroConceptModal conceptId={kroConceptModal} onClose={() => setKroConceptModal(null)} />
+      )}
     </div>
   )
 }
@@ -590,23 +650,55 @@ function FlyingBat({ startX, startY, endX, endY, dur, onDone }: { startX: number
       style={{ left: `${pos.x}%`, top: `${pos.y}%`, transform: `translate(-50%,-50%) scaleX(${endX > startX ? 1 : -1})` }} />
   )
 }
-function EventLogTabs({ events, k8sLog }: { events: WSEvent[]; k8sLog: { ts: string; cmd: string; res: string; yaml?: string }[] }) {
-  const [tab, setTab] = useState<'game' | 'k8s'>('game')
-  const [yamlModal, setYamlModal] = useState<string | null>(null)
+function EventLogTabs({ events, k8sLog, kroUnlocked, onViewKroConcept }: {
+  events: WSEvent[]
+  k8sLog: { ts: string; cmd: string; res: string; yaml?: string }[]
+  kroUnlocked: Set<KroConceptId>
+  onViewKroConcept: (id: KroConceptId) => void
+}) {
+  const [tab, setTab] = useState<'game' | 'k8s' | 'kro'>('game')
+  const [yamlModal, setYamlModal] = useState<{ yaml: string; cmd: string } | null>(null)
+  const [kroConceptModal, setKroConceptModal] = useState<KroConceptId | null>(null)
   return (
     <div style={{ marginTop: 16 }}>
       <div className="log-tabs">
         <button className={`log-tab${tab === 'game' ? ' active' : ''}`} onClick={() => setTab('game')}>Game Log</button>
         <button className={`log-tab${tab === 'k8s' ? ' active' : ''}`} onClick={() => setTab('k8s')}>K8s Log</button>
+        <button className={`log-tab kro-tab${tab === 'kro' ? ' active' : ''}`} onClick={() => setTab('kro')}>
+          kro ({kroUnlocked.size}/13)
+        </button>
       </div>
+
+      {/* YAML + kro annotation modal */}
       {yamlModal && (
         <div className="modal-overlay" onClick={() => setYamlModal(null)}>
-          <div className="modal" role="dialog" aria-modal="true" aria-label="YAML viewer" onClick={e => e.stopPropagation()} style={{ maxWidth: 500, textAlign: 'left' }}>
-            <pre className="yaml-view">{yamlModal}</pre>
+          <div className="modal" role="dialog" aria-modal="true" aria-label="YAML viewer" onClick={e => e.stopPropagation()} style={{ maxWidth: 520, textAlign: 'left' }}>
+            <pre className="yaml-view">{yamlModal.yaml}</pre>
+            {(() => {
+              const ann = kroAnnotate(yamlModal.cmd, yamlModal.yaml)
+              if (!ann) return null
+              return (
+                <div className="k8s-annotation">
+                  <div className="k8s-annotation-label">kro — what happened</div>
+                  <div className="k8s-annotation-what">{ann.what}</div>
+                  <div className="k8s-annotation-rgd">RGD: {ann.rgd}</div>
+                  {ann.cel && <pre className="k8s-annotation-cel">{ann.cel}</pre>}
+                  <button className="k8s-annotation-learn" onClick={() => { setYamlModal(null); onViewKroConcept(ann.concept) }}>
+                    Learn: {ann.concept} →
+                  </button>
+                </div>
+              )
+            })()}
             <button className="btn btn-gold" style={{ marginTop: 8 }} onClick={() => setYamlModal(null)}>Close</button>
           </div>
         </div>
       )}
+
+      {/* kro concept modal opened from glossary */}
+      {kroConceptModal && (
+        <KroConceptModal conceptId={kroConceptModal} onClose={() => setKroConceptModal(null)} />
+      )}
+
       {tab === 'game' ? (
         <div className="event-log" aria-live="polite" aria-atomic="false" aria-label="Game event log">
           {events.length === 0 && <div className="event-entry">Waiting for events...</div>}
@@ -617,17 +709,19 @@ function EventLogTabs({ events, k8sLog }: { events: WSEvent[]; k8sLog: { ts: str
             </div>
           ))}
         </div>
-      ) : (
+      ) : tab === 'k8s' ? (
         <div className="event-log k8s-log">
           {k8sLog.length === 0 && <div className="event-entry">No K8s operations yet...</div>}
           {k8sLog.map((e, i) => (
-            <div key={i} className={`k8s-entry${e.yaml ? ' clickable' : ''}`} onClick={() => e.yaml && setYamlModal(e.yaml)}>
+            <div key={i} className={`k8s-entry${e.yaml ? ' clickable' : ''}`} onClick={() => e.yaml && setYamlModal({ yaml: e.yaml, cmd: e.cmd })}>
               <span className="k8s-ts">{e.ts}</span>
               <span className="k8s-cmd">$ {e.cmd}</span>
               <span className="k8s-res">{e.res}</span>
             </div>
           ))}
         </div>
+      ) : (
+        <KroGlossary unlocked={kroUnlocked} onViewConcept={id => setKroConceptModal(id)} />
       )}
     </div>
   )
@@ -822,7 +916,7 @@ function HelpModal({ onClose, onCheat }: { onClose: () => void; onCheat: () => v
     </div>
   )
 }
-function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoot, onCloseLoot, attackPhase, roomLoading, animPhase, attackTarget, showHelp, onToggleHelp, showCheat, onToggleCheat, floatingDmg, combatModal, onDismissCombat, lootDrop, onDismissLoot, wsConnected, apiError }: {
+function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoot, onCloseLoot, attackPhase, roomLoading, animPhase, attackTarget, showHelp, onToggleHelp, showCheat, onToggleCheat, floatingDmg, combatModal, onDismissCombat, lootDrop, onDismissLoot, wsConnected, apiError, kroUnlocked, onViewKroConcept }: {
   cr: DungeonCR; onBack: () => void; onAttack: (t: string, d: number) => void; events: WSEvent[]; k8sLog: { ts: string; cmd: string; res: string; yaml?: string }[]
   showLoot: boolean; onOpenLoot: () => void; onCloseLoot: () => void
   attackPhase: string | null; roomLoading: boolean
@@ -835,6 +929,8 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
   lootDrop: string | null; onDismissLoot: () => void
   wsConnected: boolean
   apiError: string | null
+  kroUnlocked: Set<KroConceptId>
+  onViewKroConcept: (id: KroConceptId) => void
 }) {
   if (!cr?.metadata?.name) return <div className="loading">Loading dungeon</div>
   const spec = cr.spec || { monsters: 0, difficulty: 'normal', monsterHP: [], bossHP: 0, heroHP: 100 }
@@ -1012,11 +1108,21 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
       )}
 
       <div className="status-bar">
-        <div><span className="label">Monsters alive:</span><span className="value">{status?.livingMonsters ?? '?'}</span></div>
-        <div><span className="label">Boss:</span><span className="value">{bossState}</span></div>
-        <div><span className="label">Difficulty:</span><span className="value">{spec.difficulty}</span></div>
-        <div><span className="label">Room:</span><span className="value">{spec.currentRoom || 1}</span></div>
-        <div><span className="label">Turn:</span><span className="value">{(spec.attackSeq ?? 0) + 1}</span></div>
+        <Tooltip text={KRO_STATUS_TIPS.livingMonsters}>
+          <div><span className="label">Monsters alive:</span><span className="value">{status?.livingMonsters ?? '?'}</span></div>
+        </Tooltip>
+        <Tooltip text={KRO_STATUS_TIPS.bossState}>
+          <div><span className="label">Boss:</span><span className="value">{bossState}</span></div>
+        </Tooltip>
+        <Tooltip text={KRO_STATUS_TIPS.difficulty}>
+          <div><span className="label">Difficulty:</span><span className="value">{spec.difficulty}</span></div>
+        </Tooltip>
+        <Tooltip text={KRO_STATUS_TIPS.room}>
+          <div><span className="label">Room:</span><span className="value">{spec.currentRoom || 1}</span></div>
+        </Tooltip>
+        <Tooltip text={KRO_STATUS_TIPS.turn}>
+          <div><span className="label">Turn:</span><span className="value">{(spec.attackSeq ?? 0) + 1}</span></div>
+        </Tooltip>
       </div>
 
       <div className="game-layout">
@@ -1327,7 +1433,7 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
         </div>
       </div>
 
-      <EventLogTabs events={events} k8sLog={k8sLog} />
+      <EventLogTabs events={events} k8sLog={k8sLog} kroUnlocked={kroUnlocked} onViewKroConcept={onViewKroConcept} />
     </div>
   )
 }
