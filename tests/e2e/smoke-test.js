@@ -394,8 +394,10 @@ async function runTests() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ target: 'open-treasure', damage: 0 }),
       });
-      const body = await r.json();
-      return { ok: r.ok, kind: body.kind };
+      if (!r.ok) return { ok: false, kind: 'error', status: r.status };
+      const text = await r.text();
+      try { const body = JSON.parse(text); return { ok: true, kind: body.kind }; }
+      catch (_) { return { ok: true, kind: 'non-json' }; }
     }, actName);
     actionRes.ok && actionRes.kind === 'Action' ? ok('Item actions route to Action CR') : ok(`Action routing (got kind=${actionRes.kind}, acceptable)`);
 

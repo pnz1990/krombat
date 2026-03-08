@@ -28,8 +28,54 @@ wait_dungeon_ready() {
   wait_for "$name ready" \
     "kubectl get dungeon $name -o jsonpath='{.status.livingMonsters}' 2>/dev/null | grep -qE '[0-9]+'" 60
 }
-wait_job() {
-  local name="$1"
-  wait_for "$name complete" \
-    "kubectl get job $name -o jsonpath='{.status.succeeded}' 2>/dev/null | grep -q 1" 60
+
+# After #110: combat is processed synchronously by the Go backend via REST API.
+# Attacks must be submitted via backend API — direct Attack CR apply does nothing.
+# BACKEND_URL is set by each test or defaults to port-forwarded backend.
+BACKEND_URL="${BACKEND_URL:-http://localhost:8089}"
+
+# Setup port-forward for backend if not already running on BACKEND_URL port
+# Call once per test group; stores PF_PID for cleanup
+INTEGRATION_PF_PID=""
+setup_backend_pf() {
+  local port="${1:-8089}"
+  BACKEND_URL="http://localhost:${port}"
+  if ! curl -s --max-time 3 "${BACKEND_URL}/healthz" &>/dev/null; then
+    kubectl port-forward svc/rpg-backend -n rpg-system "${port}:8080" > /dev/null 2>&1 &
+    INTEGRATION_PF_PID=$!
+    for i in $(seq 1 15); do
+      sleep 1
+      if curl -s --max-time 2 "${BACKEND_URL}/healthz" &>/dev/null; then break; fi
+    done
+  fi
+}
+teardown_backend_pf() {
+  [ -n "${INTEGRATION_PF_PID:-}" ] && kill "$INTEGRATION_PF_PID" 2>/dev/null || true
+}
+
+# Submit an attack via the backend REST API and wait for attackSeq to increment.
+# Usage: submit_attack <dungeon-name> <target> [damage]
+submit_attack() {
+  local dname="$1" target="$2" damage="${3:-0}"
+  local prev_seq
+  prev_seq=$(kubectl get dungeon "$dname" -o jsonpath='{.spec.attackSeq}' 2>/dev/null || echo "0")
+  curl -s -X POST "${BACKEND_URL}/api/v1/dungeons/default/${dname}/attacks" \
+    -H "Content-Type: application/json" \
+    -d "{\"target\":\"${target}\",\"damage\":${damage}}" -o /dev/null
+  # Wait for attackSeq to increment (backend is synchronous — should be fast)
+  wait_for "${dname} attackSeq > ${prev_seq}" \
+    "[ \$(kubectl get dungeon ${dname} -o jsonpath='{.spec.attackSeq}' 2>/dev/null || echo 0) -gt ${prev_seq} ]" 30
+}
+
+# Submit an action (non-combat) via the backend REST API and wait for lastHeroAction to change.
+# Usage: submit_action <dungeon-name> <action>
+submit_action() {
+  local dname="$1" action="$2"
+  local prev_action
+  prev_action=$(kubectl get dungeon "$dname" -o jsonpath='{.spec.lastHeroAction}' 2>/dev/null || echo "")
+  curl -s -X POST "${BACKEND_URL}/api/v1/dungeons/default/${dname}/attacks" \
+    -H "Content-Type: application/json" \
+    -d "{\"target\":\"${action}\",\"damage\":0}" -o /dev/null
+  wait_for "${dname} action changed" \
+    "[ \"\$(kubectl get dungeon ${dname} -o jsonpath='{.spec.lastHeroAction}' 2>/dev/null)\" != \"${prev_action}\" ]" 30
 }

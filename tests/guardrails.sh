@@ -134,12 +134,13 @@ fi
 
 [ "$GAME_LOGIC_LEAKS" -eq 0 ] || fail "Game logic leaked into frontend"
 
-# Backend should not have combat logic (damage calc, counter-attacks, class modifiers)
-BACKEND_FILE="backend/internal/handlers/handlers.go"
-if grep -q "EFFECTIVE_DAMAGE\|counter.attack\|dodge.*chance\|damage.*reduction" "$BACKEND_FILE" 2>/dev/null; then
-  echo "  ❌ Backend has combat logic"; fail "Combat logic in backend"
+# Backend combat logic is INTENTIONAL after #110 refactor — all combat math lives in Go.
+# Guard: RGDs must NOT contain combat logic (ensures no regression back to Job-based model)
+ATTACK_RGD="manifests/rgds/attack-graph.yaml"
+if grep -q "EFFECTIVE_DAMAGE\|seededRoll\|HERO_DAMAGE" "$ATTACK_RGD" 2>/dev/null; then
+  echo "  ❌ attack-graph RGD has combat logic (must be a no-op stub)"; fail "Combat logic in attack-graph RGD"
 else
-  echo "  ✅ No combat logic in backend"; pass "No combat logic in backend"
+  echo "  ✅ attack-graph RGD is a no-op stub (combat logic lives in Go)"; pass "No combat logic in attack-graph RGD"
 fi
 
 # --- API response guardrails ---
@@ -184,23 +185,28 @@ kubectl delete dungeon "$TEST_NAME"  --ignore-not-found --wait=false &>/dev/null
 
 # --- Loot guardrails ---
 echo "=== Loot guardrails"
-LOOT_GUARDS=$(grep -c 'OLD_HP.*-gt 0.*NEW_HP.*-eq 0' manifests/rgds/attack-graph.yaml)
-[ "$LOOT_GUARDS" -ge 2 ] && pass "Loot gated on OLD_HP>0 && NEW_HP==0 ($LOOT_GUARDS checks)" || fail "Missing kill-transition guard: $LOOT_GUARDS"
+# After #110: loot logic lives in Go (handlers.go), not in attack-graph.yaml (which is a no-op stub).
+# Guard: loot drop is gated on kill transition (OLD_HP>0 && NEW_HP==0) in handlers.go
+LOOT_KILL_GUARD=$(grep -c 'oldHP > 0 && newHP == 0\|prevHP > 0 && newHP <= 0\|killTransition\|isKill' backend/internal/handlers/handlers.go 2>/dev/null || echo 0)
+[ "$LOOT_KILL_GUARD" -ge 1 ] && pass "Loot gated on kill transition in Go handler ($LOOT_KILL_GUARD checks)" || fail "Missing kill-transition guard in Go handler"
 
-NO_ITEM_LOOT=$(grep 'PATCH=.*Item used\|PATCH=.*Item equipped' manifests/rgds/attack-graph.yaml 2>/dev/null | grep -c 'lastLootDrop' || echo 0)
-ITEM_PATCHES=$(grep -c 'PATCH=.*Item used\|PATCH=.*Item equipped' manifests/rgds/attack-graph.yaml 2>/dev/null || echo 0)
-[ "$NO_ITEM_LOOT" = "$ITEM_PATCHES" ] && pass "All item patches clear lastLootDrop" || fail "Item patches missing lastLootDrop clear: $NO_ITEM_LOOT/$ITEM_PATCHES"
+# Guard: item actions clear lastLootDrop
+ITEM_CLEAR=$(grep -c 'lastLootDrop.*""' backend/internal/handlers/handlers.go 2>/dev/null || echo 0)
+[ "$ITEM_CLEAR" -ge 1 ] && pass "Go handler clears lastLootDrop on non-kill actions" || fail "Go handler missing lastLootDrop clear"
 
 grep -q 'return.*Items done' frontend/src/App.tsx && pass "Item actions early-return (no loot fallthrough)" || fail "Item actions missing early return"
 
 # --- Combat/Action separation guardrails ---
 echo "=== Combat/Action separation"
-! grep -q 'equip-\|use-.*potion\|open-treasure\|unlock-door\|enter-room-2' manifests/rgds/attack-graph.yaml 2>/dev/null && pass "attack-graph has no item/equip/door logic" || {
-  # Allow references in comments only
-  ITEM_REFS=$(grep -v '^\s*#' manifests/rgds/attack-graph.yaml | grep -c 'equip-\|use-.*potion\|open-treasure\|unlock-door\|enter-room-2' || true)
-  [ "$ITEM_REFS" -le 1 ] && pass "attack-graph has no item/equip/door logic ($ITEM_REFS refs)" || fail "attack-graph still has item logic: $ITEM_REFS refs"
-}
-! grep -q 'EFFECTIVE_DAMAGE' manifests/rgds/action-graph.yaml && pass "action-graph has no combat logic" || fail "action-graph has combat logic"
+# After #110: attack-graph and action-graph are no-op stubs (resources: []).
+# Guard: Go handler routes item actions separately from combat actions.
+ITEM_ROUTING=$(grep -c 'isItem\|open-treasure\|unlock-door\|enter-room-2\|equip-\|use-' backend/internal/handlers/handlers.go 2>/dev/null || echo 0)
+[ "$ITEM_ROUTING" -ge 3 ] && pass "Go handler routes item/equip/door actions separately ($ITEM_ROUTING refs)" || fail "Go handler missing item action routing"
+# RGDs must remain no-op stubs
+ATTACK_RGD_RESOURCES=$(grep 'resources:' manifests/rgds/attack-graph.yaml 2>/dev/null | grep -v '^\s*#' | head -1)
+echo "$ATTACK_RGD_RESOURCES" | grep -q '\[\]' && pass "attack-graph RGD is a no-op stub (resources: [])" || fail "attack-graph RGD has resources (expected no-op)"
+ACTION_RGD_RESOURCES=$(grep 'resources:' manifests/rgds/action-graph.yaml 2>/dev/null | grep -v '^\s*#' | head -1)
+echo "$ACTION_RGD_RESOURCES" | grep -q '\[\]' && pass "action-graph RGD is a no-op stub (resources: [])" || fail "action-graph RGD has resources (expected no-op)"
 
 # --- Combat animation guardrails ---
 echo "=== Combat animation guardrails"

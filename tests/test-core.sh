@@ -1,24 +1,17 @@
 #!/usr/bin/env bash
 # Group A: Core dungeon lifecycle (create, attack, kill, boss, victory)
+# After #110: attacks go through backend REST API with seeded-random combat math.
+# We poll state changes via kubectl — no wait_job needed.
 source "$(dirname "$0")/helpers.sh"
 D="test-core-$(date +%s)"
-trap 'kubectl delete dungeon "$D" --ignore-not-found --wait=false 2>/dev/null; kubectl delete attacks -l test-dungeon="$D" --ignore-not-found --wait=false 2>/dev/null' EXIT
+trap 'teardown_backend_pf; kubectl delete dungeon "$D" --ignore-not-found --wait=false 2>/dev/null; kubectl delete attacks --field-selector metadata.name="${D}-latest-attack" --ignore-not-found --wait=false 2>/dev/null' EXIT
+
+setup_backend_pf 8089
 
 log "Create dungeon"
-cat <<EOF | kubectl apply -f -
-apiVersion: game.k8s.example/v1alpha1
-kind: Dungeon
-metadata:
-  name: $D
-spec:
-  monsters: 2
-  difficulty: easy
-  monsterHP: [30, 30]
-  bossHP: 200
-  heroHP: 150
-  heroClass: warrior
-  modifier: none
-EOF
+curl -s -X POST "${BACKEND_URL}/api/v1/dungeons" \
+  -H "Content-Type: application/json" \
+  -d "{\"name\":\"${D}\",\"monsters\":2,\"difficulty\":\"easy\",\"heroClass\":\"warrior\"}" -o /dev/null
 
 wait_for "namespace" "kubectl get ns $D" 60 && pass "Namespace created" || fail "Namespace"
 wait_for "monsters" "[ \$(kubectl get monsters -n $D --no-headers 2>/dev/null | wc -l) -eq 2 ]" 60 && pass "2 monster CRs" || fail "Monsters"
@@ -29,54 +22,32 @@ wait_for "treasure" "kubectl get treasure ${D}-treasure -n $D" 60 && pass "Treas
 wait_for "livingMonsters=2" "[ \$(kubectl get dungeon $D -o jsonpath='{.status.livingMonsters}' 2>/dev/null) = '2' ]" 30 && pass "livingMonsters=2" || fail "livingMonsters"
 wait_for "bossState=pending" "[ \$(kubectl get dungeon $D -o jsonpath='{.status.bossState}' 2>/dev/null) = 'pending' ]" 30 && pass "bossState=pending" || fail "bossState"
 
-log "Attack monster-0 (partial)"
-cat <<EOF | kubectl apply -f -
-apiVersion: game.k8s.example/v1alpha1
-kind: Attack
-metadata:
-  name: ${D}-atk1
-  labels: {test-dungeon: "$D"}
-spec: {dungeonName: "$D", dungeonNamespace: default, target: "${D}-monster-0", damage: 15}
-EOF
-wait_job "${D}-atk1"
-wait_for "HP=15" "[ \$(kubectl get dungeon $D -o jsonpath='{.spec.monsterHP[0]}' 2>/dev/null) = '15' ]" 30 && pass "monster-0 HP=15" || fail "HP"
+log "Attack monster-0 until dead"
+for i in $(seq 1 10); do
+  submit_attack "$D" "${D}-monster-0"
+  HP=$(kubectl get dungeon "$D" -o jsonpath='{.spec.monsterHP[0]}' 2>/dev/null || echo "30")
+  [ "$HP" -le 0 ] && break
+done
+HP=$(kubectl get dungeon "$D" -o jsonpath='{.spec.monsterHP[0]}' 2>/dev/null)
+[ "$HP" -le 0 ] && pass "monster-0 HP=0" || fail "monster-0 HP=$HP after 10 attacks"
 
-log "Kill monster-0"
-cat <<EOF | kubectl apply -f -
-apiVersion: game.k8s.example/v1alpha1
-kind: Attack
-metadata:
-  name: ${D}-atk2
-  labels: {test-dungeon: "$D"}
-spec: {dungeonName: "$D", dungeonNamespace: default, target: "${D}-monster-0", damage: 15}
-EOF
-wait_job "${D}-atk2"
-wait_for "HP=0" "[ \$(kubectl get dungeon $D -o jsonpath='{.spec.monsterHP[0]}' 2>/dev/null) = '0' ]" 30 && pass "monster-0 HP=0" || fail "HP"
-wait_for "living=1" "[ \$(kubectl get dungeon $D -o jsonpath='{.status.livingMonsters}' 2>/dev/null) = '1' ]" 30 && pass "livingMonsters=1" || fail "living"
+wait_for "living=1" "[ \$(kubectl get dungeon $D -o jsonpath='{.status.livingMonsters}' 2>/dev/null) = '1' ]" 60 && pass "livingMonsters=1" || fail "livingMonsters"
 
 log "Kill monster-1, boss unlocks"
-cat <<EOF | kubectl apply -f -
-apiVersion: game.k8s.example/v1alpha1
-kind: Attack
-metadata:
-  name: ${D}-atk3
-  labels: {test-dungeon: "$D"}
-spec: {dungeonName: "$D", dungeonNamespace: default, target: "${D}-monster-1", damage: 30}
-EOF
-wait_job "${D}-atk3"
-wait_for "living=0" "[ \$(kubectl get dungeon $D -o jsonpath='{.status.livingMonsters}' 2>/dev/null) = '0' ]" 30 && pass "livingMonsters=0" || fail "living"
-wait_for "boss ready" "[ \$(kubectl get dungeon $D -o jsonpath='{.status.bossState}' 2>/dev/null) = 'ready' ]" 30 && pass "bossState=ready" || fail "boss"
+for i in $(seq 1 10); do
+  submit_attack "$D" "${D}-monster-1"
+  HP=$(kubectl get dungeon "$D" -o jsonpath='{.spec.monsterHP[1]}' 2>/dev/null || echo "30")
+  [ "$HP" -le 0 ] && break
+done
+wait_for "living=0" "[ \$(kubectl get dungeon $D -o jsonpath='{.status.livingMonsters}' 2>/dev/null) = '0' ]" 30 && pass "livingMonsters=0" || fail "livingMonsters"
+wait_for "boss ready" "[ \$(kubectl get dungeon $D -o jsonpath='{.status.bossState}' 2>/dev/null) = 'ready' ]" 60 && pass "bossState=ready" || fail "boss"
 
 log "Defeat boss"
-cat <<EOF | kubectl apply -f -
-apiVersion: game.k8s.example/v1alpha1
-kind: Attack
-metadata:
-  name: ${D}-atk4
-  labels: {test-dungeon: "$D"}
-spec: {dungeonName: "$D", dungeonNamespace: default, target: "${D}-boss", damage: 200}
-EOF
-wait_job "${D}-atk4"
-wait_for "victory" "[ \$(kubectl get dungeon $D -o jsonpath='{.status.victory}' 2>/dev/null) = 'true' ]" 30 && pass "victory=true" || fail "victory"
+for i in $(seq 1 50); do
+  submit_attack "$D" "${D}-boss"
+  BOSS_HP=$(kubectl get dungeon "$D" -o jsonpath='{.spec.bossHP}' 2>/dev/null || echo "200")
+  [ "$BOSS_HP" -le 0 ] && break
+done
+wait_for "victory" "[ \$(kubectl get dungeon $D -o jsonpath='{.status.victory}' 2>/dev/null) = 'true' ]" 60 && pass "victory=true" || fail "victory"
 
 summary "Core Lifecycle"
