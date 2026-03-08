@@ -268,6 +268,8 @@ export default function App() {
           if (target.startsWith('equip-helmet')) return d.spec.helmetBonus
           if (target.startsWith('equip-pants')) return d.spec.pantsBonus
           if (target.startsWith('equip-boots')) return d.spec.bootsBonus
+          if (target.startsWith('equip-ring')) return d.spec.ringBonus
+          if (target.startsWith('equip-amulet')) return d.spec.amuletBonus
           return d.spec.lastHeroAction
         }
         const prevVal = checkField(detail)
@@ -828,6 +830,16 @@ function CheatModal({ onClose, onAction }: { onClose: () => void; onAction: (tar
       { id: 'equip-boots-rare', label: 'Rare Boots', sprite: 'boots-rare' },
       { id: 'equip-boots-epic', label: 'Epic Boots', sprite: 'boots-epic' },
     ]},
+    { title: 'Rings', items: [
+      { id: 'equip-ring-common', label: 'Common Ring', sprite: 'ring-common' },
+      { id: 'equip-ring-rare', label: 'Rare Ring', sprite: 'ring-rare' },
+      { id: 'equip-ring-epic', label: 'Epic Ring', sprite: 'ring-epic' },
+    ]},
+    { title: 'Amulets', items: [
+      { id: 'equip-amulet-common', label: 'Common Amulet', sprite: 'amulet-common' },
+      { id: 'equip-amulet-rare', label: 'Rare Amulet', sprite: 'amulet-rare' },
+      { id: 'equip-amulet-epic', label: 'Epic Amulet', sprite: 'amulet-epic' },
+    ]},
     { title: 'HP Potions', items: [
       { id: 'use-hppotion-common', label: '+20 HP', sprite: 'hppotion-common' },
       { id: 'use-hppotion-rare', label: '+40 HP', sprite: 'hppotion-rare' },
@@ -1204,6 +1216,8 @@ function DungeonView({ cr, prevCr, onBack, onAttack, events, k8sLog, showLoot, o
             <span>Room: <span style={{ color: 'var(--gold)' }}>{spec.currentRoom ?? 1}</span></span>
             {spec.weaponBonus ? <span>⚔ Weapon +{spec.weaponBonus}</span> : null}
             {spec.armorBonus ? <span>🛡 Armor {spec.armorBonus}%</span> : null}
+            {spec.ringBonus ? <span>💍 Ring +{spec.ringBonus}/turn</span> : null}
+            {spec.amuletBonus ? <span>📿 Amulet +{spec.amuletBonus}%dmg</span> : null}
           </div>
           <div style={{ marginTop: 8 }}>
             <button className="btn" style={{ fontSize: 7 }} onClick={onBack}>← New Dungeon</button>
@@ -1223,6 +1237,8 @@ function DungeonView({ cr, prevCr, onBack, onAttack, events, k8sLog, showLoot, o
             {spec.armorBonus ? <span>🛡 Armor {spec.armorBonus}%</span> : null}
             {spec.helmetBonus ? <span>⛑ Helmet +{spec.helmetBonus}%crit</span> : null}
             {spec.pantsBonus ? <span>👖 Pants +{spec.pantsBonus}%dodge</span> : null}
+            {spec.ringBonus ? <span>💍 Ring +{spec.ringBonus}/turn</span> : null}
+            {spec.amuletBonus ? <span>📿 Amulet +{spec.amuletBonus}%dmg</span> : null}
           </div>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 8 }}>
             <button className="btn btn-gold" style={{ fontSize: 7 }} onClick={() => setShowCertificate(true)}>
@@ -1528,6 +1544,8 @@ function DungeonView({ cr, prevCr, onBack, onAttack, events, k8sLog, showLoot, o
             const hb = spec.helmetBonus || 0
             const pb = spec.pantsBonus || 0
             const bb = spec.bootsBonus || 0
+            const rb = spec.ringBonus || 0
+            const amb = spec.amuletBonus || 0
             const modifier = spec.modifier || 'none'
             const poison = spec.poisonTurns || 0
             const burn = spec.burnTurns || 0
@@ -1568,13 +1586,25 @@ function DungeonView({ cr, prevCr, onBack, onAttack, events, k8sLog, showLoot, o
                       </div>
                     </Tooltip>
                   </div>
-                  <div className="equip-row">
-                    <Tooltip text={bb > 0 ? `Boots equipped: ${bb}% chance to resist status effects` : 'Boots — none equipped'}>
-                      <div className={`equip-slot${bb > 0 ? ' filled' : ' empty'}`}>
-                        {bb > 0 ? <><ItemSprite id={bb >= 60 ? 'boots-epic' : bb >= 40 ? 'boots-rare' : 'boots-common'} size={22} /><span className="slot-stat">{bb}%</span></> : <PixelIcon name="boots" size={14} color="#333" />}
-                      </div>
-                    </Tooltip>
-                  </div>
+                   <div className="equip-row">
+                     <Tooltip text={bb > 0 ? `Boots equipped: ${bb}% chance to resist status effects` : 'Boots — none equipped'}>
+                       <div className={`equip-slot${bb > 0 ? ' filled' : ' empty'}`}>
+                         {bb > 0 ? <><ItemSprite id={bb >= 60 ? 'boots-epic' : bb >= 40 ? 'boots-rare' : 'boots-common'} size={22} /><span className="slot-stat">{bb}%</span></> : <PixelIcon name="boots" size={14} color="#333" />}
+                       </div>
+                     </Tooltip>
+                   </div>
+                   <div className="equip-row">
+                     <Tooltip text={rb > 0 ? `Ring equipped: +${rb} HP regen at start of each round` : 'Ring — none equipped'}>
+                       <div className={`equip-slot${rb > 0 ? ' filled' : ' empty'}`}>
+                         {rb > 0 ? <><ItemSprite id={rb >= 12 ? 'ring-epic' : rb >= 8 ? 'ring-rare' : 'ring-common'} size={22} /><span className="slot-stat">+{rb}</span></> : <PixelIcon name="ring" size={14} color="#333" />}
+                       </div>
+                     </Tooltip>
+                     <Tooltip text={amb > 0 ? `Amulet equipped: +${amb}% to all damage dealt` : 'Amulet — none equipped'}>
+                       <div className={`equip-slot${amb > 0 ? ' filled' : ' empty'}`}>
+                         {amb > 0 ? <><ItemSprite id={amb >= 30 ? 'amulet-epic' : amb >= 20 ? 'amulet-rare' : 'amulet-common'} size={22} /><span className="slot-stat">+{amb}%</span></> : <PixelIcon name="amulet" size={14} color="#333" />}
+                       </div>
+                     </Tooltip>
+                   </div>
                 </div>
 
                 <div className="status-row">
@@ -1597,13 +1627,15 @@ function DungeonView({ cr, prevCr, onBack, onAttack, events, k8sLog, showLoot, o
                       {items.map((item, i) => {
                         const rarity = item.split('-').pop()!
                         const isPotion = item.includes('potion')
-                        const desc = item.includes('weapon') ? `Weapon (${rarity}) — click to equip, +damage for 3 attacks` :
+                        const desc =                           item.includes('weapon') ? `Weapon (${rarity}) — click to equip, +damage for 3 attacks` :
                           item.includes('armor') ? `Armor (${rarity}) — click to equip, +defense for dungeon` :
                           item.includes('hppotion') ? `HP Potion (${rarity}) — click to restore HP` :
                           item.includes('manapotion') ? `Mana Potion (${rarity}) — click to restore mana` :
                           item.includes('helmet') ? `Helmet (${rarity}) — click to equip, +crit chance` :
                           item.includes('pants') ? `Pants (${rarity}) — click to equip, +dodge chance` :
-                          item.includes('boots') ? `Boots (${rarity}) — click to equip, +status resist` : item
+                          item.includes('boots') ? `Boots (${rarity}) — click to equip, +status resist` :
+                          item.includes('ring') ? `Ring (${rarity}) — click to equip, +HP regen per round` :
+                          item.includes('amulet') ? `Amulet (${rarity}) — click to equip, +% damage boost` : item
                         return (
                           <Tooltip key={i} text={desc}>
                             <button className="backpack-slot" disabled={gameOver || !!attackPhase}
