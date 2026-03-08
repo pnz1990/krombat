@@ -187,20 +187,19 @@ export default function App() {
         attackingRef.current = false
         return // Items done — don't fall through to combat/loot logic
       } else {
-        // Combat: wait for Job to run, then poll for result
+        // Combat: backend is synchronous — attackSeq increments before API returns.
+        // Capture prevSeq from the pre-attack state (detail), not after a wait.
         const oldHP = detail?.spec.heroHP ?? 100
         const formula = detail?.status?.diceFormula || '2d12+4'
+        const prevSeq = detail?.spec.attackSeq || 0
 
         if (!isAbility) {
           setCombatModal({ phase: 'rolling', formula, heroAction: '', enemyAction: '', spec: detail?.spec, oldHP })
         }
 
-        await new Promise(r => setTimeout(r, 5000))
-        // Read attackSeq AFTER initial wait — any stale Jobs that resolved during
-        // submission + wait are now reflected in the baseline
-        const freshState = await getDungeon(selected.ns, selected.name)
-        const prevSeq = freshState.spec.attackSeq || 0
+        // Poll until attackSeq > prevSeq (should resolve on first or second attempt)
         for (let attempt = 0; attempt < 20; attempt++) {
+          await new Promise(r => setTimeout(r, 1000))
           const current = await getDungeon(selected.ns, selected.name)
           if ((current.spec.attackSeq || 0) > prevSeq) {
             updated = current
