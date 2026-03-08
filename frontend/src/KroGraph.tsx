@@ -170,7 +170,7 @@ export function buildGraph(cr: DungeonCR, reconciling: boolean): { nodes: GraphN
       kind: 'Secret',
       state: lootExists ? 'ok' : 'locked',
       exists: lootExists,
-      concept: 'secrets',
+      concept: 'secret-output',
       detail: lootExists ? 'item data in Secret' : 'created by loot-graph',
     })
     edges.push({ from: lootId, to: lootSecretId, label: 'loot-graph', dashed: !lootExists })
@@ -237,7 +237,7 @@ export function buildGraph(cr: DungeonCR, reconciling: boolean): { nodes: GraphN
     kind: 'Secret',
     state: bossLootExists ? 'ok' : 'locked',
     exists: bossLootExists,
-    concept: 'secrets',
+    concept: 'secret-output',
     detail: bossLootExists ? 'boss item in Secret' : 'created by loot-graph',
   })
   edges.push({ from: 'boss-loot', to: 'boss-loot-secret', label: 'loot-graph', dashed: !bossLootExists })
