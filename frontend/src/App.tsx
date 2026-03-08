@@ -468,6 +468,7 @@ export default function App() {
     setDeleting(prev => new Set(prev).add(delName))
     try {
       await deleteDungeon(delNs, delName)
+      triggerInsight('dungeon-deleted')
       if (selected?.name === delName) navigate('/')
       // Clear last dungeon from localStorage if it was the deleted one
       try {
