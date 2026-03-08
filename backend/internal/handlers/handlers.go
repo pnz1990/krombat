@@ -653,7 +653,7 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 			if heroClass == "warrior" {
 				counter = counter * 3 / 4
 			} else if heroClass == "rogue" {
-				if seededRoll(attackUID+"-dodge", 100) < 25 {
+				if seededRoll(attackUID+"-dodge-boss", 100) < 25 {
 					counter = 0
 					classNote += " Rogue dodged!"
 				}
@@ -819,7 +819,7 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 			if heroClass == "warrior" {
 				totalCounter = totalCounter * 4 / 5
 			} else if heroClass == "rogue" {
-				if seededRoll(attackUID+"-dodge", 100) < 25 {
+				if seededRoll(attackUID+"-dodge-monster", 100) < 25 {
 					totalCounter = 0
 					classNote += " Rogue dodged!"
 				}
