@@ -231,6 +231,7 @@ func (h *Handler) ListDungeons(w http.ResponseWriter, r *http.Request) {
 		LivingMonsters interface{} `json:"livingMonsters"`
 		BossState      interface{} `json:"bossState"`
 		Victory        interface{} `json:"victory"`
+		Modifier       interface{} `json:"modifier"`
 	}
 	items := []summary{}
 	for _, d := range list.Items {
@@ -246,6 +247,7 @@ func (h *Handler) ListDungeons(w http.ResponseWriter, r *http.Request) {
 			LivingMonsters: status["livingMonsters"],
 			BossState:      status["bossState"],
 			Victory:        status["victory"],
+			Modifier:       spec["modifier"],
 		})
 	}
 	w.Header().Set("Content-Type", "application/json")

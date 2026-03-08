@@ -3,6 +3,7 @@ const BASE = '/api/v1'
 export interface DungeonSummary {
   name: string; namespace: string; difficulty: string
   livingMonsters: number | null; bossState: string | null; victory: boolean | null
+  modifier?: string | null
 }
 
 // GetDungeon now returns the raw Dungeon CR — all state is in spec + status

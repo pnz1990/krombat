@@ -613,6 +613,11 @@ function DungeonList({ dungeons, onSelect, onDelete, deleting, lastDungeon }: {
             <span className={`tag tag-${d.difficulty}`}>{d.difficulty}</span>
             <span>Monsters: {d.livingMonsters ?? '?'}</span>
             <span>Boss: {d.bossState === 'pending' ? 'Locked' : d.bossState === 'ready' ? 'Ready' : d.bossState === 'defeated' ? 'Defeated' : d.bossState ?? '?'}</span>
+            {d.modifier && d.modifier !== 'none' && (
+              <span className={`tag tag-modifier-${d.modifier.startsWith('curse') ? 'curse' : 'blessing'}`} title={d.modifier}>
+                {d.modifier.startsWith('curse') ? '⚠' : '✦'} {d.modifier.replace(/^(curse|blessing)-/, '')}
+              </span>
+            )}
             {d.victory && <span className="victory">VICTORY!</span>}
             {!d.victory && <span style={{ color: 'var(--green)' }}>In Progress</span>}
           </div>
@@ -1146,14 +1151,33 @@ function DungeonView({ cr, prevCr, onBack, onAttack, events, k8sLog, showLoot, o
         <div className="defeat-banner">
           <h2><PixelIcon name="skull" size={18} /> DEFEAT <PixelIcon name="skull" size={18} /></h2>
           <p className="defeat-text">Your hero has fallen...</p>
+          <div style={{ marginTop: 8 }}>
+            <button className="btn" style={{ fontSize: 7 }} onClick={onBack}>← New Dungeon</button>
+          </div>
         </div>
       )}
 
       {gameOver && !isDefeated && (spec.currentRoom || 1) === 2 && (
-        <div className="victory-banner" style={{ cursor: 'pointer' }} onClick={() => setShowCertificate(true)}>
+        <div className="victory-banner">
           <h2><PixelIcon name="crown" size={18} /> VICTORY! <PixelIcon name="crown" size={18} /></h2>
           <p className="loot">The dungeon has been conquered!</p>
-          <p style={{ fontSize: 7, color: 'var(--text-dim)', marginTop: 4 }}>Click for your kro certificate →</p>
+          <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap', margin: '8px 0', fontSize: 7, color: 'var(--text-dim)' }}>
+            <span>Turns: <span style={{ color: 'var(--gold)' }}>{spec.attackSeq ?? 0}</span></span>
+            <span>Hero: <span style={{ color: 'var(--gold)' }}>{spec.heroClass ?? 'warrior'}</span></span>
+            <span>Difficulty: <span style={{ color: 'var(--gold)' }}>{spec.difficulty}</span></span>
+            {spec.weaponBonus ? <span>⚔ Weapon +{spec.weaponBonus}</span> : null}
+            {spec.armorBonus ? <span>🛡 Armor {spec.armorBonus}%</span> : null}
+            {spec.helmetBonus ? <span>⛑ Helmet +{spec.helmetBonus}%crit</span> : null}
+            {spec.pantsBonus ? <span>👖 Pants +{spec.pantsBonus}%dodge</span> : null}
+          </div>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 8 }}>
+            <button className="btn btn-gold" style={{ fontSize: 7 }} onClick={() => setShowCertificate(true)}>
+              View kro Certificate →
+            </button>
+            <button className="btn" style={{ fontSize: 7 }} onClick={onBack}>
+              ← New Dungeon
+            </button>
+          </div>
         </div>
       )}
 
