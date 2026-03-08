@@ -835,6 +835,7 @@ export function KroGraphPanel({ cr, prevCr, reconciling, onViewConcept }: KroGra
   const [inspectorLoading, setInspectorLoading] = useState(false)
 
   const handleNodeSelect = useCallback(async (nodeId: string, nodeKind: string) => {
+    // Static kind map for non-indexed nodes
     const kindMap: Record<string, ResourceKind> = {
       'dungeon': 'dungeon',
       'hero': 'hero',
@@ -843,8 +844,35 @@ export function KroGraphPanel({ cr, prevCr, reconciling, onViewConcept }: KroGra
       'boss-state': 'bossstate',
       'namespace': 'namespace',
       'game-config': 'gameconfig',
+      'treasure': 'treasure',
+      'treasure-cm': 'treasurecm',
+      'treasure-secret': 'treasuresecret',
+      'modifier': 'modifier',
+      'modifier-state': 'modifier',  // same CR
+      'combat-result': 'combatresult',
     }
-    const kind = kindMap[nodeId]
+
+    // Extract index from monster-N / monster-cm-N / loot-mN / loot-secret-mN node IDs
+    const monsterMatch = nodeId.match(/^monster-(\d+)$/)
+    const monsterCmMatch = nodeId.match(/^monster-cm-(\d+)$/)
+    const lootMatch = nodeId.match(/^loot-m(\d+)$/)
+    const lootSecretMatch = nodeId.match(/^loot-secret-m(\d+)$/)
+
+    let kind: ResourceKind | undefined
+    let index: number | undefined
+
+    if (monsterMatch) {
+      kind = 'monster'; index = parseInt(monsterMatch[1])
+    } else if (monsterCmMatch) {
+      kind = 'monsterstate'; index = parseInt(monsterCmMatch[1])
+    } else if (lootMatch) {
+      kind = 'monster'; index = parseInt(lootMatch[1])  // loot node maps to its Monster CR
+    } else if (lootSecretMatch) {
+      kind = 'monster'; index = parseInt(lootSecretMatch[1])
+    } else {
+      kind = kindMap[nodeId] as ResourceKind | undefined
+    }
+
     if (!kind) return
 
     const ns = cr.metadata.namespace
@@ -857,7 +885,7 @@ export function KroGraphPanel({ cr, prevCr, reconciling, onViewConcept }: KroGra
 
     try {
       const { getDungeonResource } = await import('./api')
-      const data = await getDungeonResource(ns, name, kind)
+      const data = await getDungeonResource(ns, name, kind, index)
       setInspectorData(data)
     } catch {
       setInspectorData(null)

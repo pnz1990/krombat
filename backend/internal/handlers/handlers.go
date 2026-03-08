@@ -1546,11 +1546,12 @@ func sliceInt(v interface{}) int64 {
 }
 
 // GetDungeonResource fetches a child resource of a dungeon for the kro Inspector panel.
-// GET /api/v1/dungeons/{namespace}/{name}/resources?kind=hero
+// GET /api/v1/dungeons/{namespace}/{name}/resources?kind=hero[&index=0]
 func (h *Handler) GetDungeonResource(w http.ResponseWriter, r *http.Request) {
 	ns := r.PathValue("namespace")
 	name := r.PathValue("name")
 	kind := r.URL.Query().Get("kind")
+	index := r.URL.Query().Get("index") // optional, for indexed resources (monster-N, loot-N)
 	ctx := r.Context()
 
 	type resourceDef struct {
@@ -1571,14 +1572,34 @@ func (h *Handler) GetDungeonResource(w http.ResponseWriter, r *http.Request) {
 		def = &resourceDef{schema.GroupVersionResource{Group: grp, Version: ver, Resource: "heroes"}, name + "-hero"}
 	case "boss":
 		def = &resourceDef{schema.GroupVersionResource{Group: grp, Version: ver, Resource: "bosses"}, name + "-boss"}
+	case "treasure":
+		def = &resourceDef{schema.GroupVersionResource{Group: grp, Version: ver, Resource: "treasures"}, name + "-treasure"}
+	case "modifier":
+		def = &resourceDef{schema.GroupVersionResource{Group: grp, Version: ver, Resource: "modifiers"}, name + "-modifier"}
+	case "monster":
+		if index == "" {
+			index = "0"
+		}
+		def = &resourceDef{schema.GroupVersionResource{Group: grp, Version: ver, Resource: "monsters"}, name + "-monster-" + index}
 	case "namespace":
 		def = &resourceDef{schema.GroupVersionResource{Group: coreGrp, Version: coreVer, Resource: "namespaces"}, ns}
 	case "herostate":
 		def = &resourceDef{schema.GroupVersionResource{Group: coreGrp, Version: coreVer, Resource: "configmaps"}, name + "-hero-state"}
 	case "bossstate":
 		def = &resourceDef{schema.GroupVersionResource{Group: coreGrp, Version: coreVer, Resource: "configmaps"}, name + "-boss-state"}
+	case "monsterstate":
+		if index == "" {
+			index = "0"
+		}
+		def = &resourceDef{schema.GroupVersionResource{Group: coreGrp, Version: coreVer, Resource: "configmaps"}, name + "-monster-" + index}
 	case "gameconfig":
 		def = &resourceDef{schema.GroupVersionResource{Group: coreGrp, Version: coreVer, Resource: "configmaps"}, name + "-game-config"}
+	case "combatresult":
+		def = &resourceDef{schema.GroupVersionResource{Group: coreGrp, Version: coreVer, Resource: "configmaps"}, name + "-combat-result"}
+	case "treasurecm":
+		def = &resourceDef{schema.GroupVersionResource{Group: coreGrp, Version: coreVer, Resource: "configmaps"}, name + "-treasure"}
+	case "treasuresecret":
+		def = &resourceDef{schema.GroupVersionResource{Group: coreGrp, Version: coreVer, Resource: "secrets"}, name + "-treasure-secret"}
 	default:
 		writeError(w, "unknown kind: "+kind, http.StatusBadRequest)
 		return
