@@ -308,6 +308,66 @@ resource "aws_cloudwatch_log_metric_filter" "reaper_success" {
   }
 }
 
+# Extracts attack handler duration_ms for P95 latency tracking.
+# Log line emitted by processCombat: attack_processed dungeon=<n> target=<t> duration_ms=<v>
+resource "aws_cloudwatch_log_metric_filter" "attack_latency" {
+  name           = "${var.cluster_name}-attack-latency"
+  log_group_name = aws_cloudwatch_log_group.rpg_system.name
+  pattern        = "[timestamp, level, msg=\"attack_processed\", dungeon, target, duration]"
+
+  metric_transformation {
+    name      = "AttackDurationMs"
+    namespace = "Krombat/Game"
+    value     = "$duration"
+    unit      = "Milliseconds"
+  }
+}
+
+# Extracts action handler duration_ms for P95 latency tracking.
+# Log line emitted by processAction: action_processed dungeon=<n> action=<a> duration_ms=<v>
+resource "aws_cloudwatch_log_metric_filter" "action_latency" {
+  name           = "${var.cluster_name}-action-latency"
+  log_group_name = aws_cloudwatch_log_group.rpg_system.name
+  pattern        = "[timestamp, level, msg=\"action_processed\", dungeon, action, duration]"
+
+  metric_transformation {
+    name      = "ActionDurationMs"
+    namespace = "Krombat/Game"
+    value     = "$duration"
+    unit      = "Milliseconds"
+  }
+}
+
+# Counts each processed attack event for game-event throughput tracking.
+resource "aws_cloudwatch_log_metric_filter" "attack_count" {
+  name           = "${var.cluster_name}-attack-count"
+  log_group_name = aws_cloudwatch_log_group.rpg_system.name
+  pattern        = "attack_processed"
+
+  metric_transformation {
+    name          = "AttackCount"
+    namespace     = "Krombat/Game"
+    value         = "1"
+    default_value = "0"
+    unit          = "Count"
+  }
+}
+
+# Counts each processed action event for game-event throughput tracking.
+resource "aws_cloudwatch_log_metric_filter" "action_count" {
+  name           = "${var.cluster_name}-action-count"
+  log_group_name = aws_cloudwatch_log_group.rpg_system.name
+  pattern        = "action_processed"
+
+  metric_transformation {
+    name          = "ActionCount"
+    namespace     = "Krombat/Game"
+    value         = "1"
+    default_value = "0"
+    unit          = "Count"
+  }
+}
+
 # --- Additional CloudWatch Alarms ---
 
 # Alert if active dungeon count (running game-namespace pods) exceeds 50
