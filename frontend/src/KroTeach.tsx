@@ -874,7 +874,7 @@ export function CelTrace({ data, onLearnMore }: { data: CelTraceData; onLearnMor
       </button>
       {open && (
         <div className="cel-trace-body">
-          <div className="cel-trace-header">dungeon-graph → combatResult ConfigMap</div>
+          <div className="cel-trace-header">dungeon-graph → combatResult ConfigMap <span style={{ fontSize: 10, color: '#888', marginLeft: 6 }}>post-reconcile state</span></div>
           <table className="cel-trace-table">
             <thead>
               <tr>

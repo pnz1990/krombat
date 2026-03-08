@@ -1164,13 +1164,13 @@ function DungeonView({ cr, prevCr, onBack, onAttack, events, k8sLog, showLoot, o
                   <CelTrace
                     data={{
                       formula: combatModal.formula,
-                      difficulty: spec.difficulty || 'normal',
-                      heroClass: spec.heroClass || 'warrior',
+                      difficulty: combatModal.spec?.difficulty || spec.difficulty || 'normal',
+                      heroClass: combatModal.spec?.heroClass || spec.heroClass || 'warrior',
                       heroAction: combatModal.heroAction,
                       combatLog: combatModal.spec?.lastCombatLog || '',
-                      modifier: spec.modifier,
-                      helmetBonus: spec.helmetBonus,
-                      pantsBonus: spec.pantsBonus,
+                      modifier: combatModal.spec?.modifier ?? spec.modifier,
+                      helmetBonus: combatModal.spec?.helmetBonus ?? spec.helmetBonus,
+                      pantsBonus: combatModal.spec?.pantsBonus ?? spec.pantsBonus,
                     }}
                     onLearnMore={() => onViewKroConcept('cel-basics')}
                   />
