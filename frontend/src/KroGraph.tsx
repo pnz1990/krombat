@@ -116,7 +116,8 @@ export function buildGraph(cr: DungeonCR, reconciling: boolean): { nodes: GraphN
   edges.push({ from: 'hero', to: 'hero-cm', label: 'hero-graph' })
 
   // Monster CRs (show up to 4 collapsed if more)
-  const showMonsters = Math.min(monsterHP.length, 4)
+  const totalMonsters = monsterHP.length
+  const showMonsters = Math.min(totalMonsters, 4)
   for (let i = 0; i < showMonsters; i++) {
     const hp = monsterHP[i]
     const mState: NodeState = reconciling && hp > 0 ? 'reconciling' : hp > 0 ? 'alive' : 'dead'
@@ -128,10 +129,11 @@ export function buildGraph(cr: DungeonCR, reconciling: boolean): { nodes: GraphN
       state: mState,
       exists: true,
       concept: 'forEach',
-      detail: `HP: ${hp}/${status?.maxMonsterHP ?? '?'}`,
+      detail: `HP: ${hp}/${status?.maxMonsterHP ?? '?'} · forEach item ${i + 1}/${totalMonsters}`,
       pulse: reconciling && hp > 0,
     })
-    edges.push({ from: 'dungeon', to: mId, label: i === 0 ? 'forEach' : undefined })
+    // First edge shows forEach ×N count to make fan-out visible
+    edges.push({ from: 'dungeon', to: mId, label: i === 0 ? `forEach ×${totalMonsters}` : undefined })
 
     // monsterState ConfigMap
     const mcmId = `monster-cm-${i}`
@@ -173,15 +175,15 @@ export function buildGraph(cr: DungeonCR, reconciling: boolean): { nodes: GraphN
     })
     edges.push({ from: lootId, to: lootSecretId, label: 'loot-graph', dashed: !lootExists })
   }
-  if (monsterHP.length > 4) {
+  if (totalMonsters > 4) {
     nodes.push({
       id: 'monster-more',
-      label: `+${monsterHP.length - 4} more`,
+      label: `+${totalMonsters - 4} more`,
       kind: 'Monster CR',
       state: 'ok',
       exists: true,
       concept: 'forEach',
-      detail: `${monsterHP.length - 4} additional monsters`,
+      detail: `${totalMonsters - 4} additional monsters (forEach ×${totalMonsters} total)`,
     })
     edges.push({ from: 'dungeon', to: 'monster-more' })
   }

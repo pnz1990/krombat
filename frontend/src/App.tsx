@@ -391,6 +391,8 @@ export default function App() {
         if (newDeadCount > prevDeadCount) triggerInsight('monster-killed')
         // First attack
         if ((detail?.spec.attackSeq ?? 0) === 0 && (updated.spec.attackSeq ?? 0) > 0) triggerInsight('first-attack')
+        // Second attack — teach the reconcile loop concept
+        if ((detail?.spec.attackSeq ?? 0) === 1 && (updated.spec.attackSeq ?? 0) > 1) triggerInsight('second-attack')
       }
 
       // Don't clear attackPhase/attackTarget — user must dismiss combat modal
@@ -1112,6 +1114,7 @@ function DungeonView({ cr, prevCr, onBack, onAttack, events, k8sLog, showLoot, o
                 <div style={{ marginTop: 8, fontSize: 6, color: '#2a4a6a', textAlign: 'center', lineHeight: 1.8 }}>
                   <span className="kro-insight-badge" style={{ fontSize: 5 }}>kro</span>
                   {' '}dungeon-graph reconciling → combatResult CEL computing {combatModal.formula}
+                  {' '}<button onClick={() => onViewKroConcept('reconcile-loop')} style={{ background: 'none', border: 'none', color: '#00d4ff', cursor: 'pointer', fontSize: 6, fontFamily: 'inherit', padding: 0, textDecoration: 'underline' }}>what is this?</button>
                 </div>
               </>
             ) : (

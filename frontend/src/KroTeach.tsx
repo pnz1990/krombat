@@ -28,6 +28,7 @@ export type KroConceptId =
   | 'spec-mutation'
   | 'externalRef'
   | 'status-conditions'
+  | 'reconcile-loop'
 
 export interface KroConcept {
   id: KroConceptId
@@ -376,6 +377,31 @@ status:
     learnMore: 'manifests/rgds/dungeon-graph.yaml — status block',
   },
 
+  'reconcile-loop': {
+    id: 'reconcile-loop',
+    title: 'The kro Reconcile Loop',
+    tagline: 'Every action triggers a watch → eval → write cycle. The ~1s pause IS kro working.',
+    body: `After every attack or action, the game waits ~1 second before showing results. That pause is the kro reconcile loop:
+
+1. **Watch** — kro's controller detects the Dungeon CR spec changed (attackSeq incremented)
+2. **CEL eval** — dungeon-graph re-evaluates all CEL expressions: dice rolls, HP calculations, loot includeWhen checks
+3. **Resource write** — kro writes the combatResult ConfigMap with the results
+4. **Backend read** — the Go backend polls until attackSeq in the ConfigMap matches, then reads the results
+5. **Frontend update** — the React app receives the updated CR and re-renders
+
+This is standard Kubernetes controller-reconciler pattern. Every controller in your cluster does the same loop — Deployments, StatefulSets, HPA — just for different resource types.`,
+    snippet: `# The poll loop in the Go backend
+for {
+  cr, _ := client.Get(ctx, dungeonName)
+  if cr.Spec.AttackSeq > prevSeq {
+    // kro has reconciled — read results
+    break
+  }
+  time.Sleep(500 * time.Millisecond)
+}`,
+    learnMore: 'backend/internal/handlers/handlers.go — processCombat poll loop',
+  },
+
   'spec-mutation': {
     id: 'spec-mutation',
     title: 'Spec Mutation Triggers Full Reconcile',
@@ -416,6 +442,7 @@ export function getInsightForEvent(event: string): InsightTrigger | null {
   if (event === 'attack-cr') return { conceptId: 'empty-rgd', headline: 'Attack CR is defined by an RGD with resources:[] — a CRD factory' }
   if (event === 'externalRef') return { conceptId: 'externalRef', headline: 'Your attack created an Attack CR — kro watched it and re-reconciled the dungeon graph' }
   if (event === 'status-conditions') return { conceptId: 'status-conditions', headline: 'kro is reporting its reconcile status via status.conditions — the Kubernetes health contract' }
+  if (event === 'second-attack') return { conceptId: 'reconcile-loop', headline: 'The ~1s pause after every action is the kro reconcile loop: watch → CEL eval → write' }
   return null
 }
 
@@ -524,7 +551,7 @@ const CONCEPT_ORDER: KroConceptId[] = [
   'rgd', 'spec-schema', 'resource-chaining', 'cel-basics', 'cel-ternary',
   'forEach', 'includeWhen', 'readyWhen', 'status-aggregation',
   'seeded-random', 'secret-output', 'empty-rgd', 'spec-mutation',
-  'externalRef', 'status-conditions',
+  'externalRef', 'status-conditions', 'reconcile-loop',
 ]
 
 interface KroGlossaryProps {
