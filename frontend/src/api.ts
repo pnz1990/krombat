@@ -75,15 +75,20 @@ export class ApiError extends Error {
   }
 }
 
-const VALID_RESOURCE_KINDS = ['dungeon', 'hero', 'herostate', 'boss', 'bossstate', 'namespace', 'gameconfig'] as const
+const VALID_RESOURCE_KINDS = [
+  'dungeon', 'hero', 'herostate', 'boss', 'bossstate', 'namespace', 'gameconfig',
+  'monster', 'monsterstate', 'treasure', 'treasurecm', 'treasuresecret', 'modifier', 'combatresult',
+] as const
 export type ResourceKind = typeof VALID_RESOURCE_KINDS[number]
 
 /** Sanitize Kubernetes resource name/namespace to safe path chars */
 function safePath(s: string): string { return s.replace(/[^a-zA-Z0-9\-_.]/g, '').slice(0, 253) }
 
-export async function getDungeonResource(ns: string, name: string, kind: ResourceKind): Promise<any> {
+export async function getDungeonResource(ns: string, name: string, kind: ResourceKind, index?: number): Promise<any> {
   // Same-origin call to /api/v1 only. ns/name are K8s identifiers, sanitized.
-  const r = await fetch(`${BASE}/dungeons/${safePath(ns)}/${safePath(name)}/resources?kind=${kind}`)
+  let url = `${BASE}/dungeons/${safePath(ns)}/${safePath(name)}/resources?kind=${kind}`
+  if (index !== undefined) url += `&index=${index}`
+  const r = await fetch(url)
   if (!r.ok) return null
   return r.json()
 }
