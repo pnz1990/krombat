@@ -631,6 +631,14 @@ interface KroGlossaryProps {
 export function KroGlossary({ unlocked, onViewConcept }: KroGlossaryProps) {
   const total = CONCEPT_ORDER.length
   const count = unlocked.size
+  const [search, setSearch] = useState('')
+
+  const filtered = CONCEPT_ORDER.filter(id => {
+    if (!search) return true
+    const c = KRO_CONCEPTS[id]
+    const q = search.toLowerCase()
+    return c.title.toLowerCase().includes(q) || c.tagline.toLowerCase().includes(q)
+  })
 
   return (
     <div className="kro-glossary">
@@ -640,8 +648,22 @@ export function KroGlossary({ unlocked, onViewConcept }: KroGlossaryProps) {
         <span style={{ fontSize: 8, color: 'var(--gold)', marginLeft: 4 }}>{count} / {total}</span>
         {count === total && <span style={{ fontSize: 7, color: '#2ecc71', marginLeft: 6 }}>kro expert!</span>}
       </div>
+      {count >= 4 && (
+        <div className="kro-glossary-search">
+          <input
+            className="kro-glossary-search-input"
+            type="text"
+            placeholder="filter concepts..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+          {search && (
+            <button className="kro-glossary-search-clear" onClick={() => setSearch('')}>×</button>
+          )}
+        </div>
+      )}
       <div className="kro-glossary-grid">
-        {CONCEPT_ORDER.map(id => {
+        {filtered.map(id => {
           const c = KRO_CONCEPTS[id]
           const isUnlocked = unlocked.has(id)
           return (
@@ -660,6 +682,9 @@ export function KroGlossary({ unlocked, onViewConcept }: KroGlossaryProps) {
           )
         })}
       </div>
+      {search && filtered.length === 0 && (
+        <div className="kro-glossary-empty">no concepts match "{search}"</div>
+      )}
       {count === 0 && (
         <div style={{ fontSize: 7, color: '#555', textAlign: 'center', padding: '16px 0' }}>
           Start playing to discover kro concepts in action.

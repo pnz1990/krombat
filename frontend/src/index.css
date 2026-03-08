@@ -1531,3 +1531,49 @@ body {
   cursor: pointer; text-align: center; padding: 4px;
 }
 .kro-onboard-skip:hover { color: #888; }
+
+.kro-glossary-search {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 8px 0 6px;
+}
+
+.kro-glossary-search-input {
+  flex: 1;
+  background: #0a1420;
+  border: 1px solid #1e3a5f;
+  color: #ccc;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 7px;
+  padding: 4px 6px;
+  outline: none;
+}
+
+.kro-glossary-search-input:focus {
+  border-color: #00d4ff;
+  box-shadow: 0 0 4px rgba(0,212,255,0.3);
+}
+
+.kro-glossary-search-clear {
+  background: none;
+  border: 1px solid #1e3a5f;
+  color: #aaa;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 6px;
+  line-height: 1;
+}
+
+.kro-glossary-search-clear:hover {
+  color: #00d4ff;
+  border-color: #00d4ff;
+}
+
+.kro-glossary-empty {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 7px;
+  color: #555;
+  text-align: center;
+  padding: 16px 0;
+}
