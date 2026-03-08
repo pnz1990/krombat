@@ -32,6 +32,8 @@ spec:
           loot: "${schema.spec.opened == 1 ? 'Key: ' + schema.spec.dungeonName + '-' + string(size(schema.spec.dungeonName) * 7) + '-RUNE' : ''}"
 
     - id: treasureSecret
+      includeWhen:
+        - "${schema.spec.opened == 1}"
       template:
         apiVersion: v1
         kind: Secret
@@ -42,4 +44,4 @@ spec:
             game.k8s.example/dungeon: ${schema.spec.dungeonName}
             game.k8s.example/entity: treasure
         stringData:
-          loot: "${schema.spec.opened == 1 ? 'Key: ' + schema.spec.dungeonName + '-' + string(size(schema.spec.dungeonName) * 7) + '-RUNE' : ''}"
+          loot: "${'Key: ' + schema.spec.dungeonName + '-' + string(size(schema.spec.dungeonName) * 7) + '-RUNE'}"
