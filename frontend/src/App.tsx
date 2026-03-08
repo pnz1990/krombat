@@ -1008,6 +1008,18 @@ function DungeonView({ cr, prevCr, onBack, onAttack, events, k8sLog, showLoot, o
       setTimeout(() => setShowCertificate(true), 800)
     }
   }, [isVictory])
+
+  // Room 1 cleared celebration — show for 3s when boss defeated in room 1
+  const [showRoom1Cleared, setShowRoom1Cleared] = useState(false)
+  const room1ClearedRef = useRef(false)
+  const room1IsCleared = (spec.currentRoom || 1) === 1 && spec.bossHP <= 0 && allMonstersDead && !isDefeated
+  useEffect(() => {
+    if (room1IsCleared && !room1ClearedRef.current) {
+      room1ClearedRef.current = true
+      setShowRoom1Cleared(true)
+      setTimeout(() => setShowRoom1Cleared(false), 3000)
+    }
+  }, [room1IsCleared])
   const [showDoorModal, setShowDoorModal] = useState(false)
   const [doorPassword, setDoorPassword] = useState('')
   const autoTriggeredRef = useRef('')
@@ -1411,6 +1423,14 @@ function DungeonView({ cr, prevCr, onBack, onAttack, events, k8sLog, showLoot, o
             {/* Victory glow */}
             {/* Flying bats */}
             <DungeonBats />
+
+            {/* Room 1 cleared — 3s celebration overlay */}
+            {showRoom1Cleared && (
+              <div className="arena-room1-cleared">
+                <div className="arena-room1-cleared-text">★ ROOM CLEARED! ★</div>
+                <div style={{ fontSize: 7, color: 'var(--text-dim)', marginTop: 6 }}>Treasure awaits...</div>
+              </div>
+            )}
 
             {status?.victory && <div className="arena-victory-glow" />}
           </div>
