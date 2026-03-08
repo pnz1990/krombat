@@ -557,7 +557,7 @@ function CheatModal({ onClose, onAction }: { onClose: () => void; onAction: (tar
     { title: 'Mana Potions', items: [
       { id: 'use-manapotion-common', label: '+2 Mana', sprite: 'manapotion-common' },
       { id: 'use-manapotion-rare', label: '+3 Mana', sprite: 'manapotion-rare' },
-      { id: 'use-manapotion-epic', label: '+5 Mana', sprite: 'manapotion-epic' },
+      { id: 'use-manapotion-epic', label: '+8 Mana', sprite: 'manapotion-epic' },
     ]},
   ]
   return (

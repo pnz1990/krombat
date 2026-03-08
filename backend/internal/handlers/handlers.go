@@ -673,7 +673,7 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 		newMonsterHP[idxInt] = newHP
 
 		// Mage mana regen on kill
-		if oldHP > 0 && newHP == 0 && heroClass == "mage" && heroMana < 5 {
+		if oldHP > 0 && newHP == 0 && heroClass == "mage" && heroMana < classMaxMana(heroClass) {
 			heroMana++
 			classNote += " +1 mana!"
 		}
@@ -850,17 +850,17 @@ func (h *Handler) processAction(ctx context.Context, ns, name, action string, w 
 			patchSpec["lastHeroAction"] = fmt.Sprintf("Used %s! HP: %d -> %d", item, heroHP, newHP)
 			patchSpec["lastEnemyAction"] = "Item used"
 		case "manapotion-common":
-			newMana := min64(heroMana+2, 5)
+			newMana := min64(heroMana+2, classMaxMana(heroClass))
 			patchSpec["heroMana"] = newMana
 			patchSpec["lastHeroAction"] = fmt.Sprintf("Used %s! Mana: %d -> %d", item, heroMana, newMana)
 			patchSpec["lastEnemyAction"] = "Item used"
 		case "manapotion-rare":
-			newMana := min64(heroMana+3, 5)
+			newMana := min64(heroMana+3, classMaxMana(heroClass))
 			patchSpec["heroMana"] = newMana
 			patchSpec["lastHeroAction"] = fmt.Sprintf("Used %s! Mana: %d -> %d", item, heroMana, newMana)
 			patchSpec["lastEnemyAction"] = "Item used"
 		case "manapotion-epic":
-			newMana := min64(heroMana+5, 5)
+			newMana := min64(heroMana+8, classMaxMana(heroClass))
 			patchSpec["heroMana"] = newMana
 			patchSpec["lastHeroAction"] = fmt.Sprintf("Used %s! Mana: %d -> %d", item, heroMana, newMana)
 			patchSpec["lastEnemyAction"] = "Item used"
@@ -1129,6 +1129,14 @@ func classMaxHP(heroClass string) int64 {
 		return 150
 	}
 	return 100
+}
+
+func classMaxMana(heroClass string) int64 {
+	switch heroClass {
+	case "mage":
+		return 8
+	}
+	return 0
 }
 
 func inventoryContains(inventory, item string) bool {
