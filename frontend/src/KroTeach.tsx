@@ -15,6 +15,7 @@ import { useState, useEffect, useCallback } from 'react'
 export type KroConceptId =
   | 'rgd'
   | 'spec-schema'
+  | 'schema-validation'
   | 'resource-chaining'
   | 'cel-basics'
   | 'cel-ternary'
@@ -104,6 +105,29 @@ spec:
         default: "warrior"
         enum: [warrior, mage, rogue]`,
     learnMore: 'manifests/rgds/dungeon-graph.yaml — spec.schema section',
+  },
+
+  'schema-validation': {
+    id: 'schema-validation',
+    title: 'CRD Admission Validation',
+    tagline: 'kro generates OpenAPI v3 rules — bad specs are rejected before reconcile.',
+    body: `When kro registers your RGD, it compiles the \`spec.schema\` block into an OpenAPI v3 schema that Kubernetes embeds directly into the CRD. This means the API server enforces your types, enums, and constraints at admission time — before kro ever sees the request.
+
+If you tried to create a dungeon with \`difficulty: legendary\` (not in the enum), the API server would reject it with a 422 Unprocessable Entity. No bad state ever reaches kro.`,
+    snippet: `# kro compiles spec.schema → OpenAPI v3 CRD validation
+# kubectl get crd dungeons.kro.run -o yaml | grep -A 20 validation
+validation:
+  openAPIV3Schema:
+    properties:
+      spec:
+        properties:
+          difficulty:
+            enum: [easy, normal, hard]
+            type: string
+          heroClass:
+            enum: [warrior, mage, rogue]
+            type: string`,
+    learnMore: 'kubectl get crd dungeons.kro.run -o yaml — look for openAPIV3Schema',
   },
 
   'resource-chaining': {
@@ -495,6 +519,7 @@ patch := map[string]interface{}{
 export function getInsightForEvent(event: string): InsightTrigger | null {
   if (event === 'dungeon-created') return { conceptId: 'rgd', headline: 'kro created 7 resources from your one Dungeon CR' }
   if (event === 'spec-schema') return { conceptId: 'spec-schema', headline: 'kro validated your difficulty/heroClass fields against spec.schema enums' }
+  if (event === 'schema-validated') return { conceptId: 'schema-validation', headline: 'kro compiled your spec.schema into a CRD — the API server now rejects invalid dungeons' }
   if (event === 'resource-chaining') return { conceptId: 'resource-chaining', headline: 'Hero CR status (maxHP, class) flowed up through dungeon-graph resource chaining' }
   if (event === 'first-attack') return { conceptId: 'cel-basics', headline: 'Your damage was computed by a CEL expression in a ConfigMap' }
   if (event === 'monster-killed') return { conceptId: 'includeWhen', headline: 'A Loot CR appeared because monster HP hit 0 (includeWhen)' }
@@ -616,7 +641,7 @@ export function useKroGlossary() {
 }
 
 const CONCEPT_ORDER: KroConceptId[] = [
-  'rgd', 'spec-schema', 'resource-chaining', 'cel-basics', 'cel-ternary',
+  'rgd', 'spec-schema', 'schema-validation', 'resource-chaining', 'cel-basics', 'cel-ternary',
   'forEach', 'includeWhen', 'readyWhen', 'status-aggregation',
   'seeded-random', 'secret-output', 'empty-rgd', 'spec-mutation',
   'externalRef', 'status-conditions', 'reconcile-loop',

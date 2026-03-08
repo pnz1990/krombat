@@ -204,6 +204,7 @@ export default function App() {
       if (monsters > 1) triggerInsight('forEach')
       // resourceGroup-API — fire 3s later so it doesn't compete with the first two cards
       setTimeout(() => triggerInsight('dungeon-created-2nd'), 3000)
+      setTimeout(() => triggerInsight('schema-validated'), 5000)
       localStorage.setItem('lastDungeon', JSON.stringify({ ns: 'default', name }))
       navigate(`/dungeon/default/${name}`)
     } catch (e: any) { setError(e.message) }
