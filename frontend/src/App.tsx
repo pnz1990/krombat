@@ -1086,8 +1086,8 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
                 </button>
               )}
               {spec.heroClass === 'warrior' && (
-                <button className={`btn btn-ability${(spec.tauntActive ?? 0) === 1 ? ' active' : ''}`}
-                  disabled={(spec.tauntActive ?? 0) >= 1}
+                <button className={`btn btn-ability${(spec.tauntActive ?? 0) > 0 ? ' active' : ''}`}
+                  disabled={(spec.tauntActive ?? 0) > 0}
                   onClick={() => onAttack('activate-taunt', 0)}>
                   <PixelIcon name="shield" size={12} /> Taunt
                 </button>
@@ -1110,6 +1110,7 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
             const poison = spec.poisonTurns || 0
             const burn = spec.burnTurns || 0
             const stun = spec.stunTurns || 0
+            const taunt = spec.tauntActive || 0
             const RARITY_COLOR: Record<string, string> = { common: '#aaa', rare: '#5dade2', epic: '#9b59b6' }
             return (
               <div className="equip-panel">
@@ -1138,6 +1139,7 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
 
                 <div className="status-row">
                   {modifier !== 'none' && <Tooltip text={`${modifier.startsWith('curse') ? 'Curse' : 'Blessing'}: ${status?.modifier || modifier}`}><div className={`status-badge ${modifier.startsWith('curse') ? 'curse' : 'blessing'}`}><ItemSprite id={modifier} size={18} /></div></Tooltip>}
+                  {taunt > 0 && <Tooltip text={taunt === 1 ? 'Taunt ready: next attack has 60% counter-attack reduction' : 'TAUNTING: 60% counter-attack reduction active this turn'}><div className="status-badge effect taunt"><PixelIcon name="shield" size={12} /><span>{taunt === 2 ? 'ACT' : 'RDY'}</span></div></Tooltip>}
                   {poison > 0 && <Tooltip text={`Poison: -5 HP per turn, ${poison} turns remaining`}><div className="status-badge effect" data-effect="poison"><PixelIcon name="poison" size={12} /><span>{poison}</span></div></Tooltip>}
                   {burn > 0 && <Tooltip text={`Burn: -8 HP per turn, ${burn} turns remaining`}><div className="status-badge effect" data-effect="burn"><PixelIcon name="fire" size={12} /><span>{burn}</span></div></Tooltip>}
                   {stun > 0 && <Tooltip text={`Stun: skip next attack, ${stun} turns remaining`}><div className="status-badge effect" data-effect="stun"><PixelIcon name="lightning" size={12} /><span>{stun}</span></div></Tooltip>}
