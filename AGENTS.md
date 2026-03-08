@@ -164,6 +164,7 @@ If tests fail: check output → review logs → check `test-failure.png` screens
 - [x] Journey 8: Edge Cases & Error States (25/25)
 - [x] Journey 9: K8s Log Tab (23/23)
 - [x] Journey 10: Visual & Animation Consistency (18/18)
+- [x] Journey 11: Room 2 Full Victory — Complete both rooms end-to-end (25/25)
 
 **Critical rule for journey tests**: Tests must interact exclusively through the browser UI — no `kubectl`, no direct `fetch()` to the API. Tests must exercise the real code paths where bugs live (attack-graph Jobs, kro reconciliation, frontend polling).
 
@@ -171,7 +172,7 @@ If tests fail: check output → review logs → check `test-failure.png` screens
 
 ## Current Priority: FEATURE DEVELOPMENT (Issue #95 complete)
 
-All 10 journey tests pass and are enforced by the pre-push hook. Stabilization is complete.
+All 11 journey tests pass and are enforced by the pre-push hook. Stabilization is complete.
 Next tasks may include the open feature requests:
 - Issue #92: Helmet, pants, boots equipment slots with buffs
 - Issue #25: Multi-phase boss mechanics with HP thresholds
