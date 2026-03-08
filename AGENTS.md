@@ -154,30 +154,28 @@ If tests fail: check output → review logs → check `test-failure.png` screens
 
 ### Journey test status
 
-- [x] Journey 7: Dungeon Management (21/21)
 - [x] Journey 1: Warrior Easy — Full UI Playthrough (17/17)
+- [x] Journey 2: Mage Normal — Abilities & Mana (29/29)
+- [x] Journey 3: Rogue Hard — Dodge & Backstab (27/27)
 - [x] Journey 4: Items & Equipment (25/25)
+- [x] Journey 5: Status Effects (RNG-dependent — warns if effects not triggered by chance)
+- [x] Journey 6: Dungeon Modifiers (13/13)
+- [x] Journey 7: Dungeon Management (21/21)
 - [x] Journey 8: Edge Cases & Error States (25/25)
-- [ ] Journey 10: Visual & Animation Consistency
-- [ ] Journey 2: Mage Normal — Abilities & Mana
-- [ ] Journey 3: Rogue Hard — Dodge & Backstab
-- [ ] Journey 5: Status Effects
-- [ ] Journey 6: Dungeon Modifiers
-- [ ] Journey 9: K8s Log Tab
+- [x] Journey 9: K8s Log Tab (23/23)
+- [x] Journey 10: Visual & Animation Consistency (18/18)
 
 **Critical rule for journey tests**: Tests must interact exclusively through the browser UI — no `kubectl`, no direct `fetch()` to the API. Tests must exercise the real code paths where bugs live (attack-graph Jobs, kro reconciliation, frontend polling).
 
 ---
 
-## Current Priority: STABILIZATION (Issue #95)
+## Current Priority: FEATURE DEVELOPMENT (Issue #95 complete)
 
-1. Write journey tests (Playwright) for each of 10 gameplay journeys
-2. Run tests — failures reveal real bugs
-3. Open GH issues for each bug found
-4. Fix bugs one at a time, merge, verify journey passes
-5. Move to next journey
-6. Once all journeys pass: add to pre-push hook, close bug issues
-7. **NO NEW FEATURES until all journeys pass consistently**
+All 10 journey tests pass and are enforced by the pre-push hook. Stabilization is complete.
+Next tasks may include the open feature requests:
+- Issue #92: Helmet, pants, boots equipment slots with buffs
+- Issue #25: Multi-phase boss mechanics with HP thresholds
+- Issue #20: Loot system enhancements (persistent inventory / item effects)
 
 ---
 
