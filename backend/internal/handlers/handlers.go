@@ -342,6 +342,10 @@ func (h *Handler) CreateAttack(w http.ResponseWriter, r *http.Request) {
 // 3. kro re-reconciles dungeon-graph, writes combatResult ConfigMap
 // 4. Backend reads combatResult ConfigMap, runs full combat math, patches Dungeon spec
 func (h *Handler) processCombat(ctx context.Context, ns, name, target string, clientDamage int64, w http.ResponseWriter) error {
+	start := time.Now()
+	defer func() {
+		slog.Info("attack_processed", "component", "api", "dungeon", name, "target", target, "duration_ms", time.Since(start).Milliseconds())
+	}()
 	// Step 1: read current dungeon spec
 	dungeon, err := h.client.Dynamic.Resource(k8s.DungeonGVR).Namespace(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
@@ -866,6 +870,10 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 
 // processAction handles a non-combat action (use item, equip, treasure, door, room transition).
 func (h *Handler) processAction(ctx context.Context, ns, name, action string, w http.ResponseWriter) error {
+	start := time.Now()
+	defer func() {
+		slog.Info("action_processed", "component", "api", "dungeon", name, "action", action, "duration_ms", time.Since(start).Milliseconds())
+	}()
 	dungeon, err := h.client.Dynamic.Resource(k8s.DungeonGVR).Namespace(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		slog.Error("failed to get dungeon for action", "component", "api", "dungeon", name, "namespace", ns, "error", err)
