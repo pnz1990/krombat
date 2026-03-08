@@ -473,6 +473,10 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 			writeError(w, "only warrior can taunt", http.StatusBadRequest)
 			return fmt.Errorf("only warrior can taunt")
 		}
+		if tauntActive > 0 {
+			writeError(w, "taunt already active", http.StatusBadRequest)
+			return fmt.Errorf("taunt already active")
+		}
 		patch := map[string]interface{}{
 			"spec": map[string]interface{}{
 				"tauntActive":     1,

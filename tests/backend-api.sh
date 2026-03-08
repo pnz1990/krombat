@@ -200,6 +200,57 @@ print('lastLootDrop:', repr(spec['lastLootDrop']))
   || fail "lastLootDrop field missing from dungeon spec after kill"
 kubectl delete dungeon "$LOOT_TEST" --ignore-not-found --wait=false 2>/dev/null || true
 
+# --- Test 16: Ability rejection — backstab on cooldown (direct patch) ---
+log "Test 16: Backstab-on-cooldown rejection (direct spec patch)"
+ROGUE_CD_DUNGEON="api-test-rogue-cd-$(date +%s)"
+curl -s -X POST "$BASE/api/v1/dungeons" \
+  -H "Content-Type: application/json" \
+  -d "{\"name\":\"$ROGUE_CD_DUNGEON\",\"monsters\":2,\"difficulty\":\"easy\",\"heroClass\":\"rogue\"}" -o /dev/null
+sleep 15
+# Patch backstabCooldown to 1 directly on the spec
+kubectl patch dungeon "$ROGUE_CD_DUNGEON" -n default --type=merge -p '{"spec":{"backstabCooldown":1}}' &>/dev/null || true
+sleep 3
+# Attempt backstab — should be rejected with 400 (cooldown active)
+CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeons/default/$ROGUE_CD_DUNGEON/attacks" \
+  -H "Content-Type: application/json" \
+  -d "{\"target\":\"${ROGUE_CD_DUNGEON}-monster-0-backstab\",\"damage\":20}")
+[ "$CODE" = "400" ] && pass "Backstab-on-cooldown (patched) rejected -> 400" || fail "Backstab-on-cooldown (patched) -> $CODE (expected 400)"
+kubectl delete dungeon "$ROGUE_CD_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
+
+# --- Test 17: Ability rejection — mage heal with 0 mana (direct patch, correct target) ---
+log "Test 17: Mage heal no-mana rejection (direct spec patch, target=hero)"
+MAGE_NOMANA_DUNGEON="api-test-mage-nm-$(date +%s)"
+curl -s -X POST "$BASE/api/v1/dungeons" \
+  -H "Content-Type: application/json" \
+  -d "{\"name\":\"$MAGE_NOMANA_DUNGEON\",\"monsters\":1,\"difficulty\":\"easy\",\"heroClass\":\"mage\"}" -o /dev/null
+sleep 15
+# Drain heroMana to 0 by patching the dungeon CR directly
+kubectl patch dungeon "$MAGE_NOMANA_DUNGEON" -n default --type=merge -p '{"spec":{"heroMana":0}}' &>/dev/null || true
+sleep 3
+# Attempt heal with 0 mana (target="hero" is the heal trigger) — should be 400
+CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeons/default/$MAGE_NOMANA_DUNGEON/attacks" \
+  -H "Content-Type: application/json" \
+  -d '{"target":"hero","damage":0}')
+[ "$CODE" = "400" ] && pass "Mage heal with 0 mana (patched) rejected -> 400" || fail "Mage heal no-mana (patched) -> $CODE (expected 400)"
+kubectl delete dungeon "$MAGE_NOMANA_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
+
+# --- Test 18: Ability rejection — taunt already active (direct patch) ---
+log "Test 18: Taunt-already-active rejection (direct spec patch)"
+WARRIOR_TAUNT_DUNGEON="api-test-warrior-taunt-$(date +%s)"
+curl -s -X POST "$BASE/api/v1/dungeons" \
+  -H "Content-Type: application/json" \
+  -d "{\"name\":\"$WARRIOR_TAUNT_DUNGEON\",\"monsters\":1,\"difficulty\":\"easy\",\"heroClass\":\"warrior\"}" -o /dev/null
+sleep 15
+# Patch tauntActive to true (non-zero) directly on the spec
+kubectl patch dungeon "$WARRIOR_TAUNT_DUNGEON" -n default --type=merge -p '{"spec":{"tauntActive":1}}' &>/dev/null || true
+sleep 3
+# Attempt taunt while already active — should be rejected with 400
+CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeons/default/$WARRIOR_TAUNT_DUNGEON/attacks" \
+  -H "Content-Type: application/json" \
+  -d '{"target":"activate-taunt","damage":0}')
+[ "$CODE" = "400" ] && pass "Taunt-already-active rejected -> 400" || fail "Taunt-already-active -> $CODE (expected 400)"
+kubectl delete dungeon "$WARRIOR_TAUNT_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
+
 # --- Summary ---
 echo ""
 echo "========================================"
