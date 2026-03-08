@@ -352,7 +352,34 @@ grep -q "ENRAGED\|BERSERK" frontend/src/App.tsx && pass "Frontend emits phase tr
 
 # --- KroGraph concept reference sanity ---
 echo "=== KroGraph concept reference guardrails"
-! grep -q "concept: 'secrets'" frontend/src/KroGraph.tsx && pass "KroGraph has no dangling 'secrets' concept reference" || fail "KroGraph references unknown concept 'secrets' — use 'secret-output'"
+ ! grep -q "concept: 'secrets'" frontend/src/KroGraph.tsx && pass "KroGraph has no dangling 'secrets' concept reference" || fail "KroGraph references unknown concept 'secrets' — use 'secret-output'"
+
+echo "=== KroTeach concept count sync"
+node -e "
+const fs = require('fs');
+const src = fs.readFileSync('frontend/src/KroTeach.tsx', 'utf8');
+
+// Count union type entries: lines matching \"  | 'xxx'\" between KroConceptId = and the next blank line after
+const unionMatches = src.match(/export type KroConceptId =[\s\S]*?(?=\n\nexport)/);
+const unionCount = unionMatches ? (unionMatches[0].match(/\| '/g) || []).length : 0;
+
+// Count KRO_CONCEPTS keys: object properties of the form  'xxx': {
+const conceptsMatches = (src.match(/^  '[a-zA-Z][a-zA-Z0-9-]*': \{$/gm) || []).length;
+
+// Count CONCEPT_ORDER entries: strings inside the array
+const orderMatch = src.match(/const CONCEPT_ORDER: KroConceptId\[\] = \[([\s\S]*?)\]/);
+const orderCount = orderMatch ? (orderMatch[1].match(/'[a-zA-Z][a-zA-Z0-9-]*'/g) || []).length : 0;
+
+console.log('Union type entries: ' + unionCount);
+console.log('KRO_CONCEPTS entries: ' + conceptsMatches);
+console.log('CONCEPT_ORDER entries: ' + orderCount);
+
+if (unionCount !== conceptsMatches || conceptsMatches !== orderCount) {
+  console.error('FAIL: concept counts out of sync — union=' + unionCount + ' concepts=' + conceptsMatches + ' order=' + orderCount);
+  process.exit(1);
+}
+console.log('OK: all concept counts match (' + unionCount + ')');
+" && pass "KroTeach concept counts in sync (union == KRO_CONCEPTS == CONCEPT_ORDER)" || fail "KroTeach concept counts out of sync — add/remove concept in all 3 places"
 
 # --- Summary ---
 
