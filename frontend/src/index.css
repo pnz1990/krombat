@@ -94,6 +94,8 @@ body {
 .tag-easy { color: var(--green); border-color: var(--green); }
 .tag-normal { color: var(--gold); border-color: var(--gold); }
 .tag-hard { color: var(--accent); border-color: var(--accent); }
+.tag-modifier-curse { color: #e74c3c; border-color: #e74c3c; }
+.tag-modifier-blessing { color: #2ecc71; border-color: #2ecc71; }
 
 /* Create Form */
 .ns-filter { display: flex; gap: 6px; margin-bottom: 12px; }
