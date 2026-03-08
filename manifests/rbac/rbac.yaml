@@ -9,6 +9,8 @@ metadata:
   name: rpg-backend-sa
   namespace: rpg-system
 ---
+# ClusterRole: only cluster-wide read permissions (list/watch across all namespaces).
+# Required for ListDungeons (cross-namespace list), pollGameMetrics, and watchers.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -16,7 +18,7 @@ metadata:
 rules:
   - apiGroups: [game.k8s.example]
     resources: [dungeons, dungeons/status, attacks, attacks/status, actions, actions/status]
-    verbs: [get, list, watch, create, update, patch, delete]
+    verbs: [list, watch]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -25,6 +27,32 @@ metadata:
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
+  name: rpg-backend
+subjects:
+  - kind: ServiceAccount
+    name: rpg-backend-sa
+    namespace: rpg-system
+---
+# Role: namespaced write+read permissions scoped to the 'default' namespace.
+# All dungeon create/get/patch/delete and all Attack/Action CR upserts target 'default'.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: rpg-backend
+  namespace: default
+rules:
+  - apiGroups: [game.k8s.example]
+    resources: [dungeons, dungeons/status, attacks, attacks/status, actions, actions/status]
+    verbs: [get, create, update, patch, delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: rpg-backend
+  namespace: default
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
   name: rpg-backend
 subjects:
   - kind: ServiceAccount
