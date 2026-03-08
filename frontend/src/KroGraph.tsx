@@ -7,8 +7,9 @@
  *
  * Layout (fixed, pixel-art aesthetic):
  *
- *   [Dungeon CR]  ← root
- *       ├── [Namespace]
+ *   [dungeon-graph RGD]  ← ResourceGroup CRD (kro)
+ *       └── [Dungeon CR]  ← root CR instance
+ *               ├── [Namespace]
  *       ├── [Hero CR] → [heroState CM]
  *       ├── [Monster CR ×N] → [monsterState CM] → [Loot CR?] → [lootSecret?]
  *       ├── [Boss CR] → [bossState CM] → [Loot CR?]
@@ -25,7 +26,7 @@ import type { KroConceptId } from './KroTeach'
 
 // ─── Node types ──────────────────────────────────────────────────────────────
 
-type NodeState = 'alive' | 'dead' | 'ready' | 'pending' | 'defeated' | 'locked' | 'reconciling' | 'ok'
+type NodeState = 'alive' | 'dead' | 'ready' | 'pending' | 'defeated' | 'locked' | 'reconciling' | 'ok' | 'meta'
 
 interface GraphNode {
   id: string
@@ -60,6 +61,18 @@ export function buildGraph(cr: DungeonCR, reconciling: boolean): { nodes: GraphN
 
   const nodes: GraphNode[] = []
   const edges: GraphEdge[] = []
+
+  // Root -1: ResourceGroup CRD (the dungeon-graph RGD that defines the Dungeon CR API)
+  nodes.push({
+    id: 'resourcegroup',
+    label: 'dungeon-graph',
+    kind: 'ResourceGroup',
+    state: 'meta',
+    exists: true,
+    concept: 'rgd',
+    detail: 'kro RGD → registers Dungeon CRD',
+  })
+  edges.push({ from: 'resourcegroup', to: 'dungeon', label: 'defines' })
 
   // Root: Dungeon CR
   const dungeonState: NodeState = reconciling ? 'reconciling'
@@ -366,6 +379,7 @@ function layoutGraph(nodes: GraphNode[], _edges: GraphEdge[]): Map<string, NodeP
 
   // Row assignments
   const row = (id: string): number => {
+    if (id === 'resourcegroup') return -1
     if (id === 'dungeon') return 0
     if (id === 'namespace' || id === 'hero' || id.match(/^monster-\d+$/) || id === 'monster-more'
         || id === 'boss' || id === 'treasure' || id === 'modifier') return 1
@@ -403,6 +417,14 @@ function layoutGraph(nodes: GraphNode[], _edges: GraphEdge[]): Map<string, NodeP
     })
   }
 
+  // Shift all nodes down so minimum y is always >= 8
+  let minY = Infinity
+  for (const pos of positions.values()) minY = Math.min(minY, pos.y)
+  if (minY < 8) {
+    const shift = 8 - minY
+    for (const pos of positions.values()) pos.y += shift
+  }
+
   return positions
 }
 
@@ -419,6 +441,7 @@ function stateColor(state: NodeState, exists: boolean): { border: string; bg: st
     case 'reconciling': return { border: '#00d4ff', bg: '#0a1520', text: '#00d4ff' }
     case 'locked':      return { border: '#222', bg: '#0a0a12', text: '#333' }
     case 'ok':          return { border: '#2a4a6a', bg: '#0a1420', text: '#5dade2' }
+    case 'meta':        return { border: '#9b59b6', bg: '#120a1a', text: '#c39bd3' }
     default:            return { border: '#333', bg: '#111', text: '#888' }
   }
 }
