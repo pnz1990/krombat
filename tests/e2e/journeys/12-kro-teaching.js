@@ -77,9 +77,9 @@ async function run() {
     const kroTabSwitched = await switchToTab(page, 'kro');
     kroTabSwitched ? ok('kro tab is present and clickable') : fail('kro tab not found');
 
-    // Tab label should include concept count (e.g. "kro (2/13)")
-    const kroTabLabel = await page.locator('button.log-tab.kro-tab').textContent().catch(() => '');
-    kroTabLabel.match(/kro \(\d+\/13\)/) ? ok(`kro tab shows concept count: "${kroTabLabel.trim()}"`) : fail(`kro tab label unexpected: "${kroTabLabel}"`);
+     // Tab label should include concept count (e.g. "kro (2/16)") — total grows as concepts are added
+     const kroTabLabel = await page.locator('button.log-tab.kro-tab').textContent().catch(() => '');
+     kroTabLabel.match(/kro \(\d+\/\d+\)/) ? ok(`kro tab shows concept count: "${kroTabLabel.trim()}"`) : fail(`kro tab label unexpected: "${kroTabLabel}"`);
 
     // Glossary should be visible
     const glossary = page.locator('.kro-glossary');
