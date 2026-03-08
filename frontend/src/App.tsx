@@ -50,6 +50,8 @@ export default function App() {
   const [showHelp, setShowHelp] = useState(false)
   const [showCheat, setShowCheat] = useState(false)
   const [deleting, setDeleting] = useState<Set<string>>(new Set())
+  const [resumePrompt, setResumePrompt] = useState<{ ns: string; name: string } | null>(null)
+  const resumeCheckedRef = useRef(false)
   const [lootDrop, setLootDrop] = useState<string | null>(null)
   const [attackTarget, setAttackTarget] = useState<string | null>(null)
   const [animPhase, setAnimPhase] = useState<'idle' | 'hero-attack' | 'enemy-attack' | 'item-use' | 'done'>('idle')
@@ -123,12 +125,39 @@ export default function App() {
     refresh()
   }, [ns, name, refresh])
 
+  // On first load to the list page (no dungeon selected), check localStorage for a last-played dungeon
+  useEffect(() => {
+    if (selected || resumeCheckedRef.current) return
+    const stored = localStorage.getItem('lastDungeon')
+    if (!stored) return
+    try {
+      const { ns: lastNs, name: lastName } = JSON.parse(stored) as { ns: string; name: string }
+      if (!lastNs || !lastName) return
+      // Validate against the live dungeon list
+      listDungeons().then(list => {
+        const found = list.find(d => d.namespace === lastNs && d.name === lastName)
+        resumeCheckedRef.current = true
+        if (found) {
+          setResumePrompt({ ns: lastNs, name: lastName })
+        } else {
+          localStorage.removeItem('lastDungeon')
+        }
+      }).catch(() => {
+        resumeCheckedRef.current = true
+      })
+    } catch {
+      localStorage.removeItem('lastDungeon')
+      resumeCheckedRef.current = true
+    }
+  }, [selected])
+
   const handleCreate = async (name: string, monsters: number, difficulty: string, heroClass: string) => {
     setError('')
     try {
       await createDungeon(name, monsters, difficulty, heroClass, 'default')
       addK8s(`kubectl apply -f dungeon.yaml`, 'dungeon.game.k8s.example created',
         `apiVersion: game.k8s.example/v1alpha1\nkind: Dungeon\nmetadata:\n  name: ${name}\nspec:\n  monsters: ${monsters}\n  difficulty: ${difficulty}\n  heroClass: ${heroClass}`)
+      localStorage.setItem('lastDungeon', JSON.stringify({ ns: 'default', name }))
       navigate(`/dungeon/default/${name}`)
     } catch (e: any) { setError(e.message) }
   }
@@ -309,6 +338,7 @@ export default function App() {
   }
 
   const handleSelect = (ns: string, name: string) => {
+    localStorage.setItem('lastDungeon', JSON.stringify({ ns, name }))
     navigate(`/dungeon/${ns}/${name}`)
   }
 
@@ -321,6 +351,14 @@ export default function App() {
     try {
       await deleteDungeon(delNs, delName)
       if (selected?.name === delName) navigate('/')
+      // Clear last dungeon from localStorage if it was the deleted one
+      try {
+        const stored = localStorage.getItem('lastDungeon')
+        if (stored) {
+          const { ns: lastNs, name: lastName } = JSON.parse(stored)
+          if (lastNs === delNs && lastName === delName) localStorage.removeItem('lastDungeon')
+        }
+      } catch { /* ignore */ }
       // Keep in list with "deleting" visual — backend filters DELETING CRs on next refresh
       // Exponential backoff: start at 1s, double each attempt, cap at 10s (max ~30 attempts)
       const poll = async () => {
@@ -358,7 +396,16 @@ export default function App() {
       {!selected ? (
         <>
           <CreateForm onCreate={handleCreate} />
-          <DungeonList dungeons={dungeons} onSelect={handleSelect} onDelete={handleDelete} deleting={deleting} />
+          {resumePrompt && (
+            <div className="card" style={{ borderColor: '#f5c518', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '8px 12px' }}>
+              <span style={{ fontSize: '8px', color: '#f5c518' }}>Resume last dungeon: <strong>{resumePrompt.name}</strong>?</span>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button className="btn btn-gold" style={{ fontSize: '7px', padding: '3px 8px' }} onClick={() => { setResumePrompt(null); handleSelect(resumePrompt.ns, resumePrompt.name) }}>Resume</button>
+                <button aria-label="Dismiss resume prompt" style={{ background: 'none', border: 'none', color: '#888', cursor: 'pointer', fontFamily: 'inherit', fontSize: '10px' }} onClick={() => setResumePrompt(null)}>✕</button>
+              </div>
+            </div>
+          )}
+          <DungeonList dungeons={dungeons} onSelect={handleSelect} onDelete={handleDelete} deleting={deleting} lastDungeon={resumePrompt ?? undefined} />
         </>
       ) : loading ? (
         <div className="loading">Initializing dungeon</div>
@@ -432,22 +479,28 @@ function CreateForm({ onCreate }: { onCreate: (n: string, m: number, d: string, 
   )
 }
 
-function DungeonList({ dungeons, onSelect, onDelete, deleting }: {
+function DungeonList({ dungeons, onSelect, onDelete, deleting, lastDungeon }: {
   dungeons: DungeonSummary[]; onSelect: (ns: string, name: string) => void
   onDelete: (ns: string, name: string) => void; deleting: Set<string>
+  lastDungeon?: { ns: string; name: string }
 }) {
   if (!dungeons.length) return <div className="loading">No dungeons yet — create one above</div>
   return (
     <div className="dungeon-list">
-      {dungeons.map(d => (
-        <div key={d.name} className={`dungeon-tile${deleting.has(d.name) ? ' deleting' : ''}`} onClick={() => onSelect(d.namespace, d.name)}>
+      {dungeons.map(d => {
+        const isLast = lastDungeon && lastDungeon.ns === d.namespace && lastDungeon.name === d.name
+        return (
+        <div key={d.name} className={`dungeon-tile${deleting.has(d.name) ? ' deleting' : ''}${isLast ? ' last-played' : ''}`} onClick={() => onSelect(d.namespace, d.name)}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h3>{d.victory ? '' : ''}{d.name}</h3>
-            {deleting.has(d.name) ? (
-              <span style={{ fontSize: '7px', color: 'var(--accent)' }}>Deleting...</span>
-            ) : (
-              <button className="tile-delete-btn" aria-label={`Delete dungeon ${d.name}`} title="Delete dungeon" onClick={e => { e.stopPropagation(); onDelete(d.namespace, d.name) }}><PixelIcon name="damage" size={12} /></button>
-            )}
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              {isLast && <span className="last-played-badge">LAST PLAYED</span>}
+              {deleting.has(d.name) ? (
+                <span style={{ fontSize: '7px', color: 'var(--accent)' }}>Deleting...</span>
+              ) : (
+                <button className="tile-delete-btn" aria-label={`Delete dungeon ${d.name}`} title="Delete dungeon" onClick={e => { e.stopPropagation(); onDelete(d.namespace, d.name) }}><PixelIcon name="damage" size={12} /></button>
+              )}
+            </div>
           </div>
           <div className="stats">
             <span className={`tag tag-${d.difficulty}`}>{d.difficulty}</span>
@@ -460,7 +513,8 @@ function DungeonList({ dungeons, onSelect, onDelete, deleting }: {
             <span style={{ fontSize: '7px', color: 'var(--text-dim)', background: 'rgba(255,255,255,0.05)', border: '1px solid #333', borderRadius: 2, padding: '1px 4px' }}>ns: {d.namespace}</span>
           </div>
         </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
