@@ -348,6 +348,8 @@ patch := map[string]interface{}{
 /** Map game events to insight triggers */
 export function getInsightForEvent(event: string): InsightTrigger | null {
   if (event === 'dungeon-created') return { conceptId: 'rgd', headline: 'kro created 7 resources from your one Dungeon CR' }
+  if (event === 'spec-schema') return { conceptId: 'spec-schema', headline: 'kro validated your difficulty/heroClass fields against spec.schema enums' }
+  if (event === 'resource-chaining') return { conceptId: 'resource-chaining', headline: 'Hero CR status (maxHP, class) flowed up through dungeon-graph resource chaining' }
   if (event === 'first-attack') return { conceptId: 'cel-basics', headline: 'Your damage was computed by a CEL expression in a ConfigMap' }
   if (event === 'monster-killed') return { conceptId: 'includeWhen', headline: 'A Loot CR appeared because monster HP hit 0 (includeWhen)' }
   if (event === 'boss-ready') return { conceptId: 'cel-ternary', headline: 'Boss transitioned pending → ready via a CEL ternary in boss-graph' }
@@ -610,4 +612,123 @@ One spec patch triggers full dungeon-graph reconciliation:
 Monotonically incrementing counter.
 The backend uses this for optimistic concurrency control:
   reject attack if attackSeq in request != current attackSeq.`,
+}
+
+// ─── CelTrace — shows live CEL execution context after a combat round ────────
+
+export interface CelTraceData {
+  formula: string       // e.g. "2d12+6"
+  difficulty: string
+  heroClass: string
+  heroAction: string    // from spec.lastHeroAction
+  combatLog: string     // from spec.lastCombatLog (JSON)
+}
+
+/**
+ * CelTrace renders a collapsible "What kro computed" panel inside the
+ * combat modal resolved phase. It reconstructs the CEL context from
+ * the dungeon spec and shows which expressions fired.
+ */
+export function CelTrace({ data, onLearnMore }: { data: CelTraceData; onLearnMore: () => void }) {
+  const [open, setOpen] = useState(false)
+
+  // Parse combat log JSON if available
+  let log: Record<string, any> = {}
+  try { log = JSON.parse(data.combatLog || '{}') } catch { /* ignore */ }
+
+  // Reconstruct readable CEL expressions
+  const celLines: { expr: string; result: string; note?: string }[] = []
+
+  celLines.push({
+    expr: `schema.spec.difficulty == '${data.difficulty}'`,
+    result: 'true',
+    note: 'selects dice formula',
+  })
+  celLines.push({
+    expr: `diceFormula`,
+    result: `"${data.formula}"`,
+    note: 'from gameConfig ConfigMap',
+  })
+  if (log.seq) {
+    celLines.push({
+      expr: `random.seededString(lastCombatLog, alphabet, 8)`,
+      result: `"${data.combatLog.slice(0, 8)}..."`,
+      note: 'seeded → deterministic',
+    })
+  }
+  if (log.weaponBonus > 0) {
+    celLines.push({
+      expr: `schema.spec.weaponBonus`,
+      result: `${log.weaponBonus}`,
+      note: `+${log.weaponBonus} damage applied`,
+    })
+  }
+  if (log.armorBonus > 0) {
+    celLines.push({
+      expr: `schema.spec.armorBonus`,
+      result: `${log.armorBonus}%`,
+      note: 'counter-attack reduced',
+    })
+  }
+  if (data.heroClass === 'mage') {
+    celLines.push({
+      expr: `schema.spec.heroClass == 'mage' ? 1.3 : 1.0`,
+      result: '1.3',
+      note: 'mage 1.3x damage multiplier',
+    })
+  }
+  if (data.heroClass === 'warrior') {
+    celLines.push({
+      expr: `schema.spec.heroClass == 'warrior' ? 0.75 : 1.0`,
+      result: '0.75',
+      note: '25% counter-attack reduction',
+    })
+  }
+
+  // Extract damage dealt from heroAction
+  const dmgMatch = data.heroAction.match(/deals (\d+) damage/)
+  if (dmgMatch) {
+    celLines.push({
+      expr: `finalDamage`,
+      result: dmgMatch[1],
+      note: 'written to spec.monsterHP[i]',
+    })
+  }
+
+  return (
+    <div className="cel-trace">
+      <button className="cel-trace-toggle" onClick={() => setOpen(o => !o)}>
+        <span className="kro-insight-badge" style={{ fontSize: 6 }}>kro</span>
+        <span style={{ flex: 1, textAlign: 'left', marginLeft: 6, fontSize: 7, color: '#888' }}>
+          What CEL computed {open ? '▲' : '▼'}
+        </span>
+      </button>
+      {open && (
+        <div className="cel-trace-body">
+          <div className="cel-trace-header">dungeon-graph → combatResult ConfigMap</div>
+          <table className="cel-trace-table">
+            <thead>
+              <tr>
+                <th>CEL expression</th>
+                <th>value</th>
+                <th>note</th>
+              </tr>
+            </thead>
+            <tbody>
+              {celLines.map((l, i) => (
+                <tr key={i}>
+                  <td className="cel-trace-expr">{l.expr}</td>
+                  <td className="cel-trace-val">{l.result}</td>
+                  <td className="cel-trace-note">{l.note || ''}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <button className="k8s-annotation-learn" onClick={onLearnMore} style={{ marginTop: 4 }}>
+            Learn: cel-basics →
+          </button>
+        </div>
+      )}
+    </div>
+  )
 }

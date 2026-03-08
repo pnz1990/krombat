@@ -1230,3 +1230,62 @@ body {
   text-align: center;
   letter-spacing: 0.5px;
 }
+
+/* ─── CEL Trace (combat modal) ───────────────────────────────────────────── */
+
+.cel-trace {
+  margin-top: 12px;
+  border: 1px solid #0f3460;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.cel-trace-toggle {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  background: #0d1420;
+  border: none;
+  padding: 6px 8px;
+  cursor: pointer;
+  font-family: inherit;
+  gap: 4px;
+}
+.cel-trace-toggle:hover { background: #111a2e; }
+
+.cel-trace-body {
+  padding: 8px;
+  background: #0a0e1a;
+}
+
+.cel-trace-header {
+  font-size: 6px;
+  color: #5dade2;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+.cel-trace-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 6px;
+}
+.cel-trace-table th {
+  color: #444;
+  text-align: left;
+  padding: 2px 4px;
+  border-bottom: 1px solid #1e3a5f;
+  font-weight: normal;
+  letter-spacing: 0.5px;
+}
+.cel-trace-table td {
+  padding: 3px 4px;
+  border-bottom: 1px solid #0f1a2e;
+  vertical-align: top;
+  line-height: 1.6;
+}
+.cel-trace-expr { color: #9b59b6; font-family: 'Press Start 2P', monospace; }
+.cel-trace-val  { color: #00ff41; white-space: nowrap; }
+.cel-trace-note { color: #555; }

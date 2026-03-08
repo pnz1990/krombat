@@ -8,7 +8,7 @@ import { PixelIcon } from './PixelIcon'
 import {
   InsightCard, KroConceptModal, KroGlossary,
   useKroGlossary, getInsightForEvent, kroAnnotate,
-  KRO_STATUS_TIPS,
+  KRO_STATUS_TIPS, CelTrace, type CelTraceData,
   type InsightTrigger, type KroConceptId,
 } from './KroTeach'
 import { KroGraphPanel } from './KroGraph'
@@ -137,6 +137,8 @@ export default function App() {
               setLoading(false)
               // Teach modifier concept if this dungeon has one
               if (d.spec.modifier && d.spec.modifier !== 'none') triggerInsight('modifier-present')
+              // Teach resource chaining once status is populated (Hero CR → dungeon status)
+              if (d.status?.maxHeroHP) triggerInsight('resource-chaining')
             }
             return
           } catch {
@@ -187,6 +189,7 @@ export default function App() {
       addK8s(`kubectl apply -f dungeon.yaml`, 'dungeon.game.k8s.example created',
         `apiVersion: game.k8s.example/v1alpha1\nkind: Dungeon\nmetadata:\n  name: ${name}\nspec:\n  monsters: ${monsters}\n  difficulty: ${difficulty}\n  heroClass: ${heroClass}`)
       triggerInsight('dungeon-created')
+      triggerInsight('spec-schema')
       // forEach is always in play when creating a dungeon with multiple monsters
       if (monsters > 1) triggerInsight('forEach')
       localStorage.setItem('lastDungeon', JSON.stringify({ ns: 'default', name }))
@@ -1057,12 +1060,28 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
                 <h2 style={{ color: 'var(--gold)', fontSize: 14, marginBottom: 16 }}>COMBAT</h2>
                 <DiceRoller formula={combatModal.formula} />
                 <p style={{ fontSize: 8, color: '#888', marginTop: 12 }}>Waiting for attack to resolve...</p>
+                <div style={{ marginTop: 8, fontSize: 6, color: '#2a4a6a', textAlign: 'center', lineHeight: 1.8 }}>
+                  <span className="kro-insight-badge" style={{ fontSize: 5 }}>kro</span>
+                  {' '}dungeon-graph reconciling → combatResult CEL computing {combatModal.formula}
+                </div>
               </>
             ) : (
               <>
                 <button className="modal-close" aria-label="Close combat results" onClick={onDismissCombat}>✕</button>
                 <h2 style={{ color: 'var(--gold)', fontSize: 14, marginBottom: 12 }}>COMBAT RESULTS</h2>
                 <CombatBreakdown heroAction={combatModal.heroAction} enemyAction={combatModal.enemyAction} spec={combatModal.spec} oldHP={combatModal.oldHP} />
+                {combatModal.heroAction && (
+                  <CelTrace
+                    data={{
+                      formula: combatModal.formula,
+                      difficulty: spec.difficulty || 'normal',
+                      heroClass: spec.heroClass || 'warrior',
+                      heroAction: combatModal.heroAction,
+                      combatLog: combatModal.spec?.lastCombatLog || '',
+                    }}
+                    onLearnMore={() => onViewKroConcept('cel-basics')}
+                  />
+                )}
                 <button className="btn btn-gold" style={{ marginTop: 16 }} onClick={onDismissCombat}>Continue</button>
               </>
             )}
