@@ -1574,7 +1574,12 @@ function DungeonView({ cr, prevCr, onBack, onAttack, events, k8sLog, showLoot, o
 
                 {items.length > 0 && (
                   <div className="backpack">
-                    <div className="backpack-label">Backpack</div>
+                    <div className="backpack-label">
+                      Backpack
+                      <span style={{ fontSize: 6, color: items.length >= 8 ? '#e74c3c' : items.length >= 6 ? '#f1c40f' : 'var(--text-dim)', marginLeft: 6 }}>
+                        {items.length}/8{items.length >= 8 ? ' FULL' : ''}
+                      </span>
+                    </div>
                     <div className="backpack-grid">
                       {items.map((item, i) => {
                         const rarity = item.split('-').pop()!
