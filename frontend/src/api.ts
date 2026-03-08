@@ -29,7 +29,7 @@ export interface DungeonCR {
     ringBonus?: number; amuletBonus?: number
     poisonTurns?: number; burnTurns?: number; stunTurns?: number
     treasureOpened?: number
-    currentRoom?: number; doorUnlocked?: number; room2BossHP?: number
+    currentRoom?: number; doorUnlocked?: number; room2BossHP?: number; room2MonsterHP?: number[]
     lastHeroAction?: string; lastEnemyAction?: string; lastCombatLog?: string; lastLootDrop?: string
     attackSeq?: number; actionSeq?: number
   }
@@ -37,7 +37,7 @@ export interface DungeonCR {
     livingMonsters: number; bossState: string; victory: boolean; defeated: boolean
     loot: string; maxMonsterHP: number; maxBossHP: number
     maxHeroHP: number; diceFormula: string; monsterCounter: number; bossCounter: number
-    modifier?: string; modifierType?: string; treasureState?: string
+    modifier?: string; modifierType?: string; treasureState?: string; bossPhase?: string
     conditions?: KroCondition[]
   }
 }
