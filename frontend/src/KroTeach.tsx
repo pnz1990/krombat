@@ -32,6 +32,7 @@ export type KroConceptId =
   | 'reconcile-loop'
   | 'resourceGroup-api'
   | 'cel-has-macro'
+  | 'ownerReferences'
 
 export interface KroConcept {
   id: KroConceptId
@@ -492,6 +493,26 @@ readyWhen:
     learnMore: 'manifests/rgds/boss-graph.yaml — readyWhen block',
   },
 
+  'ownerReferences': {
+    id: 'ownerReferences',
+    title: 'ownerReferences & Garbage Collection',
+    tagline: 'Deleting the Dungeon CR cascades to all 9 child resources automatically.',
+    body: `When kro creates child resources (Hero CR, Monster CRs, Boss CR, ConfigMaps, Secrets, Namespace), it sets an \`ownerReferences\` field on each one pointing back to the parent Dungeon CR.
+
+When you deleted this dungeon, Kubernetes' built-in garbage collector saw the owner was gone and automatically deleted every child — no custom cleanup logic needed. This is how Kubernetes implements cascading deletion, and kro gets it for free.`,
+    snippet: `# Every child resource kro creates has this block:
+metadata:
+  ownerReferences:
+  - apiVersion: game.k8s.example/v1alpha1
+    kind: Dungeon
+    name: my-dungeon
+    uid: "abc-123..."
+    controller: true
+    blockOwnerDeletion: true
+# → delete the Dungeon CR → K8s GC deletes all children`,
+    learnMore: 'kubectl get hero,cm,secret -n default -o yaml | grep -A5 ownerReferences',
+  },
+
   'spec-mutation': {
     id: 'spec-mutation',
     title: 'Spec Mutation Triggers Full Reconcile',
@@ -536,6 +557,7 @@ export function getInsightForEvent(event: string): InsightTrigger | null {
   if (event === 'second-attack') return { conceptId: 'reconcile-loop', headline: 'The ~1s pause after every action is the kro reconcile loop: watch → CEL eval → write' }
   if (event === 'dungeon-created-2nd') return { conceptId: 'resourceGroup-api', headline: 'kro registered Dungeon as a real Kubernetes API — kubectl get dungeon works natively' }
   if (event === 'boots-equipped') return { conceptId: 'cel-has-macro', headline: 'has() lets CEL safely access optional spec fields — used throughout dungeon-graph readyWhen' }
+  if (event === 'dungeon-deleted') return { conceptId: 'ownerReferences', headline: 'Deleting the Dungeon CR triggered cascading deletion of all 9 child resources via ownerReferences' }
   return null
 }
 
@@ -645,7 +667,7 @@ const CONCEPT_ORDER: KroConceptId[] = [
   'forEach', 'includeWhen', 'readyWhen', 'status-aggregation',
   'seeded-random', 'secret-output', 'empty-rgd', 'spec-mutation',
   'externalRef', 'status-conditions', 'reconcile-loop',
-  'resourceGroup-api', 'cel-has-macro',
+  'resourceGroup-api', 'cel-has-macro', 'ownerReferences',
 ]
 
 interface KroGlossaryProps {
