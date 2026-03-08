@@ -41,11 +41,12 @@ spec:
     # The stat field uses a flat 1D lookup table indexed by (typeIdx * 2 + rarityBucket)
     # instead of a cascading ternary that re-evaluated indexOf 9 times.
     #
-    # Seeds:  -boss-typ → typeIdx = indexOf % 4   (item type)
+    # Seeds:  -boss-typ → typeIdx = indexOf % 7   (item type)
     #         -boss-rar → rarIdx  = indexOf % 36  (rarity bucket: <18→0 rare, else 1 epic)
     #
     # Stat table (typeIdx * 2 + rarityBucket):
     #   [weapon: 10,20]  [armor: 20,30]  [hppotion: 40,999]  [shield: 15,25]
+    #   [helmet: 10,15]  [pants: 10,15]  [boots: 40,60]
     - id: lootCR
       includeWhen:
         - ${schema.spec.hp == 0}
@@ -70,22 +71,22 @@ spec:
                 random.seededString(1, schema.spec.dungeonName + '-boss-rar')
               ) % 36) < 18 ? 'rare' : 'epic'
             }
-          # Type: weapon/armor/hppotion/shield (4 types, no manapotion for boss)
+          # Type: weapon/armor/hppotion/shield/helmet/pants/boots (7 types, no manapotion for boss)
           itemType: >-
             ${
-              ['weapon','armor','hppotion','shield'][
+              ['weapon','armor','hppotion','shield','helmet','pants','boots'][
                 int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(
                   random.seededString(1, schema.spec.dungeonName + '-boss-typ')
-                ) % 4)
+                ) % 7)
               ]
             }
           # Stat based on itemType and rarity — flat lookup table [typeIdx * 2 + rarityBucket]
           stat: >-
             ${
-              [10,20, 20,30, 40,999, 15,25][
+              [10,20, 20,30, 40,999, 15,25, 10,15, 10,15, 40,60][
                 int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(
                   random.seededString(1, schema.spec.dungeonName + '-boss-typ')
-                ) % 4) * 2 + (
+                ) % 7) * 2 + (
                   int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(
                     random.seededString(1, schema.spec.dungeonName + '-boss-rar')
                   ) % 36) < 18 ? 0 : 1

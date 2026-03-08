@@ -44,13 +44,14 @@ spec:
     # instead of a cascading ternary that re-evaluated indexOf 15 times.
     #
     # Alphabet: 'abcdefghijklmnopqrstuvwxyz0123456789' (36 chars, 0-indexed)
-    # Seeds:  -typ → typeIdx = indexOf % 5   (item type)
+    # Seeds:  -typ → typeIdx = indexOf % 8   (item type)
     #         -rar → rarIdx  = indexOf % 36  (rarity bucket: <22→0 common, <33→1 rare, else 2 epic)
     #         -drop→ dropIdx = indexOf % 36  (compared to difficulty threshold)
     #
     # Stat table (typeIdx * 3 + rarityBucket):
     #   [weapon:  5,10,20]  [armor:  10,20,30]  [hppotion:  20,40,999]
-    #   [manapotion: 2,3,5] [shield: 10,15,25]
+    #   [manapotion: 2,3,5] [shield: 10,15,25]  [helmet: 5,10,15]
+    #   [pants: 5,10,15]    [boots: 20,40,60]
     - id: lootCR
       includeWhen:
         - ${schema.spec.hp == 0}
@@ -72,10 +73,10 @@ spec:
           # to decide whether to add to inventory.
           itemType: >-
             ${
-              ['weapon','armor','hppotion','manapotion','shield'][
+              ['weapon','armor','hppotion','manapotion','shield','helmet','pants','boots'][
                 int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(
                   random.seededString(1, schema.spec.dungeonName + '-m' + string(schema.spec.index) + '-typ')
-                ) % 5)
+                ) % 8)
               ]
             }
           rarity: >-
@@ -91,10 +92,10 @@ spec:
             }
           stat: >-
             ${
-              [5,10,20, 10,20,30, 20,40,999, 2,3,5, 10,15,25][
+              [5,10,20, 10,20,30, 20,40,999, 2,3,5, 10,15,25, 5,10,15, 5,10,15, 20,40,60][
                 int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(
                   random.seededString(1, schema.spec.dungeonName + '-m' + string(schema.spec.index) + '-typ')
-                ) % 5) * 3 + (
+                ) % 8) * 3 + (
                   int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(
                     random.seededString(1, schema.spec.dungeonName + '-m' + string(schema.spec.index) + '-rar')
                   ) % 36) < 22 ? 0 :
