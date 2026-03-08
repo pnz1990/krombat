@@ -470,14 +470,18 @@ function FlyingBat({ startX, startY, endX, endY, dur, onDone }: { startX: number
   const startTime = useRef(Date.now())
 
   useEffect(() => {
-    const anim = setInterval(() => setFrame(f => (f % 3) + 1), 150)
-    const move = setInterval(() => {
+    let tick = 0
+    const id = setInterval(() => {
+      // Update position every tick (50ms)
       const elapsed = (Date.now() - startTime.current) / 1000
       const t = Math.min(elapsed / dur, 1)
       setPos({ x: startX + (endX - startX) * t, y: startY + (endY - startY) * t + Math.sin(t * Math.PI * 4) * 5 })
-      if (t >= 1) onDone()
+      if (t >= 1) { onDone(); return }
+      // Update animation frame every 3 ticks (150ms)
+      tick++
+      if (tick % 3 === 0) setFrame(f => (f % 3) + 1)
     }, 50)
-    return () => { clearInterval(anim); clearInterval(move) }
+    return () => clearInterval(id)
   }, [])
 
   return (
