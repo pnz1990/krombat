@@ -855,18 +855,34 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
   const autoTriggeredRef = useRef('')
   const [dismissedEngineWarning, setDismissedEngineWarning] = useState('')
 
-  // Derive kro reconciliation error from status.conditions
+  // Derive kro reconciliation error from status.conditions.
+  // Suppressed for the first 30s after creation (transient reconcile race on fresh dungeons).
+  // Known transient messages are mapped to friendly text instead of raw kro internals.
   const engineWarning = (() => {
+    const ageMs = cr.metadata.creationTimestamp
+      ? Date.now() - new Date(cr.metadata.creationTimestamp).getTime()
+      : Infinity
+    if (ageMs < 30000) return null
+
     const conditions = (status as any)?.conditions as Array<{ type: string; status: string; message?: string; reason?: string }> | undefined
     if (!conditions?.length) return null
-    // Prefer explicit Error-type condition
     const errCond = conditions.find(c => c.type === 'Error' && c.message)
-    if (errCond) return errCond.message!
-    // Fall back to any condition with status=False and a message
     const falseCond = conditions.find(c => c.status === 'False' && c.message)
-    if (falseCond) return falseCond.message!
-    return null
+    const raw = errCond?.message ?? falseCond?.message ?? null
+    if (!raw) return null
+
+    // Map known transient kro messages to plain English
+    if (raw.includes('cluster mutated') || raw.includes('reconciliation failed'))
+      return 'Game engine is syncing — actions may be delayed a few seconds.'
+    if (raw.includes('NotReady') || raw.includes('not ready'))
+      return 'Dungeon is still loading, please wait…'
+    return raw
   })()
+
+  // Auto-clear dismissal when the warning resolves so future real errors can show
+  useEffect(() => {
+    if (!engineWarning) setDismissedEngineWarning('')
+  }, [engineWarning])
 
   // Auto-open treasure and unlock door after boss kill (room 1 only)
   useEffect(() => {
@@ -1085,7 +1101,7 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
                   style={{ top: '40%', left: '50%' }}
                   role={bossState === 'ready' && !gameOver && !attackPhase ? 'button' : undefined}
                   tabIndex={bossState === 'ready' && !gameOver && !attackPhase ? 0 : undefined}
-                  aria-label={`Boss · HP: ${spec.bossHP}/${maxBossHP}${bossState === 'defeated' ? ' (defeated)' : bossState === 'pending' ? ' (locked)' : ''}`}
+                  aria-label={`Boss · HP: ${spec.bossHP}/${maxBossHP}${bossState === 'defeated' ? ' (defeated)' : ''}`}
                   onKeyDown={bossState === 'ready' && !gameOver && !attackPhase ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onAttack(bossName, 0) } } : undefined}>
                   {floatingDmg?.target?.includes('boss') && <div className="floating-dmg" style={{ color: '#e94560' }}>{floatingDmg.amount}</div>}
                   <Sprite spriteType={(spec.currentRoom || 1) === 2 ? 'bat-boss' : 'dragon'} action={bAction} size={144} />

@@ -15,7 +15,7 @@ export interface KroCondition {
 }
 
 export interface DungeonCR {
-  metadata: { name: string; namespace: string }
+  metadata: { name: string; namespace: string; creationTimestamp?: string }
   spec: {
     monsters: number; difficulty: string
     monsterHP: number[]; bossHP: number; heroHP: number
