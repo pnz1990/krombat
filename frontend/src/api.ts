@@ -77,18 +77,12 @@ export class ApiError extends Error {
 const VALID_RESOURCE_KINDS = ['dungeon', 'hero', 'herostate', 'boss', 'bossstate', 'namespace', 'gameconfig'] as const
 export type ResourceKind = typeof VALID_RESOURCE_KINDS[number]
 
-/** Restrict to safe path chars (alphanumeric + hyphen/dot) to prevent path traversal */
-function safePath(s: string): string { return s.replace(/[^a-zA-Z0-9\-_.]/g, '') }
+/** Sanitize Kubernetes resource name/namespace to safe path chars */
+function safePath(s: string): string { return s.replace(/[^a-zA-Z0-9\-_.]/g, '').slice(0, 253) }
 
 export async function getDungeonResource(ns: string, name: string, kind: ResourceKind): Promise<any> {
-  // This fetches from the same origin (/api/v1) — not an SSRF vector.
-  // ns and name are sanitized by safePath(); kind is a closed enum.
-  // lgtm[js/server-side-unvalidated-url-redirection]
-  const safeNs = safePath(ns)
-  const safeName = safePath(name)
-  const url = new URL(`/api/v1/dungeons/${safeNs}/${safeName}/resources`, window.location.origin)
-  url.searchParams.set('kind', kind)
-  const r = await fetch(url.toString())
+  // Same-origin call to /api/v1 only. ns/name are K8s identifiers, sanitized.
+  const r = await fetch(`${BASE}/dungeons/${safePath(ns)}/${safePath(name)}/resources?kind=${kind}`)
   if (!r.ok) return null
   return r.json()
 }
