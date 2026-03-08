@@ -33,8 +33,11 @@ spec:
             periodSeconds: 10
           resources:
             requests:
-              cpu: "50m"
-              memory: "64Mi"
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
 ---
 apiVersion: v1
 kind: Service

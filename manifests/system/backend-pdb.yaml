@@ -1,0 +1,10 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: rpg-backend-pdb
+  namespace: rpg-system
+spec:
+  minAvailable: 0
+  selector:
+    matchLabels:
+      app: rpg-backend
