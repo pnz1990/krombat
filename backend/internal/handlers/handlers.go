@@ -400,6 +400,8 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 	helmetBonus := getInt(spec, "helmetBonus")
 	pantsBonus := getInt(spec, "pantsBonus")
 	bootsBonus := getInt(spec, "bootsBonus")
+	ringBonus := getInt(spec, "ringBonus")
+	amuletBonus := getInt(spec, "amuletBonus")
 	poisonTurns := getInt(spec, "poisonTurns")
 	burnTurns := getInt(spec, "burnTurns")
 	stunTurns := getInt(spec, "stunTurns")
@@ -624,6 +626,19 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 		}
 	}
 
+	// Amulet power boost: multiply hero damage output
+	if amuletBonus > 0 {
+		effectiveDamage = effectiveDamage * (100 + amuletBonus) / 100
+		classNote += fmt.Sprintf(" [+%d%% amulet]", amuletBonus)
+	}
+
+	// Ring regen: restore HP at start of round (before enemy hits)
+	if ringBonus > 0 {
+		maxHP := classMaxHP(heroClass)
+		heroHP = min64(heroHP+ringBonus, maxHP)
+		classNote += fmt.Sprintf(" [+%d regen]", ringBonus)
+	}
+
 	// Stun zeroes damage
 	if isStunned {
 		effectiveDamage = 0
@@ -642,6 +657,8 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 		"attackSeq":        newSeq,
 		"lastLootDrop":     "",
 		"heroMana":         heroMana,
+		"ringBonus":        ringBonus,
+		"amuletBonus":      amuletBonus,
 	}
 
 	lootDrop := ""
@@ -1110,6 +1127,24 @@ func (h *Handler) processAction(ctx context.Context, ns, name, action string, cl
 		case "boots-epic":
 			patchSpec["bootsBonus"] = int64(60)
 			patchSpec["lastHeroAction"] = "Equipped boots-epic! +60% status resist"
+		case "ring-common":
+			patchSpec["ringBonus"] = int64(5)
+			patchSpec["lastHeroAction"] = "Equipped ring-common! +5 HP regen per round"
+		case "ring-rare":
+			patchSpec["ringBonus"] = int64(8)
+			patchSpec["lastHeroAction"] = "Equipped ring-rare! +8 HP regen per round"
+		case "ring-epic":
+			patchSpec["ringBonus"] = int64(12)
+			patchSpec["lastHeroAction"] = "Equipped ring-epic! +12 HP regen per round"
+		case "amulet-common":
+			patchSpec["amuletBonus"] = int64(10)
+			patchSpec["lastHeroAction"] = "Equipped amulet-common! +10% damage boost"
+		case "amulet-rare":
+			patchSpec["amuletBonus"] = int64(20)
+			patchSpec["lastHeroAction"] = "Equipped amulet-rare! +20% damage boost"
+		case "amulet-epic":
+			patchSpec["amuletBonus"] = int64(30)
+			patchSpec["lastHeroAction"] = "Equipped amulet-epic! +30% damage boost"
 		default:
 			writeError(w, "cannot equip: "+item, http.StatusBadRequest)
 			return fmt.Errorf("cannot equip item")
@@ -1366,8 +1401,8 @@ func computeMonsterLoot(dungeonName string, idx int, difficulty string) (bool, s
 	} else if rarRoll >= 22 {
 		rarity = "rare"
 	}
-	typRoll := int(seededRoll(seed+"-typ", 8))
-	types := []string{"weapon", "armor", "hppotion", "manapotion", "shield", "helmet", "pants", "boots"}
+	typRoll := int(seededRoll(seed+"-typ", 10))
+	types := []string{"weapon", "armor", "hppotion", "manapotion", "shield", "helmet", "pants", "boots", "ring", "amulet"}
 	return true, types[typRoll] + "-" + rarity
 }
 
@@ -1378,8 +1413,8 @@ func computeBossLoot(dungeonName string) string {
 	if rarRoll >= 18 {
 		rarity = "epic"
 	}
-	typRoll := int(seededRoll(dungeonName+"-boss-typ", 7))
-	types := []string{"weapon", "armor", "hppotion", "shield", "helmet", "pants", "boots"}
+	typRoll := int(seededRoll(dungeonName+"-boss-typ", 9))
+	types := []string{"weapon", "armor", "hppotion", "shield", "helmet", "pants", "boots", "ring", "amulet"}
 	return types[typRoll] + "-" + rarity
 }
 

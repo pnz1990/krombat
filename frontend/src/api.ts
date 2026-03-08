@@ -26,6 +26,7 @@ export interface DungeonCR {
     modifier?: string; inventory?: string
     weaponBonus?: number; weaponUses?: number; armorBonus?: number; shieldBonus?: number
     helmetBonus?: number; pantsBonus?: number; bootsBonus?: number
+    ringBonus?: number; amuletBonus?: number
     poisonTurns?: number; burnTurns?: number; stunTurns?: number
     treasureOpened?: number
     currentRoom?: number; doorUnlocked?: number; room2BossHP?: number

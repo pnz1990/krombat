@@ -28,6 +28,8 @@ spec:
       helmetBonus: integer | default=0
       pantsBonus: integer | default=0
       bootsBonus: integer | default=0
+      ringBonus: integer | default=0
+      amuletBonus: integer | default=0
       poisonTurns: integer | default=0
       burnTurns: integer | default=0
       stunTurns: integer | default=0
