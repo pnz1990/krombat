@@ -248,6 +248,64 @@ LOOT_DROP_FIELD=$(kubectl get dungeon "$LOOT_TEST" -n default -o jsonpath='{.spe
 kubectl delete dungeon "$LOOT_TEST" --ignore-not-found --wait=false &>/dev/null
 [ -n "$PF_LOOT_PID" ] && kill "$PF_LOOT_PID" 2>/dev/null
 
+# --- loot-graph includeWhen drop guard (direct Monster CR) ---
+# Guard: loot-graph Secret must NOT be created for a living monster (hp > 0),
+# and MUST be created once hp is patched to 0. Tests the kro includeWhen gate directly,
+# bypassing the backend API, to verify the RGD-level invariant.
+echo "=== loot-graph includeWhen drop guard (direct Monster CR)"
+DROP_GUARD_NAME="loot-drop-guard-$(date +%s)"
+DROP_GUARD_NS="default"
+
+# Apply a Monster CR with hp=10 (alive) directly — no dungeon needed for this RGD test
+kubectl apply -f - &>/dev/null <<EOF
+apiVersion: game.k8s.example/v1alpha1
+kind: Monster
+metadata:
+  name: ${DROP_GUARD_NAME}
+  namespace: ${DROP_GUARD_NS}
+spec:
+  dungeonName: ${DROP_GUARD_NAME}
+  index: 0
+  hp: 10
+  difficulty: easy
+EOF
+
+sleep 8  # wait for kro to reconcile
+
+# Assert: no Loot CR while monster is alive (hp > 0)
+LOOT_CR_ALIVE=$(kubectl get loot "${DROP_GUARD_NAME}-monster-0-loot" -n "$DROP_GUARD_NS" --ignore-not-found 2>/dev/null || true)
+[ -z "$LOOT_CR_ALIVE" ] \
+  && pass "loot-graph: no Loot CR created for living monster (hp > 0)" \
+  || fail "loot-graph: Loot CR created for living monster (hp > 0) — includeWhen guard broken"
+
+# Assert: no loot Secret while monster is alive
+LOOT_SEC_ALIVE=$(kubectl get secret "${DROP_GUARD_NAME}-monster-0-loot" -n "$DROP_GUARD_NS" --ignore-not-found 2>/dev/null || true)
+[ -z "$LOOT_SEC_ALIVE" ] \
+  && pass "loot-graph: no loot Secret created for living monster (hp > 0)" \
+  || fail "loot-graph: loot Secret created for living monster (hp > 0) — includeWhen guard broken"
+
+# Patch hp to 0 (kill transition) directly on the Monster CR
+kubectl patch monster "${DROP_GUARD_NAME}" -n "$DROP_GUARD_NS" \
+  --type=merge -p '{"spec":{"hp":0}}' &>/dev/null
+
+sleep 8  # wait for kro to reconcile loot-graph
+
+# Assert: Loot CR now exists (hp == 0 satisfies includeWhen)
+LOOT_CR_DEAD=$(kubectl get loot "${DROP_GUARD_NAME}-monster-0-loot" -n "$DROP_GUARD_NS" --ignore-not-found 2>/dev/null || true)
+[ -n "$LOOT_CR_DEAD" ] \
+  && pass "loot-graph: Loot CR created after monster killed (hp == 0)" \
+  || fail "loot-graph: Loot CR missing after monster killed (hp == 0) — includeWhen not firing"
+
+# Assert: loot Secret now exists (loot-graph reconciled from the Loot CR)
+LOOT_SEC_DEAD=$(kubectl get secret "${DROP_GUARD_NAME}-monster-0-loot" -n "$DROP_GUARD_NS" --ignore-not-found 2>/dev/null || true)
+[ -n "$LOOT_SEC_DEAD" ] \
+  && pass "loot-graph: loot Secret created after monster killed (hp == 0)" \
+  || fail "loot-graph: loot Secret missing after monster killed (hp == 0) — loot-graph not reconciling"
+
+# Cleanup
+kubectl delete monster "${DROP_GUARD_NAME}" -n "$DROP_GUARD_NS" --ignore-not-found --wait=false &>/dev/null
+kubectl delete loot "${DROP_GUARD_NAME}-monster-0-loot" -n "$DROP_GUARD_NS" --ignore-not-found --wait=false &>/dev/null
+
 # --- Combat/Action separation guardrails ---
 echo "=== Combat/Action separation"
 # After #110: attack-graph and action-graph are no-op stubs (resources: []).
