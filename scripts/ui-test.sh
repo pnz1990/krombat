@@ -84,7 +84,7 @@ if [ ! -d "$HOME/.cache/ms-playwright" ] && [ ! -d "$HOME/Library/Caches/ms-play
 fi
 
 # Run tests
-if node tests/e2e/smoke-test.js; then
+if node tests/e2e/smoke-test.js && node tests/e2e/run-journeys.js; then
   echo -e "\n${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
   echo -e "${GREEN}  ✅ All tests passed!${NC}"
   echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"

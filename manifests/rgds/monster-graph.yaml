@@ -33,3 +33,105 @@ spec:
         data:
           entityState: "${schema.spec.hp > 0 ? 'alive' : 'dead'}"
           hp: "${string(schema.spec.hp)}"
+
+    # Loot CR — pre-rolled at spawn, revealed only when monster is killed (hp == 0)
+    # Seed: dungeonName + index — unique per dungeon run (name includes timestamp)
+    - id: lootCR
+      includeWhen:
+        - ${schema.spec.hp == 0}
+      template:
+        apiVersion: game.k8s.example/v1alpha1
+        kind: Loot
+        metadata:
+          name: "${schema.spec.dungeonName + '-monster-' + string(schema.spec.index) + '-loot'}"
+          namespace: ${schema.metadata.namespace}
+          labels:
+            game.k8s.example/dungeon: ${schema.spec.dungeonName}
+            game.k8s.example/entity: loot
+            game.k8s.example/source: monster
+        spec:
+          dungeonName: ${schema.spec.dungeonName}
+          # Drop check: alphabet index of seeded char, scaled 0-35. Compare to drop threshold.
+          # easy=60% → threshold 22/36, normal=45% → 16/36, hard=35% → 13/36
+          # We only actually set itemType/rarity/stat; the dungeon-graph reads lootCR.spec.dropped
+          # to decide whether to add to inventory.
+          itemType: >-
+            ${
+              ['weapon','armor','hppotion','manapotion','shield'][
+                int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(
+                  random.seededString(1, schema.spec.dungeonName + '-m' + string(schema.spec.index) + '-typ')
+                ) % 5)
+              ]
+            }
+          rarity: >-
+            ${
+              int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(
+                random.seededString(1, schema.spec.dungeonName + '-m' + string(schema.spec.index) + '-rar')
+              ) % 36) < 22 ? 'common' :
+              int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(
+                random.seededString(1, schema.spec.dungeonName + '-m' + string(schema.spec.index) + '-rar')
+              ) % 36) < 33 ? 'rare' : 'epic'
+            }
+          stat: >-
+            ${
+              (
+                int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(
+                  random.seededString(1, schema.spec.dungeonName + '-m' + string(schema.spec.index) + '-typ')
+                ) % 5) == 0 ? (
+                  int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(
+                    random.seededString(1, schema.spec.dungeonName + '-m' + string(schema.spec.index) + '-rar')
+                  ) % 36) < 22 ? 5 :
+                  int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(
+                    random.seededString(1, schema.spec.dungeonName + '-m' + string(schema.spec.index) + '-rar')
+                  ) % 36) < 33 ? 10 : 20
+                ) :
+                int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(
+                  random.seededString(1, schema.spec.dungeonName + '-m' + string(schema.spec.index) + '-typ')
+                ) % 5) == 1 ? (
+                  int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(
+                    random.seededString(1, schema.spec.dungeonName + '-m' + string(schema.spec.index) + '-rar')
+                  ) % 36) < 22 ? 10 :
+                  int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(
+                    random.seededString(1, schema.spec.dungeonName + '-m' + string(schema.spec.index) + '-rar')
+                  ) % 36) < 33 ? 20 : 30
+                ) :
+                int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(
+                  random.seededString(1, schema.spec.dungeonName + '-m' + string(schema.spec.index) + '-typ')
+                ) % 5) == 2 ? (
+                  int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(
+                    random.seededString(1, schema.spec.dungeonName + '-m' + string(schema.spec.index) + '-rar')
+                  ) % 36) < 22 ? 20 :
+                  int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(
+                    random.seededString(1, schema.spec.dungeonName + '-m' + string(schema.spec.index) + '-rar')
+                  ) % 36) < 33 ? 40 : 999
+                ) :
+                int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(
+                  random.seededString(1, schema.spec.dungeonName + '-m' + string(schema.spec.index) + '-typ')
+                ) % 5) == 3 ? (
+                  int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(
+                    random.seededString(1, schema.spec.dungeonName + '-m' + string(schema.spec.index) + '-rar')
+                  ) % 36) < 22 ? 2 :
+                  int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(
+                    random.seededString(1, schema.spec.dungeonName + '-m' + string(schema.spec.index) + '-rar')
+                  ) % 36) < 33 ? 3 : 5
+                ) : (
+                  int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(
+                    random.seededString(1, schema.spec.dungeonName + '-m' + string(schema.spec.index) + '-rar')
+                  ) % 36) < 22 ? 10 :
+                  int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(
+                    random.seededString(1, schema.spec.dungeonName + '-m' + string(schema.spec.index) + '-rar')
+                  ) % 36) < 33 ? 15 : 25
+                )
+              )
+            }
+          # dropped: true if drop roll passes threshold
+          # alphabet index 0-35, thresholds: easy=22/36≈61%, normal=16/36≈44%, hard=13/36≈36%
+          dropped: >-
+            ${
+              int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(
+                random.seededString(1, schema.spec.dungeonName + '-m' + string(schema.spec.index) + '-drop')
+              ) % 36) < (
+                schema.spec.difficulty == 'easy' ? 22 :
+                schema.spec.difficulty == 'hard' ? 13 : 16
+              )
+            }

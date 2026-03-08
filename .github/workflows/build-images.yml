@@ -53,23 +53,6 @@ jobs:
           docker push $REGISTRY/krombat/frontend:${{ github.sha }}
           docker push $REGISTRY/krombat/frontend:latest
 
-  build-job-runner:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - run: docker build -t krombat/job-runner:test images/job-runner/
-      - if: github.event_name == 'push'
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-      - if: github.event_name == 'push'
-        uses: aws-actions/amazon-ecr-login@v2
-      - if: github.event_name == 'push'
-        run: |
-          docker tag krombat/job-runner:test $REGISTRY/krombat/job-runner:latest
-          docker push $REGISTRY/krombat/job-runner:latest
-
   rollout:
     if: github.event_name == 'push'
     needs: [build-backend, build-frontend]
