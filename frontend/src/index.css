@@ -1410,6 +1410,56 @@ body {
   opacity: 0.8;
 }
 
+/* ─── kro Inspector ───────────────────────────────────────────────────────── */
+
+.kro-inspector {
+  margin-top: 8px;
+  border: 1px solid #1e3a5f;
+  background: #060e18;
+}
+.kro-inspector-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: #0a1420;
+  border-bottom: 1px solid #1e3a5f;
+  flex-wrap: wrap;
+}
+.kro-inspector-title {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 6px;
+  color: #00d4ff;
+}
+.kro-inspector-kubectl {
+  font-family: 'Courier New', monospace;
+  font-size: 7px;
+  color: #2ecc71;
+  background: #0a1420;
+  padding: 2px 4px;
+}
+.kro-inspector-body {
+  max-height: 200px;
+  overflow-y: auto;
+  padding: 6px 8px;
+}
+.kro-inspector-yaml {
+  font-family: 'Courier New', monospace;
+  font-size: 8px;
+  color: #a8d8a8;
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin: 0;
+  line-height: 1.5;
+}
+.kro-inspector-loading,
+.kro-inspector-empty {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 7px;
+  color: #555;
+  padding: 8px 0;
+}
+
 /* ─── CEL Trace (combat modal) ───────────────────────────────────────────── */
 
 .cel-trace {

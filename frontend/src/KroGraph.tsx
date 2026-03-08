@@ -20,8 +20,8 @@
  *       └── [gameConfig CM]
  */
 
-import { useState, useEffect, useRef } from 'react'
-import type { DungeonCR } from './api'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import type { DungeonCR, ResourceKind } from './api'
 import type { KroConceptId } from './KroTeach'
 
 // ─── Node types ──────────────────────────────────────────────────────────────
@@ -479,9 +479,10 @@ interface KroGraphProps {
   cr: DungeonCR
   reconciling: boolean
   onNodeClick: (conceptId: KroConceptId) => void
+  onNodeSelect?: (nodeId: string, kind: string) => void
 }
 
-export function KroGraph({ cr, reconciling, onNodeClick }: KroGraphProps) {
+export function KroGraph({ cr, reconciling, onNodeClick, onNodeSelect }: KroGraphProps) {
   const { nodes, edges } = buildGraph(cr, reconciling)
   const positions = layoutGraph(nodes, edges)
   const nodeMap = new Map(nodes.map(n => [n.id, n]))
@@ -595,7 +596,11 @@ export function KroGraph({ cr, reconciling, onNodeClick }: KroGraphProps) {
               key={node.id}
               transform={`translate(${pos.x},${pos.y})`}
               style={{ cursor: canClick ? 'pointer' : 'default' }}
-              onClick={() => canClick && node.concept && onNodeClick(node.concept)}
+              onClick={() => {
+                if (!canClick) return
+                if (node.concept) onNodeClick(node.concept)
+                onNodeSelect?.(node.id, node.kind)
+              }}
               onMouseEnter={() => setHovered(node.id)}
               onMouseLeave={() => setHovered(null)}
               role={canClick ? 'button' : undefined}
@@ -710,6 +715,34 @@ export function KroGraph({ cr, reconciling, onNodeClick }: KroGraphProps) {
 
 // ─── KroGraphPanel — collapsible wrapper ─────────────────────────────────────
 
+// jsonToYaml — simple JSON→YAML serializer (no external dep)
+function jsonToYaml(obj: any, indent = 0): string {
+  const pad = '  '.repeat(indent)
+  if (obj === null || obj === undefined) return 'null'
+  if (typeof obj === 'boolean' || typeof obj === 'number') return String(obj)
+  if (typeof obj === 'string') {
+    if (obj.includes('\n') || obj.includes('"')) return `|\n${pad}  ${obj.replace(/\n/g, `\n${pad}  `)}`
+    return obj
+  }
+  if (Array.isArray(obj)) {
+    if (obj.length === 0) return '[]'
+    return obj.map(v => `\n${pad}- ${jsonToYaml(v, indent + 1)}`).join('')
+  }
+  const keys = Object.keys(obj).filter(k => k !== 'managedFields')
+  if (keys.length === 0) return '{}'
+  return keys.map(k => {
+    const v = obj[k]
+    const vStr = jsonToYaml(v, indent + 1)
+    if (typeof v === 'object' && v !== null && !Array.isArray(v) && Object.keys(v).length > 0) {
+      return `\n${pad}${k}:\n${pad}  ${vStr.trimStart()}`
+    }
+    if (Array.isArray(v) && v.length > 0) {
+      return `\n${pad}${k}:${vStr}`
+    }
+    return `\n${pad}${k}: ${vStr}`
+  }).join('')
+}
+
 interface KroGraphPanelProps {
   cr: DungeonCR
   prevCr?: DungeonCR | null
@@ -797,6 +830,41 @@ export function KroGraphPanel({ cr, prevCr, reconciling, onViewConcept }: KroGra
   const [diff, setDiff] = useState<DiffEntry[]>([])
   const [diffVisible, setDiffVisible] = useState(false)
   const diffTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [inspectorNode, setInspectorNode] = useState<{id: string, kind: string, label: string} | null>(null)
+  const [inspectorData, setInspectorData] = useState<any>(null)
+  const [inspectorLoading, setInspectorLoading] = useState(false)
+
+  const handleNodeSelect = useCallback(async (nodeId: string, nodeKind: string) => {
+    const kindMap: Record<string, ResourceKind> = {
+      'dungeon': 'dungeon',
+      'hero': 'hero',
+      'hero-state': 'herostate',
+      'boss': 'boss',
+      'boss-state': 'bossstate',
+      'namespace': 'namespace',
+      'game-config': 'gameconfig',
+    }
+    const kind = kindMap[nodeId]
+    if (!kind) return
+
+    const ns = cr.metadata.namespace
+    const name = cr.metadata.name
+    const { nodes } = buildGraph(cr, false)
+    const node = nodes.find(n => n.id === nodeId)
+    setInspectorNode({ id: nodeId, kind: nodeKind, label: node?.label ?? nodeId })
+    setInspectorLoading(true)
+    setInspectorData(null)
+
+    try {
+      const { getDungeonResource } = await import('./api')
+      const data = await getDungeonResource(ns, name, kind)
+      setInspectorData(data)
+    } catch {
+      setInspectorData(null)
+    } finally {
+      setInspectorLoading(false)
+    }
+  }, [cr])
 
   useEffect(() => {
     const entries = computeRGDDiff(prevCr, cr)
@@ -834,7 +902,7 @@ export function KroGraphPanel({ cr, prevCr, reconciling, onViewConcept }: KroGra
             ))}
           </div>
           <div className="kro-graph-scroll">
-            <KroGraph cr={cr} reconciling={reconciling} onNodeClick={onViewConcept} />
+            <KroGraph cr={cr} reconciling={reconciling} onNodeClick={onViewConcept} onNodeSelect={handleNodeSelect} />
           </div>
 
           {/* RGD Diff Viewer — transient before→after on every reconcile */}
@@ -865,6 +933,29 @@ export function KroGraphPanel({ cr, prevCr, reconciling, onViewConcept }: KroGra
                     )}
                   </div>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {inspectorNode && (
+            <div className="kro-inspector">
+              <div className="kro-inspector-header">
+                <span className="kro-insight-badge" style={{fontSize:6}}>kro</span>
+                <span className="kro-inspector-title">Inspector: {inspectorNode.label}</span>
+                <code className="kro-inspector-kubectl">
+                  kubectl get {inspectorNode.kind.toLowerCase().replace(' cr','')} {cr.metadata.name} -n {cr.metadata.namespace} -o yaml
+                </code>
+                <button
+                  onClick={() => { setInspectorNode(null); setInspectorData(null) }}
+                  style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#555', cursor: 'pointer', fontSize: 10 }}
+                >✕</button>
+              </div>
+              <div className="kro-inspector-body">
+                {inspectorLoading && <span className="kro-inspector-loading">fetching from cluster...</span>}
+                {!inspectorLoading && !inspectorData && <span className="kro-inspector-empty">resource not available</span>}
+                {!inspectorLoading && inspectorData && (
+                  <pre className="kro-inspector-yaml">{jsonToYaml(inspectorData)}</pre>
+                )}
               </div>
             </div>
           )}
