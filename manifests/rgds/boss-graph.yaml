@@ -33,3 +33,69 @@ spec:
         data:
           entityState: "${schema.spec.hp > 0 ? (schema.spec.monstersAlive == 0 ? 'ready' : 'pending') : 'defeated'}"
           hp: "${string(schema.spec.hp)}"
+
+    # Loot CR — boss always drops on kill (hp == 0), always rare or epic
+    - id: lootCR
+      includeWhen:
+        - ${schema.spec.hp == 0}
+      template:
+        apiVersion: game.k8s.example/v1alpha1
+        kind: Loot
+        metadata:
+          name: "${schema.spec.dungeonName + '-boss-loot'}"
+          namespace: ${schema.metadata.namespace}
+          labels:
+            game.k8s.example/dungeon: ${schema.spec.dungeonName}
+            game.k8s.example/entity: loot
+            game.k8s.example/source: boss
+        spec:
+          dungeonName: ${schema.spec.dungeonName}
+          # Boss always drops (dropped=true)
+          dropped: true
+          # Rarity: 50% rare, 50% epic (alphabet index 0-35, <18 = rare)
+          rarity: >-
+            ${
+              int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(
+                random.seededString(1, schema.spec.dungeonName + '-boss-rar')
+              ) % 36) < 18 ? 'rare' : 'epic'
+            }
+          # Type: weapon/armor/hppotion/shield (4 types, no manapotion for boss)
+          itemType: >-
+            ${
+              ['weapon','armor','hppotion','shield'][
+                int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(
+                  random.seededString(1, schema.spec.dungeonName + '-boss-typ')
+                ) % 4)
+              ]
+            }
+          # Stat based on itemType and rarity
+          stat: >-
+            ${
+              (
+                int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(
+                  random.seededString(1, schema.spec.dungeonName + '-boss-typ')
+                ) % 4) == 0 ? (
+                  int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(
+                    random.seededString(1, schema.spec.dungeonName + '-boss-rar')
+                  ) % 36) < 18 ? 10 : 20
+                ) :
+                int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(
+                  random.seededString(1, schema.spec.dungeonName + '-boss-typ')
+                ) % 4) == 1 ? (
+                  int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(
+                    random.seededString(1, schema.spec.dungeonName + '-boss-rar')
+                  ) % 36) < 18 ? 20 : 30
+                ) :
+                int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(
+                  random.seededString(1, schema.spec.dungeonName + '-boss-typ')
+                ) % 4) == 2 ? (
+                  int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(
+                    random.seededString(1, schema.spec.dungeonName + '-boss-rar')
+                  ) % 36) < 18 ? 40 : 999
+                ) : (
+                  int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(
+                    random.seededString(1, schema.spec.dungeonName + '-boss-rar')
+                  ) % 36) < 18 ? 15 : 25
+                )
+              )
+            }

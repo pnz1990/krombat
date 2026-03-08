@@ -38,6 +38,7 @@ spec:
       lastCombatLog: string | default=""
       lastLootDrop: string | default=""
       attackSeq: integer | default=0
+      actionSeq: integer | default=0
     status:
       livingMonsters: "${size(monsterCRs.filter(m, m.status.?entityState.orValue('alive') == 'alive'))}"
       bossState: "${bossCR.status.?entityState.orValue('pending')}"
@@ -65,7 +66,7 @@ spec:
           labels:
             game.k8s.example/dungeon: ${schema.metadata.name}
 
-    # --- Hero CR (depends on ns via namespace reference) ---
+    # --- Hero CR ---
     - id: heroCR
       template:
         apiVersion: game.k8s.example/v1alpha1
@@ -80,7 +81,7 @@ spec:
           heroClass: ${schema.spec.heroClass}
           mana: ${schema.spec.heroMana}
 
-    # --- Monster CRs (depends on ns via namespace reference) ---
+    # --- Monster CRs ---
     - id: monsterCRs
       forEach:
         - idx: ${lists.range(size(schema.spec.monsterHP))}
@@ -96,7 +97,7 @@ spec:
           hp: ${schema.spec.monsterHP[idx]}
           difficulty: ${schema.spec.difficulty}
 
-    # --- Boss CR (depends on ns via namespace reference) ---
+    # --- Boss CR ---
     - id: bossCR
       template:
         apiVersion: game.k8s.example/v1alpha1
@@ -110,7 +111,7 @@ spec:
           difficulty: ${schema.spec.difficulty}
           monstersAlive: "${size(schema.spec.monsterHP.filter(hp, hp > 0))}"
 
-    # --- Treasure CR (depends on ns via namespace reference) ---
+    # --- Treasure CR ---
     - id: treasureCR
       template:
         apiVersion: game.k8s.example/v1alpha1
@@ -122,7 +123,7 @@ spec:
           dungeonName: ${schema.metadata.name}
           opened: ${schema.spec.treasureOpened}
 
-    # --- Modifier CR (conditional: only created when modifier is not "none") ---
+    # --- Modifier CR (conditional) ---
     - id: modifierCR
       includeWhen:
         - ${schema.spec.modifier != "none"}
@@ -136,7 +137,7 @@ spec:
           dungeonName: ${schema.metadata.name}
           modifierType: ${schema.spec.modifier}
 
-    # --- Game config (difficulty-derived values) ---
+    # --- Game config ---
     - id: gameConfig
       template:
         apiVersion: v1
@@ -151,4 +152,146 @@ spec:
           monsterCounter: "${schema.spec.difficulty == 'easy' ? '1' : schema.spec.difficulty == 'hard' ? '3' : '2'}"
           bossCounter: "${schema.spec.difficulty == 'easy' ? '3' : schema.spec.difficulty == 'hard' ? '8' : '5'}"
 
-    # ResourceQuota and NetworkPolicy removed for performance (issue #86)
+    # =========================================================================
+    # COMBAT ENGINE — CEL-computed ConfigMap (replaces attack-graph Job)
+    #
+    # The backend creates/overwrites the Attack CR with a fixed name
+    # (<dungeonName>-latest-attack) on every player combat action.
+    # kro watches this externalRef and re-reconciles dungeon-graph.
+    # CEL here computes the full combat result into a ConfigMap.
+    # The backend Go controller reads this ConfigMap and patches the Dungeon CR.
+    # No Job, no bash, no kubectl from within the cluster.
+    # =========================================================================
+    - id: combatResult
+      template:
+        apiVersion: v1
+        kind: ConfigMap
+        metadata:
+          name: "${schema.metadata.name + '-combat-result'}"
+          namespace: ${ns.metadata.name}
+          labels:
+            game.k8s.example/dungeon: ${schema.metadata.name}
+            game.k8s.example/type: combat-result
+        data:
+          # Sequence number — backend reads this to detect a new result
+          pendingSeq: "${string(schema.spec.attackSeq)}"
+
+          # === DICE ROLL (seeded by Attack CR uid for true randomness) ===
+          # Alphabet chars map 0-35, giving 36 distinct values per char.
+          # easy: 1d20+2 (3-22), normal: 2d12+4 (6-28), hard: 3d20+5 (8-65)
+          # Boss: +1 die +3 mod on top of base
+          diceRoll: >-
+            ${
+              schema.spec.difficulty == 'easy' ? string(
+                int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(random.seededString(1, schema.spec.lastCombatLog + 'd1')) % 20) + 3
+              ) :
+              schema.spec.difficulty == 'hard' ? string(
+                int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(random.seededString(1, schema.spec.lastCombatLog + 'd1')) % 20) +
+                int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(random.seededString(1, schema.spec.lastCombatLog + 'd2')) % 20) +
+                int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(random.seededString(1, schema.spec.lastCombatLog + 'd3')) % 20) + 8
+              ) : string(
+                int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(random.seededString(1, schema.spec.lastCombatLog + 'd1')) % 12) +
+                int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(random.seededString(1, schema.spec.lastCombatLog + 'd2')) % 12) + 6
+              )
+            }
+
+    # =========================================================================
+    # ACTION ENGINE — CEL-computed ConfigMap (replaces action-graph Job)
+    #
+    # The backend creates/overwrites the Action CR with a fixed name
+    # (<dungeonName>-latest-action) on every non-combat player action.
+    # CEL computes all deterministic state transitions here.
+    # The backend Go controller reads this ConfigMap and patches the Dungeon CR.
+    # =========================================================================
+    - id: actionResult
+      template:
+        apiVersion: v1
+        kind: ConfigMap
+        metadata:
+          name: "${schema.metadata.name + '-action-result'}"
+          namespace: ${ns.metadata.name}
+          labels:
+            game.k8s.example/dungeon: ${schema.metadata.name}
+            game.k8s.example/type: action-result
+        data:
+          pendingSeq: "${string(schema.spec.actionSeq)}"
+
+          # === USE HP POTION ===
+          # new heroHP after use (clamped to class max)
+          hpAfterPotion: >-
+            ${
+              string(
+                schema.spec.heroClass == 'warrior' ? math.least(schema.spec.heroHP + 999, 200) :
+                schema.spec.heroClass == 'mage'    ? math.least(schema.spec.heroHP + 999, 120) :
+                                                     math.least(schema.spec.heroHP + 999, 150)
+              )
+            }
+          hpAfterPotionCommon: >-
+            ${
+              string(
+                schema.spec.heroClass == 'warrior' ? math.least(schema.spec.heroHP + 20, 200) :
+                schema.spec.heroClass == 'mage'    ? math.least(schema.spec.heroHP + 20, 120) :
+                                                     math.least(schema.spec.heroHP + 20, 150)
+              )
+            }
+          hpAfterPotionRare: >-
+            ${
+              string(
+                schema.spec.heroClass == 'warrior' ? math.least(schema.spec.heroHP + 40, 200) :
+                schema.spec.heroClass == 'mage'    ? math.least(schema.spec.heroHP + 40, 120) :
+                                                     math.least(schema.spec.heroHP + 40, 150)
+              )
+            }
+
+          # === MANA POTION ===
+          manaAfterCommon: "${string(math.least(schema.spec.heroMana + 2, 5))}"
+          manaAfterRare:   "${string(math.least(schema.spec.heroMana + 3, 5))}"
+          manaAfterEpic:   "${string(math.least(schema.spec.heroMana + 5, 5))}"
+
+          # === EQUIP WEAPON ===
+          weaponBonusCommon: "5"
+          weaponBonusRare:   "10"
+          weaponBonusEpic:   "20"
+          weaponUses:        "3"
+
+          # === EQUIP ARMOR ===
+          armorBonusCommon: "10"
+          armorBonusRare:   "20"
+          armorBonusEpic:   "30"
+
+          # === EQUIP SHIELD ===
+          shieldBonusCommon: "10"
+          shieldBonusRare:   "15"
+          shieldBonusEpic:   "25"
+
+          # === ROOM 2 HP ARRAYS ===
+          # Monster count preserved from current room
+          room2MonsterHPValue: >-
+            ${
+              schema.spec.difficulty == 'easy'   ? '50' :
+              schema.spec.difficulty == 'hard'   ? '120' : '80'
+            }
+          room2BossHP: >-
+            ${
+              schema.spec.difficulty == 'easy'   ? '400' :
+              schema.spec.difficulty == 'hard'   ? '1200' : '800'
+            }
+          monsterCount: "${string(size(schema.spec.monsterHP))}"
+
+          # === OPEN TREASURE guard ===
+          canOpenTreasure: >-
+            ${
+              string(schema.spec.bossHP <= 0 && size(schema.spec.monsterHP.filter(hp, hp > 0)) == 0)
+            }
+
+          # === UNLOCK DOOR guard ===
+          canUnlockDoor: "${string(schema.spec.treasureOpened == 1)}"
+
+          # === ENTER ROOM 2 guard ===
+          canEnterRoom2: "${string(schema.spec.doorUnlocked == 1)}"
+
+          # Backstab cooldown after decrement (used by all actions)
+          backstabCDAfterDecrement: >-
+            ${
+              string(schema.spec.backstabCooldown > 0 ? schema.spec.backstabCooldown - 1 : 0)
+            }

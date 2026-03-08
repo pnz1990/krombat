@@ -38,19 +38,23 @@ $DIR/backend-api.sh 2>&1
 kill $PF_BACKEND 2>/dev/null
 echo ""
 
-# 4. UI smoke tests (via port-forward)
+# 4. UI smoke + journey tests (via port-forward)
 echo "========================================="
-echo "  UI SMOKE TESTS"
+echo "  UI SMOKE + JOURNEY TESTS"
 echo "========================================="
 lsof -ti:3000 | xargs kill -9 2>/dev/null
 kubectl port-forward svc/rpg-frontend -n rpg-system 3000:3000 > /dev/null 2>&1 &
 PF_FRONTEND=$!
 sleep 3
-if command -v npx &>/dev/null && npx playwright --version &>/dev/null 2>&1; then
+if command -v node &>/dev/null && node -e "require('playwright')" 2>/dev/null; then
+  echo "--- Smoke tests ---"
   node $DIR/e2e/smoke-test.js 2>&1
+  echo ""
+  echo "--- Journey tests (parallel) ---"
+  node $DIR/e2e/run-journeys.js 2>&1
 else
   echo "  ⚠️  Playwright not installed — skipping UI tests"
-  echo "  Install: npx playwright install chromium"
+  echo "  Install: npm install && npx playwright install chromium"
 fi
 kill $PF_FRONTEND 2>/dev/null
 lsof -ti:3000 | xargs kill -9 2>/dev/null
