@@ -1185,6 +1185,30 @@ body {
   padding-bottom: 8px;
   border-bottom: 1px solid #1e3a5f;
 }
+.kro-glossary-search {
+  flex: 1;
+  background: #0a1420;
+  border: 1px solid #1e3a5f;
+  border-radius: 2px;
+  color: #ccc;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 6px;
+  padding: 5px 7px;
+  outline: none;
+}
+.kro-glossary-search:focus { border-color: #00d4ff; }
+.kro-glossary-search::placeholder { color: #333; }
+.kro-glossary-search-clear {
+  background: none;
+  border: 1px solid #333;
+  border-radius: 2px;
+  color: #888;
+  font-size: 10px;
+  cursor: pointer;
+  padding: 2px 6px;
+  line-height: 1;
+}
+.kro-glossary-search-clear:hover { color: #fff; border-color: #555; }
 .kro-glossary-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
