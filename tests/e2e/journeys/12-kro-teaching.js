@@ -33,6 +33,56 @@ async function run() {
     await page.goto(BASE_URL, { timeout: TIMEOUT });
     await page.waitForSelector('input[placeholder="my-dungeon"]', { timeout: TIMEOUT });
 
+    // ── Onboarding overlay ────────────────────────────────────────────────────
+    console.log('\n  [Onboarding overlay]');
+    // Clear onboarding flag so overlay appears
+    await page.evaluate(() => localStorage.removeItem('kroOnboardingDone'));
+    await page.reload({ waitUntil: 'networkidle', timeout: TIMEOUT });
+
+    const overlay = page.locator('.kro-onboard-overlay');
+    await overlay.waitFor({ timeout: TIMEOUT }).catch(() => {});
+    (await overlay.count() > 0) ? ok('Onboarding overlay appears on first visit') : fail('Onboarding overlay missing');
+
+    if (await overlay.count() > 0) {
+      // Slide 1 checks
+      const step = page.locator('.kro-onboard-step');
+      const stepText = await step.textContent().catch(() => '');
+      stepText.includes('1') ? ok(`Onboarding shows slide counter: "${stepText.trim()}"`) : fail(`Slide counter unexpected: "${stepText}"`);
+
+      const snippet = page.locator('.kro-onboard-snippet');
+      const snippetText = await snippet.textContent().catch(() => '');
+      snippetText.length > 10 ? ok('Onboarding slide 1 has YAML/code snippet') : fail('Onboarding slide 1 missing snippet');
+
+      // Advance to slide 2
+      const nextBtn = page.locator('button:has-text("Next →")');
+      await nextBtn.click();
+      await page.waitForTimeout(300);
+      const stepAfter = await step.textContent().catch(() => '');
+      stepAfter.includes('2') ? ok('Onboarding advances to slide 2') : fail(`Slide counter did not advance: "${stepAfter}"`);
+
+      // Back button returns to slide 1
+      const backBtn = page.locator('button:has-text("← Back")');
+      (await backBtn.count() > 0) ? ok('Back button appears on slide 2') : fail('Back button missing on slide 2');
+      await backBtn.click();
+      await page.waitForTimeout(300);
+      const stepBack = await step.textContent().catch(() => '');
+      stepBack.includes('1') ? ok('Back button returns to slide 1') : fail(`Back did not return to slide 1: "${stepBack}"`);
+
+      // Skip dismisses from any slide
+      const skipBtn = page.locator('.kro-onboard-skip');
+      (await skipBtn.count() > 0) ? ok('Skip intro button is present') : fail('Skip intro button missing');
+      await skipBtn.click();
+      await page.waitForTimeout(400);
+      (await overlay.count() === 0) ? ok('Skip dismisses onboarding overlay') : fail('Skip did not dismiss overlay');
+
+      // Create form should be visible after skip
+      const createInput = page.locator('input[placeholder="my-dungeon"]');
+      (await createInput.count() > 0) ? ok('Create form visible after skip') : fail('Create form not visible after skip');
+    }
+
+    // Restore onboarding flag so the rest of the test is not affected
+    await page.evaluate(() => localStorage.setItem('kroOnboardingDone', '1'));
+
     // ── Create dungeon ────────────────────────────────────────────────────────
     console.log('\n  [Create dungeon — verify teaching layer initialises]');
     const loaded = await createDungeonUI(page, dName, { monsters: 3, difficulty: 'easy', heroClass: 'warrior' });
