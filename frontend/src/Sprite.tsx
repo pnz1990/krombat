@@ -99,8 +99,9 @@ const ITEM_STRIP: Record<string, { frames: number; frameW: number; frameH: numbe
   armor:     { frames: 6, frameW: 848, frameH: 832, file: '/sprites/items/armor.png' },
 }
 
-// Map item type+rarity to strip and index
-const ITEM_MAP: Record<string, { strip: string; index: number }> = {
+// Map item type+rarity to strip and index, or direct file path
+type ItemMapEntry = { strip: string; index: number; file?: never } | { file: string; strip?: never; index?: never }
+const ITEM_MAP: Record<string, ItemMapEntry> = {
   'weapon-common':     { strip: 'weapons', index: 0 },
   'weapon-rare':       { strip: 'weapons', index: 1 },
   'weapon-epic':       { strip: 'weapons', index: 2 },
@@ -116,6 +117,15 @@ const ITEM_MAP: Record<string, { strip: string; index: number }> = {
   'manapotion-common': { file: '/sprites/items/potions/mana-1.png' },
   'manapotion-rare':   { file: '/sprites/items/potions/mana-2.png' },
   'manapotion-epic':   { file: '/sprites/items/potions/mana-3.png' },
+  'helmet-common':     { file: '/sprites/items/helmet/1.png' },
+  'helmet-rare':       { file: '/sprites/items/helmet/2.png' },
+  'helmet-epic':       { file: '/sprites/items/helmet/3.png' },
+  'pants-common':      { file: '/sprites/items/pants/1.png' },
+  'pants-rare':        { file: '/sprites/items/pants/2.png' },
+  'pants-epic':        { file: '/sprites/items/pants/3.png' },
+  'boots-common':      { file: '/sprites/items/boots/1.png' },
+  'boots-rare':        { file: '/sprites/items/boots/2.png' },
+  'boots-epic':        { file: '/sprites/items/boots/3.png' },
 }
 
 const MODIFIER_MAP: Record<string, { file: string }> = {
@@ -128,7 +138,7 @@ const MODIFIER_MAP: Record<string, { file: string }> = {
 }
 
 export function ItemSprite({ id, size = 24 }: { id: string; size?: number }) {
-  const mapping: any = ITEM_MAP[id] || MODIFIER_MAP[id]
+  const mapping: { strip?: string; index?: number; file?: string } | undefined = ITEM_MAP[id] || MODIFIER_MAP[id]
   if (!mapping) return <span style={{ fontSize: size * 0.6 }}>📦</span>
 
   // Individual image file
@@ -137,7 +147,7 @@ export function ItemSprite({ id, size = 24 }: { id: string; size?: number }) {
   }
 
   // Strip-based
-  const strip = ITEM_STRIP[mapping.strip]
+  const strip = ITEM_STRIP[mapping.strip ?? '']
   if (!strip) return <span style={{ fontSize: size * 0.6 }}>📦</span>
   const scale = size / strip.frameH
   return (
@@ -150,7 +160,7 @@ export function ItemSprite({ id, size = 24 }: { id: string; size?: number }) {
         height: strip.frameH * scale,
         backgroundImage: `url(${strip.file})`,
         backgroundSize: `${strip.frames * strip.frameW * scale}px ${strip.frameH * scale}px`,
-        backgroundPosition: `-${mapping.index * strip.frameW * scale}px 0`,
+        backgroundPosition: `-${(mapping.index ?? 0) * strip.frameW * scale}px 0`,
       }} />
     </div>
   )

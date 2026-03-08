@@ -24,12 +24,12 @@ export interface DungeonCR {
     tauntActive?: number; backstabCooldown?: number
     modifier?: string; inventory?: string
     weaponBonus?: number; weaponUses?: number; armorBonus?: number; shieldBonus?: number
+    helmetBonus?: number; pantsBonus?: number; bootsBonus?: number
     poisonTurns?: number; burnTurns?: number; stunTurns?: number
     treasureOpened?: number
-    currentRoom?: number; doorUnlocked?: number
-    lastHeroAction?: string; lastEnemyAction?: string
-    attackSeq?: number
-    actionSeq?: number
+    currentRoom?: number; doorUnlocked?: number; room2BossHP?: number
+    lastHeroAction?: string; lastEnemyAction?: string; lastCombatLog?: string; lastLootDrop?: string
+    attackSeq?: number; actionSeq?: number
   }
   status?: {
     livingMonsters: number; bossState: string; victory: boolean; defeated: boolean

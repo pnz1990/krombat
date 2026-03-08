@@ -210,6 +210,9 @@ export default function App() {
           if (target.startsWith('equip-weapon')) return d.spec.weaponBonus
           if (target.startsWith('equip-armor')) return d.spec.armorBonus
           if (target.startsWith('equip-shield')) return d.spec.shieldBonus
+          if (target.startsWith('equip-helmet')) return d.spec.helmetBonus
+          if (target.startsWith('equip-pants')) return d.spec.pantsBonus
+          if (target.startsWith('equip-boots')) return d.spec.bootsBonus
           return d.spec.lastHeroAction
         }
         const prevVal = checkField(detail)
@@ -647,6 +650,21 @@ function CheatModal({ onClose, onAction }: { onClose: () => void; onAction: (tar
       { id: 'equip-shield-rare', label: 'Rare Shield', sprite: 'shield-rare' },
       { id: 'equip-shield-epic', label: 'Epic Shield', sprite: 'shield-epic' },
     ]},
+    { title: 'Helmets', items: [
+      { id: 'equip-helmet-common', label: 'Common Helmet', sprite: 'helmet-common' },
+      { id: 'equip-helmet-rare', label: 'Rare Helmet', sprite: 'helmet-rare' },
+      { id: 'equip-helmet-epic', label: 'Epic Helmet', sprite: 'helmet-epic' },
+    ]},
+    { title: 'Pants', items: [
+      { id: 'equip-pants-common', label: 'Common Pants', sprite: 'pants-common' },
+      { id: 'equip-pants-rare', label: 'Rare Pants', sprite: 'pants-rare' },
+      { id: 'equip-pants-epic', label: 'Epic Pants', sprite: 'pants-epic' },
+    ]},
+    { title: 'Boots', items: [
+      { id: 'equip-boots-common', label: 'Common Boots', sprite: 'boots-common' },
+      { id: 'equip-boots-rare', label: 'Rare Boots', sprite: 'boots-rare' },
+      { id: 'equip-boots-epic', label: 'Epic Boots', sprite: 'boots-epic' },
+    ]},
     { title: 'HP Potions', items: [
       { id: 'use-hppotion-common', label: '+20 HP', sprite: 'hppotion-common' },
       { id: 'use-hppotion-rare', label: '+40 HP', sprite: 'hppotion-rare' },
@@ -967,7 +985,10 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
               {lootDrop.includes('weapon') ? 'Equip for bonus damage on next 3 attacks' :
                lootDrop.includes('armor') ? 'Equip for damage reduction this dungeon' :
                lootDrop.includes('hppotion') ? 'Use to restore HP' :
-               lootDrop.includes('manapotion') ? 'Use to restore mana' : 'A mysterious item'}
+               lootDrop.includes('manapotion') ? 'Use to restore mana' :
+               lootDrop.includes('helmet') ? 'Equip for a chance to land critical hits' :
+               lootDrop.includes('pants') ? 'Equip for a chance to dodge counter-attacks' :
+               lootDrop.includes('boots') ? 'Equip to resist status effects' : 'A mysterious item'}
             </div>
             <button className="btn btn-gold" onClick={onDismissLoot}>Got it!</button>
           </div>
@@ -1197,6 +1218,9 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
             const wu = spec.weaponUses || 0
             const ab = spec.armorBonus || 0
             const sb = spec.shieldBonus || 0
+            const hb = spec.helmetBonus || 0
+            const pb = spec.pantsBonus || 0
+            const bb = spec.bootsBonus || 0
             const modifier = spec.modifier || 'none'
             const poison = spec.poisonTurns || 0
             const burn = spec.burnTurns || 0
@@ -1206,7 +1230,13 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
             return (
               <div className="equip-panel">
                 <div className="equip-grid">
-                  <div className="equip-row"><Tooltip text="Helmet — coming soon"><div className="equip-slot empty"><PixelIcon name="lock" size={14} /></div></Tooltip></div>
+                  <div className="equip-row">
+                    <Tooltip text={hb > 0 ? `Helmet equipped: ${hb}% chance to land critical hits` : 'Helmet — none equipped'}>
+                      <div className={`equip-slot${hb > 0 ? ' filled' : ' empty'}`}>
+                        {hb > 0 ? <><ItemSprite id={hb >= 15 ? 'helmet-epic' : hb >= 10 ? 'helmet-rare' : 'helmet-common'} size={22} /><span className="slot-stat">{hb}%</span></> : <PixelIcon name="helmet" size={14} color="#333" />}
+                      </div>
+                    </Tooltip>
+                  </div>
                   <div className="equip-row">
                     <Tooltip text={sb > 0 ? `Shield equipped: ${sb}% chance to block counter-attacks` : 'Shield — none equipped'}>
                       <div className={`equip-slot${sb > 0 ? ' filled' : ' empty'}`}>
@@ -1224,8 +1254,20 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
                       </div>
                     </Tooltip>
                   </div>
-                  <div className="equip-row"><Tooltip text="Pants — coming soon"><div className="equip-slot empty"><PixelIcon name="lock" size={14} /></div></Tooltip></div>
-                  <div className="equip-row"><Tooltip text="Boots — coming soon"><div className="equip-slot empty"><PixelIcon name="lock" size={14} /></div></Tooltip></div>
+                  <div className="equip-row">
+                    <Tooltip text={pb > 0 ? `Pants equipped: ${pb}% chance to dodge counter-attacks` : 'Pants — none equipped'}>
+                      <div className={`equip-slot${pb > 0 ? ' filled' : ' empty'}`}>
+                        {pb > 0 ? <><ItemSprite id={pb >= 15 ? 'pants-epic' : pb >= 10 ? 'pants-rare' : 'pants-common'} size={22} /><span className="slot-stat">{pb}%</span></> : <PixelIcon name="pants" size={14} color="#333" />}
+                      </div>
+                    </Tooltip>
+                  </div>
+                  <div className="equip-row">
+                    <Tooltip text={bb > 0 ? `Boots equipped: ${bb}% chance to resist status effects` : 'Boots — none equipped'}>
+                      <div className={`equip-slot${bb > 0 ? ' filled' : ' empty'}`}>
+                        {bb > 0 ? <><ItemSprite id={bb >= 60 ? 'boots-epic' : bb >= 40 ? 'boots-rare' : 'boots-common'} size={22} /><span className="slot-stat">{bb}%</span></> : <PixelIcon name="boots" size={14} color="#333" />}
+                      </div>
+                    </Tooltip>
+                  </div>
                 </div>
 
                 <div className="status-row">
@@ -1246,7 +1288,10 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
                         const desc = item.includes('weapon') ? `Weapon (${rarity}) — click to equip, +damage for 3 attacks` :
                           item.includes('armor') ? `Armor (${rarity}) — click to equip, +defense for dungeon` :
                           item.includes('hppotion') ? `HP Potion (${rarity}) — click to restore HP` :
-                          item.includes('manapotion') ? `Mana Potion (${rarity}) — click to restore mana` : item
+                          item.includes('manapotion') ? `Mana Potion (${rarity}) — click to restore mana` :
+                          item.includes('helmet') ? `Helmet (${rarity}) — click to equip, +crit chance` :
+                          item.includes('pants') ? `Pants (${rarity}) — click to equip, +dodge chance` :
+                          item.includes('boots') ? `Boots (${rarity}) — click to equip, +status resist` : item
                         return (
                           <Tooltip key={i} text={desc}>
                             <button className="backpack-slot" disabled={gameOver || !!attackPhase}
