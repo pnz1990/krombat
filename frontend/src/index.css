@@ -388,6 +388,19 @@ body {
 }
 .dice-modifier { font-size: 8px; color: var(--text-dim); }
 
+/* WebSocket reconnecting banner */
+.ws-reconnecting-banner {
+  text-align: center;
+  padding: 6px 12px;
+  margin-bottom: 8px;
+  background: rgba(233, 69, 96, 0.12);
+  border: 2px solid var(--accent);
+  color: var(--accent);
+  font-size: 8px;
+  animation: reconnectPulse 1.2s ease-in-out infinite;
+}
+@keyframes reconnectPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+
 /* Defeat */
 .defeat-banner {
   text-align: center;

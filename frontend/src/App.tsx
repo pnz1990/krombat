@@ -368,6 +368,7 @@ export default function App() {
           onToggleHelp={() => setShowHelp(h => !h)}
           showCheat={showCheat}
           onToggleCheat={() => setShowCheat(c => !c)}
+          wsConnected={connected}
         />
       ) : null}
     </div>
@@ -774,6 +775,12 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
       {showHelp && <HelpModal onClose={onToggleHelp} onCheat={onToggleCheat} />}
 
       {showCheat && <CheatModal onClose={onToggleCheat} onAction={(target: string) => onAttack(target, 0)} />}
+
+      {!wsConnected && (
+        <div className="ws-reconnecting-banner">
+          ○ Reconnecting to server...
+        </div>
+      )}
 
       {combatModal && (
         <div className="modal-overlay combat-overlay">
