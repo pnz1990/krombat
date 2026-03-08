@@ -293,6 +293,11 @@ func (h *Handler) DeleteDungeon(w http.ResponseWriter, r *http.Request) {
 type CreateAttackReq struct {
 	Target string `json:"target"`
 	Damage int64  `json:"damage"`
+	// Seq is the actionSeq/attackSeq the client last observed. The backend
+	// compares this against the current dungeon spec to detect concurrent
+	// writes. A value of -1 (omitted / zero-valued client) disables the guard
+	// so existing clients without the field are not broken.
+	Seq int64 `json:"seq"`
 }
 
 // CreateAttack handles all player actions. Routes to Action CR (non-combat) or
@@ -324,12 +329,12 @@ func (h *Handler) CreateAttack(w http.ResponseWriter, r *http.Request) {
 	ctx := context.Background()
 
 	if isAction {
-		if err := h.processAction(ctx, ns, name, req.Target, w); err != nil {
+		if err := h.processAction(ctx, ns, name, req.Target, req.Seq, w); err != nil {
 			// error already written
 			return
 		}
 	} else {
-		if err := h.processCombat(ctx, ns, name, req.Target, req.Damage, w); err != nil {
+		if err := h.processCombat(ctx, ns, name, req.Target, req.Damage, req.Seq, w); err != nil {
 			// error already written
 			return
 		}
@@ -338,10 +343,11 @@ func (h *Handler) CreateAttack(w http.ResponseWriter, r *http.Request) {
 
 // processCombat handles a combat action:
 // 1. Read current dungeon spec to get current attackSeq and room
-// 2. Upsert fixed-name Attack CR (SSA) with new seq = attackSeq+1 and targetRoom
-// 3. kro re-reconciles dungeon-graph, writes combatResult ConfigMap
-// 4. Backend reads combatResult ConfigMap, runs full combat math, patches Dungeon spec
-func (h *Handler) processCombat(ctx context.Context, ns, name, target string, clientDamage int64, w http.ResponseWriter) error {
+// 2. If clientSeq >= 0 and clientSeq != attackSeq, return 409 Conflict (stale request)
+// 3. Upsert fixed-name Attack CR (SSA) with new seq = attackSeq+1 and targetRoom
+// 4. kro re-reconciles dungeon-graph, writes combatResult ConfigMap
+// 5. Backend reads combatResult ConfigMap, runs full combat math, patches Dungeon spec
+func (h *Handler) processCombat(ctx context.Context, ns, name, target string, clientDamage int64, clientSeq int64, w http.ResponseWriter) error {
 	start := time.Now()
 	defer func() {
 		slog.Info("attack_processed", "component", "api", "dungeon", name, "target", target, "duration_ms", time.Since(start).Milliseconds())
@@ -362,6 +368,15 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 	tauntActive := getInt(spec, "tauntActive")
 	backstabCD := getInt(spec, "backstabCooldown")
 	attackSeq := getInt(spec, "attackSeq")
+
+	// Conflict guard: if the client sent a known sequence number that doesn't
+	// match the current spec, another request already advanced the dungeon
+	// state. Reject with 409 so the client re-fetches before retrying.
+	if clientSeq >= 0 && clientSeq != attackSeq {
+		slog.Warn("stale attack rejected", "component", "api", "dungeon", name, "clientSeq", clientSeq, "serverSeq", attackSeq)
+		writeError(w, "stale request — dungeon state has changed, please retry", http.StatusConflict)
+		return fmt.Errorf("stale attack: clientSeq=%d serverSeq=%d", clientSeq, attackSeq)
+	}
 	modifier := getString(spec, "modifier", "none")
 	inventory := getString(spec, "inventory", "")
 	weaponBonus := getInt(spec, "weaponBonus")
@@ -878,7 +893,7 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 }
 
 // processAction handles a non-combat action (use item, equip, treasure, door, room transition).
-func (h *Handler) processAction(ctx context.Context, ns, name, action string, w http.ResponseWriter) error {
+func (h *Handler) processAction(ctx context.Context, ns, name, action string, clientSeq int64, w http.ResponseWriter) error {
 	start := time.Now()
 	defer func() {
 		slog.Info("action_processed", "component", "api", "dungeon", name, "action", action, "duration_ms", time.Since(start).Milliseconds())
@@ -899,6 +914,15 @@ func (h *Handler) processAction(ctx context.Context, ns, name, action string, w 
 	difficulty := getString(spec, "difficulty", "normal")
 	bossHP := getInt(spec, "bossHP")
 	actionSeq := getInt(spec, "actionSeq")
+
+	// Conflict guard: reject stale requests where the client's observed
+	// actionSeq no longer matches the server. clientSeq < 0 means the client
+	// did not send a sequence (old clients) — those are passed through.
+	if clientSeq >= 0 && clientSeq != actionSeq {
+		slog.Warn("stale action rejected", "component", "api", "dungeon", name, "clientSeq", clientSeq, "serverSeq", actionSeq)
+		writeError(w, "stale request — dungeon state has changed, please retry", http.StatusConflict)
+		return fmt.Errorf("stale action: clientSeq=%d serverSeq=%d", clientSeq, actionSeq)
+	}
 	monsterHPRaw, _ := spec["monsterHP"].([]interface{})
 
 	if backstabCD > 0 {

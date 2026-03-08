@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { DungeonSummary, DungeonCR, listDungeons, getDungeon, createDungeon, submitAttack, deleteDungeon } from './api'
+import { DungeonSummary, DungeonCR, listDungeons, getDungeon, createDungeon, submitAttack, deleteDungeon, ApiError } from './api'
 import { useWebSocket, WSEvent } from './useWebSocket'
 
 import { Sprite, getMonsterSprite, SpriteAction, ItemSprite } from './Sprite'
@@ -192,7 +192,8 @@ export default function App() {
         setCombatModal({ phase: 'rolling', formula: detail?.status?.diceFormula || '2d12+6', heroAction: '', enemyAction: '', spec: detail?.spec, oldHP: detail?.spec.heroHP ?? 100 })
       }
 
-      await submitAttack(selected.ns, selected.name, target, damage)
+      await submitAttack(selected.ns, selected.name, target, damage,
+        isItem ? (detail?.spec.actionSeq ?? -1) : (detail?.spec.attackSeq ?? -1))
       const crKind = isItem ? 'Action' : 'Attack'
       const crField = isItem ? `action: ${target}` : `target: ${target}\n  damage: ${damage}`
       addK8s(`kubectl apply -f ${crKind.toLowerCase()}.yaml`, `${crKind.toLowerCase()}.game.k8s.example created`,
@@ -319,7 +320,18 @@ export default function App() {
 
       // Don't clear attackPhase/attackTarget — user must dismiss combat modal
     } catch (e: any) {
-      setError(e.message)
+      // 409 Conflict: another concurrent request already advanced the dungeon
+      // state. Re-fetch the latest state so the player sees current HP/seq,
+      // then show a non-blocking notice so they can retry.
+      if (e instanceof ApiError && e.status === 409) {
+        try {
+          const refreshed = await getDungeon(selected!.ns, selected!.name)
+          setDetail(refreshed)
+        } catch { /* best-effort */ }
+        setError('State changed — dungeon refreshed. Please retry your action.')
+      } else {
+        setError(e.message)
+      }
       setCombatModal(null)
       setAttackPhase(null)
       setAnimPhase('idle')

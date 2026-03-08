@@ -28,6 +28,8 @@ export interface DungeonCR {
     treasureOpened?: number
     currentRoom?: number; doorUnlocked?: number
     lastHeroAction?: string; lastEnemyAction?: string
+    attackSeq?: number
+    actionSeq?: number
   }
   status?: {
     livingMonsters: number; bossState: string; victory: boolean; defeated: boolean
@@ -64,11 +66,20 @@ export async function deleteDungeon(ns: string, name: string) {
 }
 
 
-export async function submitAttack(ns: string, dungeon: string, target: string, damage: number) {
+export class ApiError extends Error {
+  constructor(public readonly status: number, message: string) {
+    super(message)
+    this.name = 'ApiError'
+  }
+}
+
+export async function submitAttack(ns: string, dungeon: string, target: string, damage: number, seq?: number) {
   const r = await fetch(`${BASE}/dungeons/${ns}/${dungeon}/attacks`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ target, damage }),
+    // seq: send the last-known sequence so the backend can detect concurrent
+    // writes. Omit (send -1) when seq is unknown to stay backward-compatible.
+    body: JSON.stringify({ target, damage, seq: seq ?? -1 }),
   })
-  if (!r.ok) throw new Error(await r.text())
+  if (!r.ok) throw new ApiError(r.status, await r.text())
   return r.json()
 }
