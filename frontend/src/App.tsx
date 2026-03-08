@@ -41,6 +41,8 @@ export default function App() {
   }
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [apiError, setApiError] = useState<string | null>(null)
+  const consecutiveFailures = useRef(0)
   const [showLoot, setShowLoot] = useState(false)
   const [attackPhase, setAttackPhase] = useState<string | null>(null)
   const attackingRef = useRef(false)
@@ -64,7 +66,14 @@ export default function App() {
         const d = await getDungeon(sel.ns, sel.name)
         setDetail(d)
       }
-    } catch {}
+      consecutiveFailures.current = 0
+      setApiError(null)
+    } catch {
+      consecutiveFailures.current += 1
+      if (consecutiveFailures.current >= 3) {
+        setApiError('Connection lost — retrying...')
+      }
+    }
   }, [])
 
   // Refresh on WebSocket events — only refresh data, don't add to event log
@@ -377,6 +386,7 @@ export default function App() {
           showCheat={showCheat}
           onToggleCheat={() => setShowCheat(c => !c)}
           wsConnected={connected}
+          apiError={apiError}
         />
       ) : null}
     </div>
@@ -728,7 +738,7 @@ function HelpModal({ onClose, onCheat }: { onClose: () => void; onCheat: () => v
     </div>
   )
 }
-function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoot, onCloseLoot, attackPhase, roomLoading, animPhase, attackTarget, showHelp, onToggleHelp, showCheat, onToggleCheat, floatingDmg, combatModal, onDismissCombat, lootDrop, onDismissLoot, wsConnected }: {
+function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoot, onCloseLoot, attackPhase, roomLoading, animPhase, attackTarget, showHelp, onToggleHelp, showCheat, onToggleCheat, floatingDmg, combatModal, onDismissCombat, lootDrop, onDismissLoot, wsConnected, apiError }: {
   cr: DungeonCR; onBack: () => void; onAttack: (t: string, d: number) => void; events: WSEvent[]; k8sLog: { ts: string; cmd: string; res: string; yaml?: string }[]
   showLoot: boolean; onOpenLoot: () => void; onCloseLoot: () => void
   attackPhase: string | null; roomLoading: boolean
@@ -740,6 +750,7 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
   onDismissCombat: () => void
   lootDrop: string | null; onDismissLoot: () => void
   wsConnected: boolean
+  apiError: string | null
 }) {
   if (!cr?.metadata?.name) return <div className="loading">Loading dungeon</div>
   const spec = cr.spec || { monsters: 0, difficulty: 'normal', monsterHP: [], bossHP: 0, heroHP: 100 }
@@ -814,6 +825,12 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
       {!wsConnected && (
         <div className="ws-reconnecting-banner">
           ○ Reconnecting to server...
+        </div>
+      )}
+
+      {wsConnected && apiError && (
+        <div className="ws-reconnecting-banner">
+          ○ {apiError}
         </div>
       )}
 
