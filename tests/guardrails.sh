@@ -196,6 +196,58 @@ ITEM_CLEAR=$(grep -c 'lastLootDrop.*""' backend/internal/handlers/handlers.go 2>
 
 grep -q 'return.*Items done' frontend/src/App.tsx && pass "Item actions early-return (no loot fallthrough)" || fail "Item actions missing early return"
 
+# Guard: monster-graph RGD gates Loot CR on hp==0 (includeWhen)
+# This ensures the kro engine never creates a Loot CR for a living monster.
+MONSTER_LOOT_GUARD=$(grep -c 'schema.spec.hp == 0' manifests/rgds/monster-graph.yaml 2>/dev/null || echo 0)
+[ "$MONSTER_LOOT_GUARD" -ge 1 ] && pass "monster-graph RGD gates Loot CR on hp==0 (includeWhen)" || fail "monster-graph missing includeWhen hp==0 guard"
+
+# Guard: boss-graph RGD gates Loot CR on hp==0 (includeWhen)
+BOSS_LOOT_GUARD=$(grep -c 'schema.spec.hp == 0\|bossHP.*== 0\|hp.*==.*0' manifests/rgds/boss-graph.yaml 2>/dev/null || echo 0)
+[ "$BOSS_LOOT_GUARD" -ge 1 ] && pass "boss-graph RGD gates Loot CR/resources on hp==0" || fail "boss-graph missing hp==0 guard"
+
+# Guard: Go handler has a no-drop path (computeMonsterLoot can return false — majority of kills)
+NO_DROP_PATH=$(grep -c 'dropped.*false\|!dropped\|if dropped' backend/internal/handlers/handlers.go 2>/dev/null || echo 0)
+[ "$NO_DROP_PATH" -ge 1 ] && pass "Go handler has no-drop path (loot not always awarded on kill)" || fail "Go handler missing no-drop path"
+
+# Live cluster guard: Loot Secret must NOT exist while monster is alive, MUST exist after kill
+echo "=== Loot Secret live guard"
+LOOT_TEST="loot-guard-$(date +%s)"
+PF_LOOT_PID=""
+LOOT_PORT=8085
+if ! curl -s http://localhost:$LOOT_PORT/healthz &>/dev/null; then
+  kubectl port-forward svc/rpg-backend -n rpg-system ${LOOT_PORT}:8080 &
+  PF_LOOT_PID=$!
+  sleep 3
+fi
+
+# Create a 1-monster easy dungeon so we can kill it in one shot (easy=30 HP, warrior hits ~12-22)
+curl -s -X POST http://localhost:$LOOT_PORT/api/v1/dungeons \
+  -H "Content-Type: application/json" \
+  -d "{\"name\":\"$LOOT_TEST\",\"monsters\":1,\"difficulty\":\"easy\",\"heroClass\":\"warrior\"}" -o /dev/null
+sleep 10  # wait for kro to reconcile
+
+# Verify no Loot Secret exists while monster-0 is alive (hp > 0)
+LOOT_SECRET_BEFORE=$(kubectl get secret "${LOOT_TEST}-monster-0-loot" -n default --ignore-not-found 2>/dev/null || true)
+[ -z "$LOOT_SECRET_BEFORE" ] && pass "No Loot Secret while monster is alive (hp > 0)" || fail "Loot Secret exists before monster killed"
+
+# Kill monster-0 with lethal damage (easy monster has 30 HP; send 100 damage to guarantee kill)
+curl -s -X POST http://localhost:$LOOT_PORT/api/v1/dungeons/default/$LOOT_TEST/attacks \
+  -H "Content-Type: application/json" \
+  -d "{\"target\":\"${LOOT_TEST}-monster-0\",\"damage\":100}" -o /dev/null
+sleep 8  # wait for kro to reconcile Loot CR and Secret
+
+# Verify Loot Secret exists now that monster-0 is dead (hp == 0)
+LOOT_SECRET_AFTER=$(kubectl get secret "${LOOT_TEST}-monster-0-loot" -n default --ignore-not-found 2>/dev/null || true)
+[ -n "$LOOT_SECRET_AFTER" ] && pass "Loot Secret exists after monster killed (hp == 0)" || fail "Loot Secret missing after monster killed"
+
+# Verify lastLootDrop field is present in dungeon spec (may be empty if no drop — that is valid)
+LOOT_DROP_FIELD=$(kubectl get dungeon "$LOOT_TEST" -n default -o jsonpath='{.spec.lastLootDrop}' 2>/dev/null || echo "__missing__")
+[ "$LOOT_DROP_FIELD" != "__missing__" ] && pass "lastLootDrop field present in dungeon spec after kill" || fail "lastLootDrop field missing from dungeon spec"
+
+# Cleanup loot test dungeon
+kubectl delete dungeon "$LOOT_TEST" --ignore-not-found --wait=false &>/dev/null
+[ -n "$PF_LOOT_PID" ] && kill "$PF_LOOT_PID" 2>/dev/null
+
 # --- Combat/Action separation guardrails ---
 echo "=== Combat/Action separation"
 # After #110: attack-graph and action-graph are no-op stubs (resources: []).

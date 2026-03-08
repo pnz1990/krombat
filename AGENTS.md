@@ -66,7 +66,7 @@ A turn-based dungeon RPG where the entire game state lives in Kubernetes, orches
 
 - **NEVER run applications locally** — all builds via Docker/CI only
 - **NEVER push directly to main as an agent** — always use a feature branch + PR (see Git Workflow below)
-- **Pre-push hook runs ALL 4 test suites** — integration (32), guardrails (28), backend API (17), UI smoke (59) + journeys (88). Push blocked if any fail. Use `--no-verify` only when RGD schema changes require deploy-first
+- **Pre-push hook runs ALL 4 test suites** — integration (32), guardrails (34), backend API (21), UI smoke (59) + journeys (88). Push blocked if any fail. Use `--no-verify` only when RGD schema changes require deploy-first
 - **To deploy**: push to main → CI builds image → CI rollout restarts both backend+frontend
 - **When RGD schema changes**: `kubectl delete rgd <name>` → Argo CD recreates
 - **Avoid `${BASH_VAR}` in RGD YAML** — kro parses `${}` as CEL; use `$(BASH_VAR)` instead
@@ -147,8 +147,8 @@ If tests fail: check output → review logs → check `test-failure.png` screens
 |---|---|---|---|
 | All suites | `tests/run-all.sh` | — | Runs all 4 sequentially |
 | Game engine integration | `tests/run.sh` | 32 | Core lifecycle, abilities, features, infra via `kubectl apply` |
-| Architecture guardrails | `tests/guardrails.sh` | 28 | No game logic leaks, RBAC, API shape, loot guards, animation guards |
-| Backend API | `tests/backend-api.sh` | 17 | REST endpoint correctness, validation, response shape, rate limiting |
+| Architecture guardrails | `tests/guardrails.sh` | 34 | No game logic leaks, RBAC, API shape, loot guards, animation guards |
+| Backend API | `tests/backend-api.sh` | 21 | REST endpoint correctness, validation, response shape, rate limiting, ability rejections |
 | UI smoke | `tests/e2e/smoke-test.js` | 59 | Playwright headless browser tests |
 | Journey tests | `tests/e2e/journeys/` | 88 | Full UI gameplay sessions |
 
