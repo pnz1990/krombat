@@ -69,15 +69,20 @@ export default function App() {
 
   // Refresh on WebSocket events — only refresh data, don't add to event log
   // Update dungeon state directly from WebSocket payload (no extra HTTP request)
+  // When WS is connected and delivers a DUNGEON_UPDATE, skip the redundant REST poll —
+  // the payload already contains the full CR. Only fall back to refresh() when WS is
+  // disconnected (connected===false) or the event is not a DUNGEON_UPDATE.
   useEffect(() => {
     if (lastEvent?.type === 'DUNGEON_UPDATE' && lastEvent.payload && selected) {
       const cr = lastEvent.payload as DungeonCR
       if (cr?.metadata?.name === selected.name) {
         setDetail(cr)
       }
+      // WS delivered the full CR — skip redundant HTTP round-trip while connected
+      if (connected) return
     }
     if (lastEvent) refresh()
-  }, [lastEvent])
+  }, [lastEvent, connected])
 
   // Initial load + load dungeon detail when URL changes
   useEffect(() => {
@@ -308,9 +313,12 @@ export default function App() {
       await deleteDungeon(delNs, delName)
       if (selected?.name === delName) navigate('/')
       // Keep in list with "deleting" visual — backend filters DELETING CRs on next refresh
+      // Exponential backoff: start at 1s, double each attempt, cap at 10s (max ~30 attempts)
       const poll = async () => {
+        let delay = 1000
         for (let i = 0; i < 30; i++) {
-          await new Promise(r => setTimeout(r, 3000))
+          await new Promise(r => setTimeout(r, delay))
+          delay = Math.min(delay * 2, 10000)
           const list = await listDungeons()
           setDungeons(list)
           if (!list.find(d => d.name === delName)) break
