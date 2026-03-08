@@ -355,6 +355,32 @@ export function buildGraph(cr: DungeonCR, reconciling: boolean): { nodes: GraphN
   })
   edges.push({ from: 'dungeon', to: 'gameconfig-cm' })
 
+  // Ephemeral Attack CR — appears during reconcile (combat), teaches empty-RGD + externalRef
+  nodes.push({
+    id: 'attack-cr',
+    label: 'Attack CR',
+    kind: 'Attack (RGD)',
+    state: reconciling ? 'reconciling' : 'locked',
+    exists: reconciling,
+    concept: 'empty-rgd',
+    detail: reconciling ? 'reconciling — attack-graph Job running' : 'resources:[] CRD factory',
+    pulse: reconciling,
+  })
+  edges.push({ from: 'dungeon', to: 'attack-cr', label: 'externalRef', dashed: !reconciling })
+
+  // Ephemeral Action CR — appears during reconcile (items/room/treasure), teaches empty-RGD
+  nodes.push({
+    id: 'action-cr',
+    label: 'Action CR',
+    kind: 'Action (RGD)',
+    state: reconciling ? 'reconciling' : 'locked',
+    exists: reconciling,
+    concept: 'empty-rgd',
+    detail: reconciling ? 'reconciling — action-graph Job running' : 'resources:[] CRD factory',
+    pulse: reconciling,
+  })
+  edges.push({ from: 'dungeon', to: 'action-cr', label: 'externalRef', dashed: !reconciling })
+
   return { nodes, edges }
 }
 
@@ -365,7 +391,7 @@ export function buildGraph(cr: DungeonCR, reconciling: boolean): { nodes: GraphN
 //   Row 1 (y=56):  Hero, Monster×N, Boss, Treasure, Modifier, Namespace
 //   Row 2 (y=112): CMs for each row-1 CR  (aligned under parent)
 //   Row 3 (y=168): Conditional outputs (Loot CRs, Secrets)
-//   Row 4 (y=224): combatResult, actionResult, gameConfig (system CMs from Dungeon)
+//   Row 4 (y=224): combatResult, actionResult, gameConfig, Attack CR (ephemeral), Action CR (ephemeral)
 
 interface NodePos { x: number; y: number; w: number; h: number }
 
@@ -387,6 +413,7 @@ function layoutGraph(nodes: GraphNode[], _edges: GraphEdge[]): Map<string, NodeP
         || id === 'treasure-cm' || id === 'modifier-cm') return 2
     if (id.match(/^loot-m\d+$/) || id === 'boss-loot' || id === 'treasure-secret') return 3
     if (id === 'combat-cm' || id === 'action-cm' || id === 'gameconfig-cm') return 4
+    if (id === 'attack-cr' || id === 'action-cr') return 4
     return 1
   }
 
