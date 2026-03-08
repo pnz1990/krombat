@@ -754,17 +754,17 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 			}
 		} else {
 			enemyAction = "Boss defeated!"
-			// Boss loot — always drops, added to inventory
+			// Boss loot — always drops, added to inventory if under cap
 			// (Loot CR is created by boss-graph via includeWhen: hp==0)
 			// We compute the item name from the same CEL seed so frontend shows it
 			bossLootItem := computeBossLoot(name)
-			if inventory2 != "" {
-				inventory2 = inventory2 + "," + bossLootItem
+			if updated, added := inventoryAdd(inventory2, bossLootItem); added {
+				inventory2 = updated
+				lootDrop = bossLootItem
+				classNote += " Boss dropped " + bossLootItem + "!"
 			} else {
-				inventory2 = bossLootItem
+				classNote += " Boss dropped " + bossLootItem + " (inventory full!)"
 			}
-			lootDrop = bossLootItem
-			classNote += " Boss dropped " + bossLootItem + "!"
 		}
 
 		heroAction := dotNote + fmt.Sprintf("Hero (%s) deals %d damage to %s (HP: %d -> %d)%s%s", heroClass, effectiveDamage, realTarget, bossHP, newBossHP, classNote, tauntNote)
@@ -816,13 +816,13 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 		// Loot drop on kill transition
 		if oldHP > 0 && newHP == 0 {
 			if dropped, item := computeMonsterLoot(name, idxInt, difficulty); dropped {
-				if inventory2 != "" {
-					inventory2 = inventory2 + "," + item
+				if updated, added := inventoryAdd(inventory2, item); added {
+					inventory2 = updated
+					lootDrop = item
+					classNote += " Dropped " + item + "!"
 				} else {
-					inventory2 = item
+					classNote += " " + item + " dropped but inventory full!"
 				}
-				lootDrop = item
-				classNote += " Dropped " + item + "!"
 			}
 		}
 
@@ -1405,6 +1405,34 @@ func inventoryContains(inventory, item string) bool {
 		}
 	}
 	return false
+}
+
+// inventoryCount returns the number of items in the inventory CSV string.
+func inventoryCount(inventory string) int {
+	if inventory == "" {
+		return 0
+	}
+	count := 0
+	for _, v := range strings.Split(inventory, ",") {
+		if v != "" {
+			count++
+		}
+	}
+	return count
+}
+
+// inventoryAdd appends an item to inventory if under the cap (8 items).
+// Returns the updated inventory and whether the item was added.
+const inventoryCap = 8
+
+func inventoryAdd(inventory, item string) (string, bool) {
+	if inventoryCount(inventory) >= inventoryCap {
+		return inventory, false
+	}
+	if inventory != "" {
+		return inventory + "," + item, true
+	}
+	return item, true
 }
 
 func inventoryRemove(inventory, item string) string {
