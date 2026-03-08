@@ -49,7 +49,6 @@ export default function App() {
   const [showCheat, setShowCheat] = useState(false)
   const [deleting, setDeleting] = useState<Set<string>>(new Set())
   const [lootDrop, setLootDrop] = useState<string | null>(null)
-  const [activeNs, setActiveNs] = useState('default')
   const [attackTarget, setAttackTarget] = useState<string | null>(null)
   const [animPhase, setAnimPhase] = useState<'idle' | 'hero-attack' | 'enemy-attack' | 'item-use' | 'done'>('idle')
 
@@ -113,10 +112,10 @@ export default function App() {
   const handleCreate = async (name: string, monsters: number, difficulty: string, heroClass: string) => {
     setError('')
     try {
-      await createDungeon(name, monsters, difficulty, heroClass, activeNs)
+      await createDungeon(name, monsters, difficulty, heroClass, 'default')
       addK8s(`kubectl apply -f dungeon.yaml`, 'dungeon.game.k8s.example created',
         `apiVersion: game.k8s.example/v1alpha1\nkind: Dungeon\nmetadata:\n  name: ${name}\nspec:\n  monsters: ${monsters}\n  difficulty: ${difficulty}\n  heroClass: ${heroClass}`)
-      navigate(`/dungeon/${activeNs}/${name}`)
+      navigate(`/dungeon/default/${name}`)
     } catch (e: any) { setError(e.message) }
   }
 
@@ -365,8 +364,6 @@ export default function App() {
           showLoot={showLoot}
           onOpenLoot={() => setShowLoot(true)}
           onCloseLoot={() => setShowLoot(false)}
-          currentTurn={'hero'}
-          turnRound={1}
           showHelp={showHelp}
           onToggleHelp={() => setShowHelp(h => !h)}
           showCheat={showCheat}
@@ -426,6 +423,9 @@ function DungeonList({ dungeons, onSelect, onDelete, deleting }: {
             <span>Boss: {d.bossState === 'pending' ? 'Locked' : d.bossState === 'ready' ? 'Ready' : d.bossState === 'defeated' ? 'Defeated' : d.bossState ?? '?'}</span>
             {d.victory && <span className="victory">VICTORY!</span>}
             {!d.victory && <span style={{ color: 'var(--green)' }}>In Progress</span>}
+          </div>
+          <div style={{ marginTop: 4 }}>
+            <span style={{ fontSize: '7px', color: 'var(--text-dim)', background: 'rgba(255,255,255,0.05)', border: '1px solid #333', borderRadius: 2, padding: '1px 4px' }}>ns: {d.namespace}</span>
           </div>
         </div>
       ))}
@@ -706,7 +706,7 @@ function HelpModal({ onClose, onCheat }: { onClose: () => void; onCheat: () => v
     </div>
   )
 }
-function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoot, onCloseLoot, currentTurn, turnRound, attackPhase, roomLoading, animPhase, attackTarget, showHelp, onToggleHelp, showCheat, onToggleCheat, floatingDmg, combatModal, onDismissCombat, lootDrop, onDismissLoot }: {
+function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoot, onCloseLoot, currentTurn, turnRound, attackPhase, roomLoading, animPhase, attackTarget, showHelp, onToggleHelp, showCheat, onToggleCheat, floatingDmg, combatModal, onDismissCombat, lootDrop, onDismissLoot, wsConnected }: {
   cr: DungeonCR; onBack: () => void; onAttack: (t: string, d: number) => void; events: WSEvent[]; k8sLog: { ts: string; cmd: string; res: string; yaml?: string }[]
   showLoot: boolean; onOpenLoot: () => void; onCloseLoot: () => void
   currentTurn: string; turnRound: number; attackPhase: string | null; roomLoading: boolean
@@ -717,6 +717,7 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
   combatModal: { phase: string; formula: string; heroAction: string; enemyAction: string; spec: any; oldHP: number } | null
   onDismissCombat: () => void
   lootDrop: string | null; onDismissLoot: () => void
+  wsConnected: boolean
 }) {
   if (!cr?.metadata?.name) return <div className="loading">Loading dungeon</div>
   const spec = cr.spec || { monsters: 0, difficulty: 'normal', monsterHP: [], bossHP: 0, heroHP: 100, currentTurn: 'hero', turnRound: 1 }
