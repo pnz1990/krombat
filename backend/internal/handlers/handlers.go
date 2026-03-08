@@ -1057,17 +1057,14 @@ func rollDice(difficulty string, isBoss bool, uid string) int64 {
 }
 
 // seededRoll returns a deterministic value in [0, max) using the uid seed.
-// Uses a simple hash of the seed string for fast, uniform distribution.
+// Uses FNV-1a hash of the seed string for fast, uniform distribution.
 func seededRoll(seed string, max int64) int64 {
-	h := int64(14695981039346656037) // FNV-1a offset basis
+	h := uint64(14695981039346656037) // FNV-1a offset basis (fits uint64)
 	for i := 0; i < len(seed); i++ {
-		h ^= int64(seed[i])
+		h ^= uint64(seed[i])
 		h *= 1099511628211
 	}
-	if h < 0 {
-		h = -h
-	}
-	return h % max
+	return int64(h>>1) % max
 }
 
 func applyModifierToCounter(modifier string, counter int64) int64 {
