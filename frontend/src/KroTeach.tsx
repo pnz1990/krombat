@@ -722,13 +722,90 @@ export function CelTrace({ data, onLearnMore }: { data: CelTraceData; onLearnMor
                   <td className="cel-trace-note">{l.note || ''}</td>
                 </tr>
               ))}
-            </tbody>
+             </tbody>
           </table>
           <button className="k8s-annotation-learn" onClick={onLearnMore} style={{ marginTop: 4 }}>
             Learn: cel-basics →
           </button>
         </div>
       )}
+    </div>
+  )
+}
+
+// ─── kro Expert Certificate ──────────────────────────────────────────────────
+
+export interface KroExpertCertificateProps {
+  dungeonName: string
+  heroClass: string
+  difficulty: string
+  turns: number
+  unlocked: Set<KroConceptId>
+  k8sLog: { ts: string; cmd: string; res: string }[]
+  onClose: () => void
+}
+
+export function KroExpertCertificate({ dungeonName, heroClass, difficulty, turns, unlocked, k8sLog, onClose }: KroExpertCertificateProps) {
+  const total = CONCEPT_ORDER.length
+  const count = unlocked.size
+  const isMaster = count === total
+  const title = isMaster ? 'kro Master' : count >= 9 ? 'kro Expert' : count >= 4 ? 'kro Practitioner' : 'kro Apprentice'
+
+  const handleCopyKubectl = () => {
+    const cmds = k8sLog
+      .filter(e => e.cmd.startsWith('kubectl'))
+      .map(e => `# ${e.res}\n${e.cmd}`)
+      .join('\n\n')
+    navigator.clipboard.writeText(cmds).catch(() => {/* ignore */})
+  }
+
+  return (
+    <div className="kro-cert-overlay" onClick={onClose}>
+      <div className="kro-cert-modal" onClick={e => e.stopPropagation()}>
+        <div className="kro-cert-header">
+          <div className="kro-cert-badge">{isMaster ? '👑' : '🎓'}</div>
+          <div className="kro-cert-title">{title}</div>
+          <div className="kro-cert-subtitle">Certificate of Completion</div>
+        </div>
+
+        <div className="kro-cert-body">
+          <div className="kro-cert-field"><span className="kro-cert-label">Dungeon</span><span className="kro-cert-value">{dungeonName}</span></div>
+          <div className="kro-cert-field"><span className="kro-cert-label">Hero</span><span className="kro-cert-value">{heroClass} · {difficulty}</span></div>
+          <div className="kro-cert-field"><span className="kro-cert-label">Turns</span><span className="kro-cert-value">{turns}</span></div>
+          <div className="kro-cert-field"><span className="kro-cert-label">kro Concepts</span><span className="kro-cert-value" style={{ color: isMaster ? '#f5c518' : '#4ade80' }}>{count}/{total}</span></div>
+        </div>
+
+        <div className="kro-cert-concepts">
+          <div className="kro-cert-section-title">Concepts Mastered</div>
+          <div className="kro-cert-concept-grid">
+            {CONCEPT_ORDER.map(id => {
+              const c = KRO_CONCEPTS[id]
+              const done = unlocked.has(id)
+              return (
+                <div key={id} className={`kro-cert-concept ${done ? 'done' : 'locked'}`}>
+                  <span className="kro-cert-concept-check">{done ? '✓' : '○'}</span>
+                  <span className="kro-cert-concept-name">{c.title.split('(')[0].trim()}</span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        {!isMaster && (
+          <div className="kro-cert-hint">
+            Play again to unlock all {total} concepts and earn <strong>kro Master</strong>!
+          </div>
+        )}
+
+        <div className="kro-cert-actions">
+          <button className="btn btn-primary" onClick={handleCopyKubectl} style={{ fontSize: 8 }}>
+            📋 Copy kubectl commands
+          </button>
+          <button className="btn" onClick={onClose} style={{ fontSize: 8 }}>
+            Close
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
