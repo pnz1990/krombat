@@ -695,6 +695,33 @@ export function CelTrace({ data, onLearnMore }: { data: CelTraceData; onLearnMor
     })
   }
 
+  // Stun: hero skipped attack this turn
+  if (data.heroAction.includes('STUNNED')) {
+    celLines.push({
+      expr: `schema.spec.stunTurns > 0`,
+      result: 'true',
+      note: 'hero stunned — attack skipped, stunTurns decremented',
+    })
+  }
+
+  // Rogue dodge
+  if (data.heroAction.includes('dodged') || data.heroAction.includes('Rogue dodged')) {
+    celLines.push({
+      expr: `schema.spec.heroClass == 'rogue' && seededRoll < 25`,
+      result: 'true',
+      note: '25% dodge chance — counter-attack negated',
+    })
+  }
+
+  // Backstab
+  if (data.heroAction.includes('Backstab') || data.heroAction.includes('backstab')) {
+    celLines.push({
+      expr: `schema.spec.backstabCooldown == 0 ? damage * 3 : damage`,
+      result: dmgMatch ? String(Number(dmgMatch[1])) : '3x',
+      note: 'Backstab: 3× damage, sets cooldown=3',
+    })
+  }
+
   return (
     <div className="cel-trace">
       <button className="cel-trace-toggle" onClick={() => setOpen(o => !o)}>

@@ -159,6 +159,19 @@ export function buildGraph(cr: DungeonCR, reconciling: boolean): { nodes: GraphN
       detail: lootExists ? 'dropped on kill' : 'includeWhen: hp==0',
     })
     edges.push({ from: mcmId, to: lootId, label: 'includeWhen', dashed: true })
+
+    // lootSecret Secret (created by loot-graph when Loot CR exists)
+    const lootSecretId = `loot-secret-m${i}`
+    nodes.push({
+      id: lootSecretId,
+      label: 'LootSecret',
+      kind: 'Secret',
+      state: lootExists ? 'ok' : 'locked',
+      exists: lootExists,
+      concept: 'secrets',
+      detail: lootExists ? 'item data in Secret' : 'created by loot-graph',
+    })
+    edges.push({ from: lootId, to: lootSecretId, label: 'loot-graph', dashed: !lootExists })
   }
   if (monsterHP.length > 4) {
     nodes.push({
@@ -214,6 +227,18 @@ export function buildGraph(cr: DungeonCR, reconciling: boolean): { nodes: GraphN
     detail: bossLootExists ? 'guaranteed drop' : 'includeWhen: hp==0',
   })
   edges.push({ from: 'boss-cm', to: 'boss-loot', label: 'includeWhen', dashed: true })
+
+  // Boss lootSecret Secret (created by loot-graph)
+  nodes.push({
+    id: 'boss-loot-secret',
+    label: 'BossLootSecret',
+    kind: 'Secret',
+    state: bossLootExists ? 'ok' : 'locked',
+    exists: bossLootExists,
+    concept: 'secrets',
+    detail: bossLootExists ? 'boss item in Secret' : 'created by loot-graph',
+  })
+  edges.push({ from: 'boss-loot', to: 'boss-loot-secret', label: 'loot-graph', dashed: !bossLootExists })
 
   // Treasure CR
   const treasureState: NodeState = treasureOpened ? 'ok' : 'pending'

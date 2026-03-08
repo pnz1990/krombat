@@ -255,7 +255,7 @@ spec:
           # === MANA POTION ===
           manaAfterCommon: "${string(schema.spec.heroMana + 2 < 8 ? schema.spec.heroMana + 2 : 8)}"
           manaAfterRare:   "${string(schema.spec.heroMana + 3 < 8 ? schema.spec.heroMana + 3 : 8)}"
-          manaAfterEpic:   "${string(schema.spec.heroMana + 8 < 8 ? schema.spec.heroMana + 8 : 8)}"
+          manaAfterEpic:   "${string(schema.spec.heroMana + 8 > 8 ? 8 : schema.spec.heroMana + 8)}"
 
           # === EQUIP WEAPON ===
           weaponBonusCommon: "5"
