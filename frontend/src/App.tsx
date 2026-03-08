@@ -380,9 +380,22 @@ function CreateForm({ onCreate }: { onCreate: (n: string, m: number, d: string, 
   const [monsters, setMonsters] = useState(3)
   const [difficulty, setDifficulty] = useState('normal')
   const [heroClass, setHeroClass] = useState('warrior')
+  const dnsLabelRegex = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/
+  const nameValid = name === '' || dnsLabelRegex.test(name)
+  const canCreate = name.length > 0 && dnsLabelRegex.test(name)
   return (
     <div className="create-form">
-      <div><label>Dungeon Name</label><input value={name} onChange={e => setName(e.target.value)} placeholder="my-dungeon" /></div>
+      <div>
+        <label>Dungeon Name</label>
+        <input
+          value={name}
+          onChange={e => setName(e.target.value)}
+          placeholder="my-dungeon"
+          maxLength={63}
+          pattern="[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?"
+        />
+        {!nameValid && <div className="input-error">Lowercase letters, numbers, hyphens only. Max 63 chars. Must start and end with alphanumeric.</div>}
+      </div>
       <div><label>Monsters</label><input type="number" min={1} max={10} value={monsters} onChange={e => setMonsters(+e.target.value)} /></div>
       <div><label>Difficulty</label>
         <select value={difficulty} onChange={e => setDifficulty(e.target.value)}>
@@ -394,7 +407,7 @@ function CreateForm({ onCreate }: { onCreate: (n: string, m: number, d: string, 
           <option value="warrior">⚔️ Warrior</option><option value="mage">🔮 Mage</option><option value="rogue">🗡️ Rogue</option>
         </select>
       </div>
-      <button className="btn btn-gold" onClick={() => { if (name) { onCreate(name, monsters, difficulty, heroClass); setName('') } }}>
+      <button className="btn btn-gold" disabled={!canCreate} onClick={() => { if (canCreate) { onCreate(name, monsters, difficulty, heroClass); setName('') } }}>
         Create Dungeon
       </button>
     </div>
