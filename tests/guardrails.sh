@@ -327,6 +327,18 @@ CLEAR_COUNT=$(grep -c "setAttackTarget(null)" frontend/src/App.tsx)
 [ "$CLEAR_COUNT" -le 4 ] && pass "attackTarget cleared only in dismiss/catch/item ($CLEAR_COUNT)" || fail "attackTarget cleared too many places: $CLEAR_COUNT"
 grep -q "opacity.*dead.*0.35" frontend/src/Sprite.tsx && pass "Dead sprites have reduced opacity" || fail "Dead sprites missing opacity"
 
+# --- kro teaching layer guardrails ---
+echo "=== kro teaching layer guardrails"
+grep -q "InsightCard" frontend/src/App.tsx && pass "InsightCard wired into App" || fail "InsightCard missing from App"
+grep -q "KroGraphPanel" frontend/src/App.tsx && pass "KroGraphPanel wired into App" || fail "KroGraphPanel missing from App"
+grep -q "KroGlossary" frontend/src/App.tsx && pass "KroGlossary wired into EventLogTabs" || fail "KroGlossary missing from App"
+grep -q "kroAnnotate" frontend/src/App.tsx && pass "K8s log annotations wired in" || fail "K8s log annotations missing"
+grep -q "triggerInsight.*dungeon-created" frontend/src/App.tsx && pass "Dungeon creation triggers insight" || fail "Dungeon creation insight missing"
+grep -q "triggerInsight.*monster-killed" frontend/src/App.tsx && pass "Monster kill triggers insight" || fail "Monster kill insight missing"
+grep -q "KRO_STATUS_TIPS" frontend/src/App.tsx && pass "Status bar kro tooltips wired in" || fail "Status bar kro tooltips missing"
+[ -f "frontend/src/KroTeach.tsx" ] && pass "KroTeach.tsx exists" || fail "KroTeach.tsx missing"
+[ -f "frontend/src/KroGraph.tsx" ] && pass "KroGraph.tsx exists" || fail "KroGraph.tsx missing"
+
 # --- Summary ---
 
 echo ""
