@@ -1134,3 +1134,99 @@ body {
   background: #0f3460;
   color: #00d4ff;
 }
+
+/* ─── kro Resource Graph Panel ───────────────────────────────────────────── */
+
+.kro-graph-panel {
+  margin-top: 16px;
+  border: 1px solid #0f3460;
+  border-radius: 4px;
+  background: #0a0e1a;
+  overflow: hidden;
+}
+
+.kro-graph-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid #0f3460;
+  user-select: none;
+  background: #0d1420;
+}
+.kro-graph-header:hover {
+  background: #111a2e;
+}
+
+.kro-graph-title {
+  font-size: 8px;
+  color: #ccc;
+  flex: 1;
+}
+
+.kro-graph-reconciling {
+  font-size: 7px;
+  color: #00d4ff;
+  animation: kro-blink 0.8s step-end infinite;
+}
+@keyframes kro-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.kro-graph-toggle {
+  font-size: 8px;
+  color: #555;
+}
+
+.kro-graph-body {
+  padding: 10px 12px 8px;
+}
+
+.kro-graph-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #0f3460;
+}
+
+.kro-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.kro-legend-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.kro-legend-label {
+  font-size: 6px;
+  color: #666;
+}
+
+.kro-graph-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 4px;
+  max-height: 320px;
+}
+
+.kro-graph-wrap {
+  display: inline-block;
+  min-width: 100%;
+}
+
+.kro-graph-hint {
+  font-size: 6px;
+  color: #333;
+  margin-top: 6px;
+  text-align: center;
+  letter-spacing: 0.5px;
+}

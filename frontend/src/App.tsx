@@ -11,6 +11,7 @@ import {
   KRO_STATUS_TIPS,
   type InsightTrigger, type KroConceptId,
 } from './KroTeach'
+import { KroGraphPanel } from './KroGraph'
 
 // 8-bit styled text icons (consistent cross-platform, matches pixel font)
 const ICO = {
@@ -67,6 +68,7 @@ export default function App() {
   const [insightQueue, setInsightQueue] = useState<InsightTrigger[]>([])
   const [kroConceptModal, setKroConceptModal] = useState<KroConceptId | null>(null)
   const shownInsightsRef = useRef<Set<KroConceptId>>(new Set())
+  const [reconciling, setReconciling] = useState(false)
 
   const triggerInsight = useCallback((event: string) => {
     const trigger = getInsightForEvent(event)
@@ -224,6 +226,7 @@ export default function App() {
 
       await submitAttack(selected.ns, selected.name, target, damage,
         isItem ? (detail?.spec.actionSeq ?? -1) : (detail?.spec.attackSeq ?? -1))
+      setReconciling(true)
       const crKind = isItem ? 'Action' : 'Attack'
       const crField = isItem ? `action: ${target}` : `target: ${target}\n  damage: ${damage}`
       addK8s(`kubectl apply -f ${crKind.toLowerCase()}.yaml`, `${crKind.toLowerCase()}.game.k8s.example created`,
@@ -259,6 +262,7 @@ export default function App() {
         }
         setDetail(updated)
         setRoomLoading(false)
+        setReconciling(false)
         setAttackPhase(null)
         setAnimPhase('idle')
         setAttackTarget(null)
@@ -291,6 +295,7 @@ export default function App() {
           await new Promise(r => setTimeout(r, 3000))
         }
         setDetail(updated)
+        setReconciling(false)
       }
 
       const heroAction = updated.spec.lastHeroAction || ''
@@ -381,6 +386,7 @@ export default function App() {
       }
       setCombatModal(null)
       setAttackPhase(null)
+      setReconciling(false)
       setAnimPhase('idle')
       setAttackTarget(null)
       setFloatingDmg(null)
@@ -495,6 +501,7 @@ export default function App() {
           apiError={apiError}
           kroUnlocked={unlocked}
           onViewKroConcept={setKroConceptModal}
+          reconciling={reconciling}
         />
       ) : null}
 
@@ -916,7 +923,7 @@ function HelpModal({ onClose, onCheat }: { onClose: () => void; onCheat: () => v
     </div>
   )
 }
-function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoot, onCloseLoot, attackPhase, roomLoading, animPhase, attackTarget, showHelp, onToggleHelp, showCheat, onToggleCheat, floatingDmg, combatModal, onDismissCombat, lootDrop, onDismissLoot, wsConnected, apiError, kroUnlocked, onViewKroConcept }: {
+function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoot, onCloseLoot, attackPhase, roomLoading, animPhase, attackTarget, showHelp, onToggleHelp, showCheat, onToggleCheat, floatingDmg, combatModal, onDismissCombat, lootDrop, onDismissLoot, wsConnected, apiError, kroUnlocked, onViewKroConcept, reconciling }: {
   cr: DungeonCR; onBack: () => void; onAttack: (t: string, d: number) => void; events: WSEvent[]; k8sLog: { ts: string; cmd: string; res: string; yaml?: string }[]
   showLoot: boolean; onOpenLoot: () => void; onCloseLoot: () => void
   attackPhase: string | null; roomLoading: boolean
@@ -931,6 +938,7 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
   apiError: string | null
   kroUnlocked: Set<KroConceptId>
   onViewKroConcept: (id: KroConceptId) => void
+  reconciling: boolean
 }) {
   if (!cr?.metadata?.name) return <div className="loading">Loading dungeon</div>
   const spec = cr.spec || { monsters: 0, difficulty: 'normal', monsterHP: [], bossHP: 0, heroHP: 100 }
@@ -1432,6 +1440,8 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
           })()}
         </div>
       </div>
+
+      <KroGraphPanel cr={cr} reconciling={reconciling} onViewConcept={onViewKroConcept} />
 
       <EventLogTabs events={events} k8sLog={k8sLog} kroUnlocked={kroUnlocked} onViewKroConcept={onViewKroConcept} />
     </div>
