@@ -162,9 +162,10 @@ If tests fail: check output → review logs → check `test-failure.png` screens
 - [x] Journey 6: Dungeon Modifiers (13/13)
 - [x] Journey 7: Dungeon Management (21/21)
 - [x] Journey 8: Edge Cases & Error States (25/25)
-- [x] Journey 9: K8s Log Tab (23/23)
+ - [x] Journey 9: K8s Log Tab (23/23)
 - [x] Journey 10: Visual & Animation Consistency (18/18)
 - [x] Journey 11: Room 2 Full Victory — Complete both rooms end-to-end (25/25)
+- [x] Journey 12: kro Teaching Layer — InsightCards, glossary, graph panel, CelTrace, K8s log annotations (25/25)
 
 **Critical rule for journey tests**: Tests must interact exclusively through the browser UI — no `kubectl`, no direct `fetch()` to the API. Tests must exercise the real code paths where bugs live (attack-graph Jobs, kro reconciliation, frontend polling).
 
