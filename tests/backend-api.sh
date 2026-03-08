@@ -125,6 +125,81 @@ echo "$METRICS" | grep -q 'k8s_rpg_active_dungeons' \
 echo "$METRICS" | grep -q 'k8s_rpg_victories' \
   && pass "Victories gauge present" || fail "Victories gauge missing"
 
+# --- Test 12: Ability rejection — backstab on cooldown ---
+log "Test 12: Backstab-on-cooldown rejection"
+ROGUE_DUNGEON="api-test-rogue-$(date +%s)"
+curl -s -X POST "$BASE/api/v1/dungeons" \
+  -H "Content-Type: application/json" \
+  -d "{\"name\":\"$ROGUE_DUNGEON\",\"monsters\":2,\"difficulty\":\"easy\",\"heroClass\":\"rogue\"}" -o /dev/null
+sleep 15  # wait for kro
+# Use backstab once to set cooldown=3
+curl -s -o /dev/null -X POST "$BASE/api/v1/dungeons/default/$ROGUE_DUNGEON/attacks" \
+  -H "Content-Type: application/json" \
+  -d "{\"target\":\"${ROGUE_DUNGEON}-monster-0-backstab\",\"damage\":20}"
+sleep 3
+# Immediately try backstab again — should be rejected with 400 (cooldown active)
+CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeons/default/$ROGUE_DUNGEON/attacks" \
+  -H "Content-Type: application/json" \
+  -d "{\"target\":\"${ROGUE_DUNGEON}-monster-0-backstab\",\"damage\":20}")
+[ "$CODE" = "400" ] && pass "Backstab-on-cooldown rejected -> 400" || fail "Backstab-on-cooldown -> $CODE (expected 400)"
+kubectl delete dungeon "$ROGUE_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
+
+# --- Test 13: Ability rejection — mage heal with insufficient mana ---
+log "Test 13: Mage heal no-mana rejection"
+MAGE_DUNGEON="api-test-mage-$(date +%s)"
+curl -s -X POST "$BASE/api/v1/dungeons" \
+  -H "Content-Type: application/json" \
+  -d "{\"name\":\"$MAGE_DUNGEON\",\"monsters\":1,\"difficulty\":\"easy\",\"heroClass\":\"mage\"}" -o /dev/null
+sleep 15
+# Drain mage mana to 0 by patching the dungeon CR directly
+kubectl patch dungeon "$MAGE_DUNGEON" -n default --type=merge -p '{"spec":{"heroMana":0}}' &>/dev/null || true
+sleep 3
+# Attempt heal with 0 mana — should be 400
+CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeons/default/$MAGE_DUNGEON/attacks" \
+  -H "Content-Type: application/json" \
+  -d "{\"target\":\"mage-heal\",\"damage\":0}")
+[ "$CODE" = "400" ] && pass "Mage heal with 0 mana rejected -> 400" || fail "Mage heal no-mana -> $CODE (expected 400)"
+kubectl delete dungeon "$MAGE_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
+
+# --- Test 14: Ability rejection — taunt by non-warrior class ---
+log "Test 14: Taunt by non-warrior rejection"
+MAGE_TAUNT="api-test-taunt-$(date +%s)"
+curl -s -X POST "$BASE/api/v1/dungeons" \
+  -H "Content-Type: application/json" \
+  -d "{\"name\":\"$MAGE_TAUNT\",\"monsters\":1,\"difficulty\":\"easy\",\"heroClass\":\"mage\"}" -o /dev/null
+sleep 15
+# Mage tries to activate taunt — should be 400
+CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeons/default/$MAGE_TAUNT/attacks" \
+  -H "Content-Type: application/json" \
+  -d "{\"target\":\"activate-taunt\",\"damage\":0}")
+[ "$CODE" = "400" ] && pass "Non-warrior taunt attempt rejected -> 400" || fail "Non-warrior taunt -> $CODE (expected 400)"
+kubectl delete dungeon "$MAGE_TAUNT" --ignore-not-found --wait=false 2>/dev/null || true
+
+# --- Test 15: lastLootDrop field present in spec after kill ---
+log "Test 15: lastLootDrop field present after kill"
+LOOT_TEST="api-test-loot-$(date +%s)"
+curl -s -X POST "$BASE/api/v1/dungeons" \
+  -H "Content-Type: application/json" \
+  -d "{\"name\":\"$LOOT_TEST\",\"monsters\":1,\"difficulty\":\"easy\",\"heroClass\":\"warrior\"}" -o /dev/null
+sleep 15
+# Kill monster-0 with lethal damage
+curl -s -o /dev/null -X POST "$BASE/api/v1/dungeons/default/$LOOT_TEST/attacks" \
+  -H "Content-Type: application/json" \
+  -d "{\"target\":\"${LOOT_TEST}-monster-0\",\"damage\":100}"
+sleep 5
+RESP=$(curl -s "$BASE/api/v1/dungeons/default/$LOOT_TEST")
+echo "$RESP" | python3 -c "
+import json,sys
+d=json.load(sys.stdin)
+spec=d.get('spec',{})
+assert 'lastLootDrop' in spec, 'lastLootDrop field missing from spec'
+# lastLootDrop is either empty string (no drop) or an item name — both are valid
+print('lastLootDrop:', repr(spec['lastLootDrop']))
+" 2>/dev/null \
+  && pass "lastLootDrop field present in spec after kill (may be empty if no drop)" \
+  || fail "lastLootDrop field missing from dungeon spec after kill"
+kubectl delete dungeon "$LOOT_TEST" --ignore-not-found --wait=false 2>/dev/null || true
+
 # --- Summary ---
 echo ""
 echo "========================================"
