@@ -5,7 +5,7 @@ resource "aws_iam_role" "cloudwatch_agent" {
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Effect = "Allow"
+      Effect    = "Allow"
       Principal = { Service = "pods.eks.amazonaws.com" }
       Action    = ["sts:AssumeRole", "sts:TagSession"]
     }]
@@ -152,11 +152,11 @@ resource "aws_cloudwatch_dashboard" "krombat" {
         width  = 12
         height = 6
         properties = {
-          title   = "Backend Availability (Running Containers)"
-          region  = var.region
-          view    = "singleValue"
-          period  = 60
-          stat    = "Average"
+          title  = "Backend Availability (Running Containers)"
+          region = var.region
+          view   = "singleValue"
+          period = 60
+          stat   = "Average"
           metrics = [
             ["ContainerInsights", "pod_number_of_running_containers", "ClusterName", var.cluster_name, "Namespace", "rpg-system", "PodName", "rpg-backend", { label = "Backend" }],
             ["ContainerInsights", "pod_number_of_running_containers", "ClusterName", var.cluster_name, "Namespace", "rpg-system", "PodName", "rpg-frontend", { label = "Frontend" }],
@@ -164,7 +164,7 @@ resource "aws_cloudwatch_dashboard" "krombat" {
           ]
         }
       },
-      # Row 4: Logs
+      # Row 4: Active Dungeons count and Victory Rate
       {
         type   = "log"
         x      = 0
@@ -172,9 +172,9 @@ resource "aws_cloudwatch_dashboard" "krombat" {
         width  = 12
         height = 6
         properties = {
-          title   = "Backend API Logs"
-          region  = var.region
-          query   = "SOURCE '/aws/containerinsights/${var.cluster_name}/application' | fields @timestamp, @message | filter @logStream like /rpg-backend/ | sort @timestamp desc | limit 20"
+          title  = "Active Dungeons (Live Count)"
+          region = var.region
+          query  = "SOURCE '/eks/${var.cluster_name}/rpg-system' | fields @timestamp, @message | filter @message like /dungeon.*created|namespace.*dungeon/ | stats count() as created by bin(5m) | sort @timestamp desc"
         }
       },
       {
@@ -184,9 +184,59 @@ resource "aws_cloudwatch_dashboard" "krombat" {
         width  = 12
         height = 6
         properties = {
-          title   = "Errors & Attack Jobs"
-          region  = var.region
-          query   = "SOURCE '/aws/containerinsights/${var.cluster_name}/application' | fields @timestamp, @message | filter @message like /error|Error|Hero attacks|Turn complete|Attack failed/ | sort @timestamp desc | limit 20"
+          title  = "Victory Rate (Boss Defeated Events / 5 min)"
+          region = var.region
+          query  = "SOURCE '/eks/${var.cluster_name}/game' | fields @timestamp, @message | filter @message like /boss.*defeated|bossHP.*0|victory|dungeon.*complete/ | stats count() as victories by bin(5m) | sort @timestamp desc"
+        }
+      },
+      # Row 5: Attack Latency and Logs
+      {
+        type   = "log"
+        x      = 0
+        y      = 24
+        width  = 12
+        height = 6
+        properties = {
+          title  = "Attack Job Latency P95 (seconds)"
+          region = var.region
+          query  = "SOURCE '/eks/${var.cluster_name}/game' | fields @timestamp, @message | filter @message like /Turn complete|Attack complete|attack.*duration/ | parse @message /duration[=: ]+(?<duration_sec>[0-9.]+)/ | stats pct(duration_sec, 95) as p95_latency, avg(duration_sec) as avg_latency, count() as total_attacks by bin(5m) | sort @timestamp desc"
+        }
+      },
+      {
+        type   = "log"
+        x      = 12
+        y      = 24
+        width  = 12
+        height = 6
+        properties = {
+          title  = "Backend API Logs"
+          region = var.region
+          query  = "SOURCE '/aws/containerinsights/${var.cluster_name}/application' | fields @timestamp, @message | filter @logStream like /rpg-backend/ | sort @timestamp desc | limit 20"
+        }
+      },
+      # Row 6: Error logs and Reaper activity
+      {
+        type   = "log"
+        x      = 0
+        y      = 30
+        width  = 12
+        height = 6
+        properties = {
+          title  = "Errors & Attack Jobs"
+          region = var.region
+          query  = "SOURCE '/aws/containerinsights/${var.cluster_name}/application' | fields @timestamp, @message | filter @message like /error|Error|Hero attacks|Turn complete|Attack failed/ | sort @timestamp desc | limit 20"
+        }
+      },
+      {
+        type   = "log"
+        x      = 12
+        y      = 30
+        width  = 12
+        height = 6
+        properties = {
+          title  = "Dungeon Reaper Activity"
+          region = var.region
+          query  = "SOURCE '/eks/${var.cluster_name}/game' | fields @timestamp, @message | filter @message like /reaper|dungeon.*delete|expired.*dungeon|cleanup/ | sort @timestamp desc | limit 20"
         }
       }
     ]
@@ -209,4 +259,87 @@ resource "aws_cloudwatch_metric_alarm" "backend_restarts" {
     ClusterName = var.cluster_name
     Namespace   = "rpg-system"
   }
+}
+
+# --- Log Metric Filters ---
+
+# Counts dungeon CR create events emitted by the Go backend
+resource "aws_cloudwatch_log_metric_filter" "dungeon_created" {
+  name           = "${var.cluster_name}-dungeon-created"
+  log_group_name = aws_cloudwatch_log_group.rpg_system.name
+  pattern        = "dungeon created"
+
+  metric_transformation {
+    name          = "DungeonCreated"
+    namespace     = "Krombat/Game"
+    value         = "1"
+    default_value = "0"
+    unit          = "Count"
+  }
+}
+
+# Counts dungeon CR delete / cleanup events
+resource "aws_cloudwatch_log_metric_filter" "dungeon_deleted" {
+  name           = "${var.cluster_name}-dungeon-deleted"
+  log_group_name = aws_cloudwatch_log_group.rpg_system.name
+  pattern        = "dungeon deleted"
+
+  metric_transformation {
+    name          = "DungeonDeleted"
+    namespace     = "Krombat/Game"
+    value         = "1"
+    default_value = "0"
+    unit          = "Count"
+  }
+}
+
+# Counts each successful reaper cleanup run logged by the reaper CronJob
+resource "aws_cloudwatch_log_metric_filter" "reaper_success" {
+  name           = "${var.cluster_name}-reaper-success"
+  log_group_name = aws_cloudwatch_log_group.game.name
+  pattern        = "reaper complete"
+
+  metric_transformation {
+    name          = "ReaperSuccess"
+    namespace     = "Krombat/Game"
+    value         = "1"
+    default_value = "0"
+    unit          = "Count"
+  }
+}
+
+# --- Additional CloudWatch Alarms ---
+
+# Alert if active dungeon count (running game-namespace pods) exceeds 50
+# Uses the ContainerInsights cluster-level pod count as a proxy;
+# tune the dimension to match your dungeon namespace naming convention if needed.
+resource "aws_cloudwatch_metric_alarm" "too_many_dungeons" {
+  alarm_name          = "krombat-too-many-dungeons"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 2
+  metric_name         = "namespace_number_of_running_pods"
+  namespace           = "ContainerInsights"
+  period              = 60
+  statistic           = "Maximum"
+  threshold           = 50
+  treat_missing_data  = "notBreaching"
+  alarm_description   = "More than 50 dungeon pods active — possible runaway test loop"
+  dimensions = {
+    ClusterName = var.cluster_name
+  }
+}
+
+# Alert if the dungeon-reaper CronJob hasn't logged a successful run in 15 minutes.
+# The metric is fed by the reaper_success log metric filter above.
+resource "aws_cloudwatch_metric_alarm" "reaper_failure" {
+  alarm_name          = "krombat-reaper-not-running"
+  comparison_operator = "LessThanThreshold"
+  evaluation_periods  = 3 # 3 × 5-minute periods = 15 minutes
+  metric_name         = "ReaperSuccess"
+  namespace           = "Krombat/Game"
+  period              = 300
+  statistic           = "Sum"
+  threshold           = 1
+  treat_missing_data  = "breaching"
+  alarm_description   = "Dungeon reaper has not completed successfully in 15 minutes — possible CronJob failure"
 }
