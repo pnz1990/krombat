@@ -890,3 +890,247 @@ body {
   .k8s-cmd { font-size: 6px; }
   .k8s-res { font-size: 6px; }
 }
+
+/* ─── kro Teaching Layer ──────────────────────────────────────────────────── */
+
+/* Badge */
+.kro-insight-badge {
+  display: inline-block;
+  background: #0f3460;
+  color: #00d4ff;
+  border: 1px solid #00d4ff;
+  border-radius: 2px;
+  font-size: 7px;
+  padding: 1px 5px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+/* Insight Card — slides in from the bottom-right */
+.kro-insight-card {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 280px;
+  background: #0d1b2e;
+  border: 2px solid #00d4ff;
+  border-radius: 4px;
+  padding: 12px;
+  z-index: 500;
+  box-shadow: 0 4px 24px rgba(0,212,255,0.15);
+  transform: translateY(120%);
+  opacity: 0;
+  transition: transform 0.35s cubic-bezier(0.22,1,0.36,1), opacity 0.3s;
+}
+.kro-insight-card.visible {
+  transform: translateY(0);
+  opacity: 1;
+}
+
+.kro-insight-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.kro-insight-headline {
+  font-size: 7px;
+  color: #ccc;
+  flex: 1;
+  line-height: 1.5;
+}
+.kro-insight-dismiss {
+  background: none;
+  border: none;
+  color: #555;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 9px;
+  padding: 0;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.kro-insight-dismiss:hover { color: #aaa; }
+
+.kro-insight-title {
+  font-size: 8px;
+  color: #00d4ff;
+  margin-bottom: 4px;
+  line-height: 1.4;
+}
+.kro-insight-tagline {
+  font-size: 7px;
+  color: #888;
+  margin-bottom: 10px;
+  line-height: 1.5;
+  font-style: italic;
+}
+.kro-insight-learn {
+  background: none;
+  border: 1px solid #00d4ff;
+  color: #00d4ff;
+  font-family: inherit;
+  font-size: 7px;
+  padding: 4px 8px;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: background 0.1s;
+}
+.kro-insight-learn:hover { background: rgba(0,212,255,0.1); }
+
+/* Concept Modal */
+.kro-concept-modal {
+  max-height: 90vh;
+  overflow-y: auto;
+}
+.kro-snippet-block {
+  background: #0a0e1a;
+  border: 1px solid #1e3a5f;
+  border-radius: 3px;
+  padding: 10px;
+  margin-top: 8px;
+}
+.kro-snippet-label {
+  font-size: 6px;
+  color: #5dade2;
+  letter-spacing: 2px;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+}
+.kro-snippet-pre {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 6px;
+  color: #9b59b6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.8;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+/* K8s log entry — kro annotation section */
+.k8s-annotation {
+  margin-top: 8px;
+  padding: 8px;
+  background: #0a0e1a;
+  border-left: 2px solid #00d4ff;
+  border-radius: 0 3px 3px 0;
+}
+.k8s-annotation-label {
+  font-size: 6px;
+  color: #00d4ff;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+.k8s-annotation-what {
+  font-size: 6px;
+  color: #aaa;
+  margin-bottom: 6px;
+  line-height: 1.7;
+}
+.k8s-annotation-rgd {
+  font-size: 6px;
+  color: #5dade2;
+  margin-bottom: 6px;
+}
+.k8s-annotation-cel {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 6px;
+  color: #9b59b6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.7;
+  background: #060a12;
+  padding: 6px;
+  border-radius: 2px;
+}
+.k8s-annotation-learn {
+  background: none;
+  border: none;
+  color: #00d4ff;
+  font-family: inherit;
+  font-size: 6px;
+  padding: 4px 0 0 0;
+  cursor: pointer;
+  text-decoration: underline;
+  display: block;
+  margin-top: 4px;
+}
+.k8s-annotation-learn:hover { color: #5dade2; }
+
+/* Glossary Tab */
+.kro-glossary {
+  padding: 8px 0;
+}
+.kro-glossary-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #1e3a5f;
+}
+.kro-glossary-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+.kro-glossary-item {
+  background: #0d1b2e;
+  border: 1px solid #1e3a5f;
+  border-radius: 3px;
+  padding: 8px;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  transition: border-color 0.15s, background 0.15s;
+}
+.kro-glossary-item.unlocked {
+  border-color: #0f3460;
+}
+.kro-glossary-item.unlocked:hover {
+  border-color: #00d4ff;
+  background: rgba(0,212,255,0.05);
+}
+.kro-glossary-item.locked {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.kro-glossary-item-title {
+  font-size: 7px;
+  color: #00d4ff;
+  margin-bottom: 4px;
+  line-height: 1.4;
+}
+.kro-glossary-item.locked .kro-glossary-item-title {
+  color: #444;
+}
+.kro-glossary-item-tagline {
+  font-size: 6px;
+  color: #666;
+  line-height: 1.5;
+}
+.kro-glossary-item.unlocked .kro-glossary-item-tagline {
+  color: #777;
+}
+
+/* Status bar kro tooltip — richer content */
+.kro-status-tip {
+  white-space: pre-line;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 6px;
+  line-height: 1.8;
+  color: #ccc;
+  max-width: 260px;
+}
+
+/* Log tabs — kro tab styling */
+.log-tab.kro-tab {
+  color: #00d4ff;
+  border-color: #00d4ff;
+}
+.log-tab.kro-tab.active {
+  background: #0f3460;
+  color: #00d4ff;
+}
