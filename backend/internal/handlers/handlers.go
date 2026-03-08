@@ -653,11 +653,12 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 		}
 		idx, _ := strconv.ParseInt(idxStr, 10, 64)
 
-		if idx < 0 || int(idx) >= len(monsterHPRaw) {
+		if idx < 0 || idx >= int64(len(monsterHPRaw)) {
 			writeError(w, "invalid monster index", http.StatusBadRequest)
 			return fmt.Errorf("invalid monster index")
 		}
-		oldHP := int64(monsterHPRaw[idx].(float64))
+		idxInt := int(idx) // safe: bounds checked above, len(monsterHPRaw) <= 10
+		oldHP := int64(monsterHPRaw[idxInt].(float64))
 		if oldHP <= 0 {
 			patch := map[string]interface{}{"spec": map[string]interface{}{"lastLootDrop": "", "lastHeroAction": "Monster already dead", "lastEnemyAction": "", "attackSeq": newSeq}}
 			return h.patchAndRespond(ctx, ns, name, patch, w)
@@ -669,7 +670,7 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 		for i, v := range monsterHPRaw {
 			newMonsterHP[i] = v
 		}
-		newMonsterHP[idx] = newHP
+		newMonsterHP[idxInt] = newHP
 
 		// Mage mana regen on kill
 		if oldHP > 0 && newHP == 0 && heroClass == "mage" && heroMana < 5 {
@@ -679,7 +680,7 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 
 		// Loot drop on kill transition
 		if oldHP > 0 && newHP == 0 {
-			if dropped, item := computeMonsterLoot(name, int(idx), difficulty); dropped {
+			if dropped, item := computeMonsterLoot(name, idxInt, difficulty); dropped {
 				if inventory2 != "" {
 					inventory2 = inventory2 + "," + item
 				} else {
@@ -703,9 +704,9 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 		aliveCount := int64(0)
 		for i, v := range monsterHPRaw {
 			hp := int64(v.(float64))
-			if int64(i) != idx && hp > 0 {
+			if i != idxInt && hp > 0 {
 				aliveCount++
-			} else if int64(i) == idx && newHP > 0 {
+			} else if i == idxInt && newHP > 0 {
 				aliveCount++
 			}
 		}
