@@ -643,7 +643,7 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 		patchSpec["inventory"] = inventory2
 
 	} else {
-		// Monster target
+		// Monster target — parse index as native int to avoid int64→int narrowing
 		idxStr := realTarget
 		for i := len(realTarget) - 1; i >= 0; i-- {
 			if realTarget[i] < '0' || realTarget[i] > '9' {
@@ -651,13 +651,13 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 				break
 			}
 		}
-		idx, _ := strconv.ParseInt(idxStr, 10, 64)
+		idxParsed, _ := strconv.ParseInt(idxStr, 10, strconv.IntSize)
+		idxInt := int(idxParsed) // ParseInt with strconv.IntSize guarantees fits in int
 
-		if idx < 0 || idx >= int64(len(monsterHPRaw)) {
+		if idxInt < 0 || idxInt >= len(monsterHPRaw) {
 			writeError(w, "invalid monster index", http.StatusBadRequest)
 			return fmt.Errorf("invalid monster index")
 		}
-		idxInt := int(idx) // safe: bounds checked above, len(monsterHPRaw) <= 10
 		oldHP := int64(monsterHPRaw[idxInt].(float64))
 		if oldHP <= 0 {
 			patch := map[string]interface{}{"spec": map[string]interface{}{"lastLootDrop": "", "lastHeroAction": "Monster already dead", "lastEnemyAction": "", "attackSeq": newSeq}}
