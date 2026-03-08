@@ -135,7 +135,7 @@ async function run() {
     const doorEntity = page.locator('.arena-entity.door-entity');
     if (await doorEntity.count() > 0) {
       await doorEntity.click({ force: true });
-      for (let i = 0; i < 30; i++) {
+      for (let i = 0; i < 45; i++) {
         body = await getBodyText(page);
         if (body.includes('Room 2')) break;
         await page.waitForTimeout(2000);

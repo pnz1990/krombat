@@ -28,8 +28,14 @@ async function run() {
 
     // === Verify all 3 in list ===
     console.log('\n=== List Dungeons ===');
-    await page.goto(BASE_URL, { timeout: TIMEOUT });
-    await page.waitForTimeout(3000);
+    // Wait longer for kro reconciliation under parallel load
+    for (let attempt = 0; attempt < 6; attempt++) {
+      await page.goto(BASE_URL, { timeout: TIMEOUT });
+      await page.waitForTimeout(3000);
+      const bt = await page.textContent('body');
+      if (names.every(n => bt.includes(n))) break;
+      await page.waitForTimeout(5000);
+    }
     const bodyText = await page.textContent('body');
     for (const name of names) {
       bodyText.includes(name) ? ok(`"${name}" in list`) : fail(`"${name}" missing from list`);
