@@ -46,7 +46,7 @@ func (h *Handler) pollGameMetrics() {
 				status, _ := d.Object["status"].(map[string]interface{})
 				if hps, ok := spec["monsterHP"].([]interface{}); ok {
 					for _, hp := range hps {
-						if v, _ := hp.(float64); v > 0 {
+						if sliceInt(hp) > 0 {
 							alive++
 						} else {
 							dead++
@@ -328,7 +328,7 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 	// Guard: reject if dungeon is over
 	allMonstersDead := true
 	for _, hp := range monsterHPRaw {
-		if v, _ := hp.(float64); v > 0 {
+		if sliceInt(hp) > 0 {
 			allMonstersDead = false
 			break
 		}
@@ -658,7 +658,7 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 			writeError(w, "invalid monster index", http.StatusBadRequest)
 			return fmt.Errorf("invalid monster index")
 		}
-		oldHP := int64(monsterHPRaw[idxInt].(float64))
+		oldHP := sliceInt(monsterHPRaw[idxInt])
 		if oldHP <= 0 {
 			patch := map[string]interface{}{"spec": map[string]interface{}{"lastLootDrop": "", "lastHeroAction": "Monster already dead", "lastEnemyAction": "", "attackSeq": newSeq}}
 			return h.patchAndRespond(ctx, ns, name, patch, w)
@@ -703,7 +703,7 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 		}
 		aliveCount := int64(0)
 		for i, v := range monsterHPRaw {
-			hp := int64(v.(float64))
+			hp := sliceInt(v)
 			if i != idxInt && hp > 0 {
 				aliveCount++
 			} else if i == idxInt && newHP > 0 {
@@ -918,7 +918,7 @@ func (h *Handler) processAction(ctx context.Context, ns, name, action string, w 
 	case action == "open-treasure":
 		allDead := true
 		for _, v := range monsterHPRaw {
-			if hp, _ := v.(float64); hp > 0 {
+			if sliceInt(v) > 0 {
 				allDead = false
 				break
 			}
@@ -1195,3 +1195,17 @@ func max64(a, b int64) int64 {
 }
 
 func boolPtr(b bool) *bool { return &b }
+
+// sliceInt converts an interface{} slice element to int64,
+// handling both float64 (JSON-decoded) and int64 (Go-native) values.
+func sliceInt(v interface{}) int64 {
+	switch x := v.(type) {
+	case float64:
+		return int64(x)
+	case int64:
+		return x
+	case int:
+		return int64(x)
+	}
+	return 0
+}
