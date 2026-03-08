@@ -26,6 +26,8 @@ export type KroConceptId =
   | 'secret-output'
   | 'empty-rgd'
   | 'spec-mutation'
+  | 'externalRef'
+  | 'status-conditions'
 
 export interface KroConcept {
   id: KroConceptId
@@ -322,6 +324,58 @@ spec:
     learnMore: 'manifests/rgds/attack-graph.yaml and action-graph.yaml',
   },
 
+  'externalRef': {
+    id: 'externalRef',
+    title: 'externalRef — Watch External CRs to Trigger Reconcile',
+    tagline: 'kro can watch CRs it does not own and re-reconcile when they change.',
+    body: `Every time you attack, the backend creates an Attack CR. The dungeon-graph RGD watches this Attack CR via \`externalRef\` and immediately re-reconciles the full Dungeon resource graph — recomputing CEL expressions, updating ConfigMaps, deriving new boss phase, and writing the combat result.
+
+This is how the entire combat engine works: not a Job, not a webhook, but a kro watch loop. When the Attack CR changes, kro re-runs all CEL in dungeon-graph and the result ConfigMap is updated within seconds.`,
+    snippet: `# dungeon-graph watches the Attack CR via externalRef
+# Any change to <dungeonName>-latest-attack triggers full reconcile
+resources:
+  - id: combatResult
+    template:
+      apiVersion: v1
+      kind: ConfigMap
+      data:
+        # These CEL expressions re-evaluate on every Attack CR upsert:
+        diceRoll: >-
+          \${
+            schema.spec.difficulty == 'hard' ? string(
+              int('abcdef...'.indexOf(random.seededString(1, schema.spec.lastCombatLog + 'd1')) % 20)
+              + ... + 8
+            ) : ...
+          }`,
+    learnMore: 'manifests/rgds/dungeon-graph.yaml — combatResult ConfigMap',
+  },
+
+  'status-conditions': {
+    id: 'status-conditions',
+    title: 'status.conditions — kro Health Signalling',
+    tagline: 'kro uses status.conditions to report whether your resource graph is Ready or has Errors.',
+    body: `Every kro-managed CR gets a \`status.conditions\` array automatically. kro writes two condition types:
+- \`type: Ready\` — the resource graph is fully reconciled and all readyWhen checks passed
+- \`type: Error\` — kro hit a problem (CEL evaluation error, missing dependency, webhook timeout)
+
+You just saw a kro condition in the engine warning banner. This is the same mechanism Kubernetes uses for Pods (\`PodReady\`, \`ContainersReady\`) and Deployments (\`Available\`, \`Progressing\`). kro follows the same contract.`,
+    snippet: `# kubectl get dungeon <name> -o yaml
+status:
+  conditions:
+    - type: Ready
+      status: "True"
+      reason: ReconcileSucceeded
+      message: All resources reconciled
+    - type: Error
+      status: "False"
+      reason: CELEvaluationFailed
+      message: "cel: no such attribute: schema.spec.missingField"
+  # All other status fields are your CEL expressions:
+  bossState: ready
+  livingMonsters: "2"`,
+    learnMore: 'manifests/rgds/dungeon-graph.yaml — status block',
+  },
+
   'spec-mutation': {
     id: 'spec-mutation',
     title: 'Spec Mutation Triggers Full Reconcile',
@@ -360,6 +414,8 @@ export function getInsightForEvent(event: string): InsightTrigger | null {
   if (event === 'forEach') return { conceptId: 'forEach', headline: 'kro created one Monster CR per entry in monsterHP[] via forEach' }
   if (event === 'loot-drop') return { conceptId: 'seeded-random', headline: 'Loot type and rarity rolled via random.seededString() in monster-graph' }
   if (event === 'attack-cr') return { conceptId: 'empty-rgd', headline: 'Attack CR is defined by an RGD with resources:[] — a CRD factory' }
+  if (event === 'externalRef') return { conceptId: 'externalRef', headline: 'Your attack created an Attack CR — kro watched it and re-reconciled the dungeon graph' }
+  if (event === 'status-conditions') return { conceptId: 'status-conditions', headline: 'kro is reporting its reconcile status via status.conditions — the Kubernetes health contract' }
   return null
 }
 
@@ -468,6 +524,7 @@ const CONCEPT_ORDER: KroConceptId[] = [
   'rgd', 'spec-schema', 'resource-chaining', 'cel-basics', 'cel-ternary',
   'forEach', 'includeWhen', 'readyWhen', 'status-aggregation',
   'seeded-random', 'secret-output', 'empty-rgd', 'spec-mutation',
+  'externalRef', 'status-conditions',
 ]
 
 interface KroGlossaryProps {
@@ -649,13 +706,12 @@ export function CelTrace({ data, onLearnMore }: { data: CelTraceData; onLearnMor
     result: `"${data.formula}"`,
     note: 'from gameConfig ConfigMap',
   })
-  if (log.seq) {
-    celLines.push({
-      expr: `random.seededString(lastCombatLog, alphabet, 8)`,
-      result: `"${data.combatLog.slice(0, 8)}..."`,
-      note: 'seeded → deterministic',
-    })
-  }
+  // Always show seeded-random row — even on first attack when combatLog is empty
+  celLines.push({
+    expr: `random.seededString(lastCombatLog, alphabet, 8)`,
+    result: `"${(data.combatLog || '(new-seed)').slice(0, 8)}..."`,
+    note: 'seeded → deterministic roll',
+  })
   if (log.weaponBonus > 0) {
     celLines.push({
       expr: `schema.spec.weaponBonus`,
@@ -832,6 +888,95 @@ export function KroExpertCertificate({ dungeonName, heroClass, difficulty, turns
             Close
           </button>
         </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── First-Run Onboarding Overlay ────────────────────────────────────────────
+
+const ONBOARDING_SLIDES = [
+  {
+    title: 'Your Dungeon is a Kubernetes CR',
+    body: 'When you create a dungeon, the frontend runs:\nkubectl apply -f dungeon.yaml\nYou are about to apply a real Custom Resource to a live EKS cluster.',
+    snippet: `apiVersion: game.k8s.example/v1alpha1
+kind: Dungeon
+metadata:
+  name: my-dungeon
+spec:
+  monsters: 3
+  difficulty: normal
+  heroClass: warrior`,
+  },
+  {
+    title: 'kro Creates 7 Resources From One CR',
+    body: "kro's dungeon-graph RGD watches your Dungeon CR. The moment you apply it, kro automatically creates a Namespace, Hero CR, Monster CRs, Boss CR, Treasure CR, and two ConfigMaps — all from a single spec.",
+    snippet: `# dungeon-graph RGD orchestrates:
+resources:
+  - id: ns          # Namespace
+  - id: heroCR      # Hero CR → hero-graph
+  - id: monsterCRs  # Monster CR ×N (forEach)
+  - id: bossCR      # Boss CR → boss-graph
+  - id: treasureCR  # Treasure CR → treasure-graph
+  - id: gameConfig  # ConfigMap
+  - id: combatResult # ConfigMap (CEL combat engine)`,
+  },
+  {
+    title: 'Every Action is a kubectl patch',
+    body: 'When you attack, equip an item, or open a door, the backend runs a kubectl patch on the Dungeon CR spec. kro watches the change and re-reconciles the entire resource graph within seconds.',
+    snippet: `# Attack → backend patches Dungeon CR
+kubectl patch dungeon my-dungeon --type=merge \\
+  -p '{"spec": {"bossHP": 350, "heroHP": 180,
+       "lastHeroAction": "Hero deals 50 damage"}}'
+# kro re-evaluates all CEL → updates ConfigMaps`,
+  },
+  {
+    title: 'Watch the kro Tab as You Play',
+    body: "Open the kro tab in the event log to see concepts unlock in real time. Each game event maps to a kro pattern. By the end of the dungeon, you'll have seen 15 core kro concepts in action.",
+    snippet: `# Concepts you'll unlock:
+✓ ResourceGraphDefinition (RGD)
+✓ spec.schema validation
+✓ forEach fan-out
+✓ includeWhen conditional resources
+✓ CEL expressions
+✓ externalRef watch loop
+  ... and 9 more`,
+  },
+]
+
+export function KroOnboardingOverlay({ onDismiss }: { onDismiss: () => void }) {
+  const [slide, setSlide] = useState(0)
+  const total = ONBOARDING_SLIDES.length
+  const s = ONBOARDING_SLIDES[slide]
+  const isLast = slide === total - 1
+
+  const handleDismiss = () => {
+    localStorage.setItem('kroOnboardingDone', '1')
+    onDismiss()
+  }
+
+  return (
+    <div className="kro-onboard-overlay">
+      <div className="kro-onboard-modal">
+        <div className="kro-onboard-header">
+          <span className="kro-insight-badge">kro</span>
+          <span className="kro-onboard-step">{slide + 1} / {total}</span>
+        </div>
+        <div className="kro-onboard-title">{s.title}</div>
+        <div className="kro-onboard-body">{s.body}</div>
+        <pre className="kro-onboard-snippet">{s.snippet}</pre>
+        <div className="kro-onboard-actions">
+          {slide > 0 && (
+            <button className="btn" onClick={() => setSlide(slide - 1)} style={{ fontSize: 8 }}>← Back</button>
+          )}
+          <div style={{ flex: 1 }} />
+          {isLast ? (
+            <button className="btn btn-primary" onClick={handleDismiss} style={{ fontSize: 8 }}>Start Playing →</button>
+          ) : (
+            <button className="btn btn-primary" onClick={() => setSlide(slide + 1)} style={{ fontSize: 8 }}>Next →</button>
+          )}
+        </div>
+        <button className="kro-onboard-skip" onClick={handleDismiss}>Skip intro</button>
       </div>
     </div>
   )
