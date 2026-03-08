@@ -1178,6 +1178,10 @@ func (h *Handler) processAction(ctx context.Context, ns, name, action string, cl
 		patchSpec["doorUnlocked"] = int64(0)
 		patchSpec["lastHeroAction"] = "Entered Room 2! Stronger enemies await..."
 		patchSpec["lastEnemyAction"] = ""
+		// Restore mana to class maximum when entering Room 2
+		if heroClass == "mage" {
+			patchSpec["heroMana"] = int64(8)
+		}
 
 	default:
 		writeError(w, "unknown action: "+action, http.StatusBadRequest)
