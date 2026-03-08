@@ -722,6 +722,7 @@ interface DiffEntry {
   from: string
   to: string
   note?: string
+  conceptLink?: KroConceptId
 }
 
 function computeRGDDiff(prev: DungeonCR | null | undefined, curr: DungeonCR): DiffEntry[] {
@@ -766,7 +767,7 @@ function computeRGDDiff(prev: DungeonCR | null | undefined, curr: DungeonCR): Di
   for (let i = 0; i < maxM; i++) {
     if ((pm[i] ?? -1) !== (cm[i] ?? -1)) {
       const killed = (pm[i] ?? 0) > 0 && (cm[i] ?? 0) === 0
-      diff.push({ field: `spec.monsterHP[${i}]`, from: String(pm[i] ?? '—'), to: String(cm[i] ?? '—'), note: killed ? '→ Loot CR includeWhen fires' : undefined })
+      diff.push({ field: `spec.monsterHP[${i}]`, from: String(pm[i] ?? '—'), to: String(cm[i] ?? '—'), note: killed ? '→ Loot CR includeWhen fires' : undefined, conceptLink: killed ? 'includeWhen' : 'forEach' })
     }
   }
 
@@ -775,6 +776,18 @@ function computeRGDDiff(prev: DungeonCR | null | undefined, curr: DungeonCR): Di
   checkSt('bossPhase', 'boss-graph phase CEL')
   checkSt('victory', 'dungeon-graph status')
   checkSt('defeat', 'dungeon-graph status')
+
+  // Attach concept links to status diff entries
+  for (const d of diff) {
+    if (!d.conceptLink) {
+      if (d.field === 'status.livingMonsters') d.conceptLink = 'forEach'
+      else if (d.field === 'status.bossState') d.conceptLink = 'cel-ternary'
+      else if (d.field === 'status.bossPhase') d.conceptLink = 'cel-ternary'
+      else if (d.field === 'status.victory' || d.field === 'status.defeat') d.conceptLink = 'status-aggregation'
+      else if (d.field === 'spec.treasureOpened') d.conceptLink = 'secret-output'
+      else if (d.field === 'spec.currentRoom') d.conceptLink = 'spec-mutation'
+    }
+  }
 
   return diff
 }
@@ -843,6 +856,13 @@ export function KroGraphPanel({ cr, prevCr, reconciling, onViewConcept }: KroGra
                     <span className="kro-rgd-diff-arrow">→</span>
                     <span className="kro-rgd-diff-to">{d.to}</span>
                     {d.note && <span className="kro-rgd-diff-note">{d.note}</span>}
+                    {d.conceptLink && (
+                      <button
+                        className="k8s-annotation-learn"
+                        style={{ marginLeft: 4, fontSize: 5, padding: '1px 4px' }}
+                        onClick={() => onViewConcept(d.conceptLink!)}
+                      >learn →</button>
+                    )}
                   </div>
                 ))}
               </div>
