@@ -95,10 +95,10 @@ jobs:
       - run: aws eks update-kubeconfig --region us-west-2 --name krombat
       - run: |
           kubectl set image deployment/rpg-backend \
-            rpg-backend=$REGISTRY/krombat/backend:${{ github.sha }} \
+            backend=$REGISTRY/krombat/backend:${{ github.sha }} \
             -n rpg-system
           kubectl set image deployment/rpg-frontend \
-            rpg-frontend=$REGISTRY/krombat/frontend:${{ github.sha }} \
+            frontend=$REGISTRY/krombat/frontend:${{ github.sha }} \
             -n rpg-system
           kubectl rollout status deployment/rpg-backend -n rpg-system --timeout=120s
           kubectl rollout status deployment/rpg-frontend -n rpg-system --timeout=120s
