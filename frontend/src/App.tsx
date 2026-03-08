@@ -160,7 +160,7 @@ export default function App() {
       setAttackPhase('attacking')
 
       if (!isAbility && !isItem) {
-        setCombatModal({ phase: 'rolling', formula: detail?.status?.diceFormula || '2d12+4', heroAction: '', enemyAction: '', spec: detail?.spec, oldHP: detail?.spec.heroHP ?? 100 })
+        setCombatModal({ phase: 'rolling', formula: detail?.status?.diceFormula || '2d12+6', heroAction: '', enemyAction: '', spec: detail?.spec, oldHP: detail?.spec.heroHP ?? 100 })
       }
 
       await submitAttack(selected.ns, selected.name, target, damage)
@@ -203,7 +203,7 @@ export default function App() {
         // Combat: backend is synchronous — attackSeq increments before API returns.
         // Capture prevSeq from the pre-attack state (detail), not after a wait.
         const oldHP = detail?.spec.heroHP ?? 100
-        const formula = detail?.status?.diceFormula || '2d12+4'
+        const formula = detail?.status?.diceFormula || '2d12+6'
         const prevSeq = detail?.spec.attackSeq || 0
 
         if (!isAbility) {
@@ -232,7 +232,7 @@ export default function App() {
       if (!isAbility && !isItem) {
         const displayHero = pollSucceeded ? heroAction : 'Attack processing... (dismiss and check game state)'
         const displayEnemy = pollSucceeded ? enemyAction : ''
-        setCombatModal({ phase: 'resolved', formula: detail?.status?.diceFormula || '2d12+4', heroAction: displayHero, enemyAction: displayEnemy, spec: updated.spec, oldHP: detail?.spec.heroHP ?? 100 })
+        setCombatModal({ phase: 'resolved', formula: detail?.status?.diceFormula || '2d12+6', heroAction: displayHero, enemyAction: displayEnemy, spec: updated.spec, oldHP: detail?.spec.heroHP ?? 100 })
         setAnimPhase('enemy-attack')
       } else if (!isItem) {
         // Ability (heal/taunt)
@@ -636,9 +636,9 @@ function HelpModal({ onClose, onCheat }: { onClose: () => void; onCheat: () => v
         <table className="help-table">
           <thead><tr><th>Difficulty</th><th>Monster HP</th><th>Boss HP</th><th>Dice</th><th>Counter/Mon</th><th>Boss Counter</th></tr></thead>
           <tbody>
-            <tr><td className="tag-easy">Easy</td><td>30</td><td>200</td><td>1d20+2</td><td>1</td><td>3</td></tr>
-            <tr><td className="tag-normal">Normal</td><td>50</td><td>400</td><td>2d12+4</td><td>2</td><td>5</td></tr>
-            <tr><td className="tag-hard">Hard</td><td>80</td><td>800</td><td>3d20+5</td><td>3</td><td>8</td></tr>
+            <tr><td className="tag-easy">Easy</td><td>30</td><td>200</td><td>1d20+3</td><td>1</td><td>3</td></tr>
+            <tr><td className="tag-normal">Normal</td><td>50</td><td>400</td><td>2d12+6</td><td>2</td><td>5</td></tr>
+            <tr><td className="tag-hard">Hard</td><td>80</td><td>800</td><td>3d20+8</td><td>3</td><td>8</td></tr>
           </tbody>
         </table>
       </>
@@ -716,7 +716,7 @@ function HelpModal({ onClose, onCheat }: { onClose: () => void; onCheat: () => v
       <>
         <p><b>General:</b> Kill monsters first to reduce counter-attack damage before engaging the boss.</p>
         <p><b>Warrior:</b> Best for beginners. High HP lets you survive many hits. Use Taunt before big boss attacks.</p>
-        <p><b>Mage:</b> Glass cannon. Rush the boss with 1.5x damage. Heal when low. Mana regens on monster kills.</p>
+        <p><b>Mage:</b> Glass cannon. Rush the boss with 1.3x damage. Heal when low. Mana regens on monster kills.</p>
         <p><b>Rogue:</b> High risk/reward. Dodge procs can save you. Save Backstab (3x) for the boss.</p>
         <p><b>Items:</b> Equip weapons before attacking the boss. Use potions freely — they don't cost a turn.</p>
         <p><b>Modifiers:</b> Blessing of Fortune (20% crit) is the strongest. Curse of Fury makes boss fights brutal.</p>
@@ -1008,7 +1008,7 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
                     <div className="arena-name">Boss · {spec.bossHP}/{maxBossHP}</div>
                     {bossState === 'ready' && !gameOver && !attackPhase && (
                       <div className="arena-actions">
-                        <button className="btn btn-primary arena-atk-btn" onClick={() => onAttack(bossName, 0)}>🎲 {status?.diceFormula || '2d12+4'}</button>
+                        <button className="btn btn-primary arena-atk-btn" onClick={() => onAttack(bossName, 0)}>🎲 {status?.diceFormula || '2d12+6'}</button>
                         {spec.heroClass === 'rogue' && (spec.backstabCooldown ?? 0) === 0 && (
                           <button className="btn btn-ability arena-atk-btn" onClick={() => onAttack(bossName + '-backstab', 0)}>Backstab</button>
                         )}
@@ -1053,7 +1053,7 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
                     <div className="arena-name">{mSprite} · {hp}/{maxMonsterHP}</div>
                     {state === 'alive' && !gameOver && !attackPhase && (
                       <div className="arena-actions">
-                        <button className="btn btn-primary arena-atk-btn" onClick={() => onAttack(mName, 0)}>🎲 {status?.diceFormula || '2d12+4'}</button>
+                        <button className="btn btn-primary arena-atk-btn" onClick={() => onAttack(mName, 0)}>🎲 {status?.diceFormula || '2d12+6'}</button>
                         {spec.heroClass === 'rogue' && (spec.backstabCooldown ?? 0) === 0 && (
                           <button className="btn btn-ability arena-atk-btn" onClick={() => onAttack(mName + '-backstab', 0)}>Backstab</button>
                         )}

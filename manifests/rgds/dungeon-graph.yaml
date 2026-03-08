@@ -153,7 +153,7 @@ spec:
         data:
           maxMonsterHP: "${schema.spec.difficulty == 'easy' ? '30' : schema.spec.difficulty == 'hard' ? '80' : '50'}"
           maxBossHP: "${schema.spec.difficulty == 'easy' ? '200' : schema.spec.difficulty == 'hard' ? '800' : '400'}"
-          diceFormula: "${schema.spec.difficulty == 'easy' ? '1d20+2' : schema.spec.difficulty == 'hard' ? '3d20+5' : '2d12+4'}"
+          diceFormula: "${schema.spec.difficulty == 'easy' ? '1d20+3' : schema.spec.difficulty == 'hard' ? '3d20+8' : '2d12+6'}"
           monsterCounter: "${schema.spec.difficulty == 'easy' ? '1' : schema.spec.difficulty == 'hard' ? '3' : '2'}"
           bossCounter: "${schema.spec.difficulty == 'easy' ? '3' : schema.spec.difficulty == 'hard' ? '8' : '5'}"
 

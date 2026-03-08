@@ -668,6 +668,10 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 			if tauntActive == 2 && counter > 0 {
 				counter = counter * 2 / 5
 			}
+			// One-shot protection: a single counter-attack cannot reduce hero below 1 HP.
+			if heroHP-counter < 1 && counter < heroHP {
+				counter = heroHP - 1
+			}
 			heroHP = max64(heroHP-counter, 0)
 			enemyAction = fmt.Sprintf("Boss strikes back for %d damage! (Hero HP: %d)", counter, heroHP)
 
@@ -829,6 +833,10 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 			}
 			if tauntActive == 2 && totalCounter > 0 {
 				totalCounter = totalCounter * 2 / 5
+			}
+			// One-shot protection: a single counter-attack cannot reduce hero below 1 HP.
+			if heroHP-totalCounter < 1 && totalCounter < heroHP {
+				totalCounter = heroHP - 1
 			}
 			heroHP = max64(heroHP-totalCounter, 0)
 			enemyAction = fmt.Sprintf("%d monsters counter-attack for %d total damage! (Hero HP: %d)", aliveCount, totalCounter, heroHP)

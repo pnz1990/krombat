@@ -239,7 +239,7 @@ async function run() {
     bodyHard.includes('800') || bodyHard.includes('/800')
       ? ok('Boss HP 800 visible (hard difficulty)')
       : warn('Boss HP 800 not in page text (boss may still be pending)');
-    bodyHard.includes('3d20+5') ? ok('Dice formula 3d20+5 visible') : warn('Dice formula 3d20+5 not found in body');
+    bodyHard.includes('3d20+8') ? ok('Dice formula 3d20+8 visible') : warn('Dice formula 3d20+8 not found in body');
 
     // === STEP 9: Console errors ===
     console.log('\n=== Step 9: Console Errors ===');
