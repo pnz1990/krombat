@@ -365,12 +365,11 @@ export default function App() {
           showLoot={showLoot}
           onOpenLoot={() => setShowLoot(true)}
           onCloseLoot={() => setShowLoot(false)}
-          currentTurn={'hero'}
-          turnRound={1}
           showHelp={showHelp}
           onToggleHelp={() => setShowHelp(h => !h)}
           showCheat={showCheat}
           onToggleCheat={() => setShowCheat(c => !c)}
+          wsConnected={connected}
         />
       ) : null}
     </div>
@@ -706,10 +705,10 @@ function HelpModal({ onClose, onCheat }: { onClose: () => void; onCheat: () => v
     </div>
   )
 }
-function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoot, onCloseLoot, currentTurn, turnRound, attackPhase, roomLoading, animPhase, attackTarget, showHelp, onToggleHelp, showCheat, onToggleCheat, floatingDmg, combatModal, onDismissCombat, lootDrop, onDismissLoot }: {
+function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoot, onCloseLoot, attackPhase, roomLoading, animPhase, attackTarget, showHelp, onToggleHelp, showCheat, onToggleCheat, floatingDmg, combatModal, onDismissCombat, lootDrop, onDismissLoot, wsConnected }: {
   cr: DungeonCR; onBack: () => void; onAttack: (t: string, d: number) => void; events: WSEvent[]; k8sLog: { ts: string; cmd: string; res: string; yaml?: string }[]
   showLoot: boolean; onOpenLoot: () => void; onCloseLoot: () => void
-  currentTurn: string; turnRound: number; attackPhase: string | null; roomLoading: boolean
+  attackPhase: string | null; roomLoading: boolean
   animPhase: string; attackTarget: string | null
   showHelp: boolean; onToggleHelp: () => void
   showCheat: boolean; onToggleCheat: () => void
@@ -717,9 +716,10 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
   combatModal: { phase: string; formula: string; heroAction: string; enemyAction: string; spec: any; oldHP: number } | null
   onDismissCombat: () => void
   lootDrop: string | null; onDismissLoot: () => void
+  wsConnected: boolean
 }) {
   if (!cr?.metadata?.name) return <div className="loading">Loading dungeon</div>
-  const spec = cr.spec || { monsters: 0, difficulty: 'normal', monsterHP: [], bossHP: 0, heroHP: 100, currentTurn: 'hero', turnRound: 1 }
+  const spec = cr.spec || { monsters: 0, difficulty: 'normal', monsterHP: [], bossHP: 0, heroHP: 100 }
   const status = cr.status
   const dungeonName = cr.metadata.name
   const maxMonsterHP = Number(status?.maxMonsterHP) || Math.max(...(spec.monsterHP || [1]))
@@ -727,7 +727,6 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
   const heroHP = spec.heroHP ?? 100
   const maxHeroHP = Number(status?.maxHeroHP) || heroHP
   const isDefeated = status?.defeated || heroHP <= 0
-  const isHeroTurn = !currentTurn || currentTurn === 'hero'
   const allMonstersDead = (spec.monsterHP || []).every((hp: number) => hp <= 0)
   const bossState = spec.bossHP <= 0 ? 'defeated' : allMonstersDead ? 'ready' : 'pending'
   // During room 2 transition, bossHP=0 is stale from room 1 — not a real victory
@@ -774,6 +773,12 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
       {showHelp && <HelpModal onClose={onToggleHelp} onCheat={onToggleCheat} />}
 
       {showCheat && <CheatModal onClose={onToggleCheat} onAction={(target: string) => onAttack(target, 0)} />}
+
+      {!wsConnected && (
+        <div className="ws-reconnecting-banner">
+          ○ Reconnecting to server...
+        </div>
+      )}
 
       {combatModal && (
         <div className="modal-overlay combat-overlay">
@@ -843,6 +848,7 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
         <div><span className="label">Boss:</span><span className="value">{bossState}</span></div>
         <div><span className="label">Difficulty:</span><span className="value">{spec.difficulty}</span></div>
         <div><span className="label">Room:</span><span className="value">{spec.currentRoom || 1}</span></div>
+        <div><span className="label">Turn:</span><span className="value">{(spec.attackSeq ?? 0) + 1}</span></div>
       </div>
 
       <div className="game-layout">
