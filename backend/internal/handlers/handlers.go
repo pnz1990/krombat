@@ -200,7 +200,8 @@ func (h *Handler) CreateDungeon(w http.ResponseWriter, r *http.Request) {
 	result, err := h.client.Dynamic.Resource(k8s.DungeonGVR).Namespace(req.Namespace).Create(
 		context.Background(), dungeon, metav1.CreateOptions{})
 	if err != nil {
-		writeError(w, err.Error(), http.StatusInternalServerError)
+		slog.Error("failed to create dungeon", "component", "api", "dungeon", req.Name, "error", err)
+		writeError(w, sanitizeK8sError(err), http.StatusInternalServerError)
 		return
 	}
 	dungeonsCreated.Inc()
@@ -214,7 +215,8 @@ func (h *Handler) ListDungeons(w http.ResponseWriter, r *http.Request) {
 	list, err := h.client.Dynamic.Resource(k8s.DungeonGVR).Namespace("").List(
 		context.Background(), metav1.ListOptions{})
 	if err != nil {
-		writeError(w, err.Error(), http.StatusInternalServerError)
+		slog.Error("failed to list dungeons", "component", "api", "error", err)
+		writeError(w, sanitizeK8sError(err), http.StatusInternalServerError)
 		return
 	}
 
@@ -256,7 +258,8 @@ func (h *Handler) GetDungeon(w http.ResponseWriter, r *http.Request) {
 	dungeon, err := h.client.Dynamic.Resource(k8s.DungeonGVR).Namespace(ns).Get(
 		context.Background(), name, metav1.GetOptions{})
 	if err != nil {
-		writeError(w, err.Error(), http.StatusNotFound)
+		slog.Error("failed to get dungeon", "component", "api", "dungeon", name, "namespace", ns, "error", err)
+		writeError(w, sanitizeK8sError(err), http.StatusNotFound)
 		return
 	}
 
@@ -274,7 +277,8 @@ func (h *Handler) DeleteDungeon(w http.ResponseWriter, r *http.Request) {
 	err := h.client.Dynamic.Resource(k8s.DungeonGVR).Namespace(ns).Delete(
 		context.Background(), name, metav1.DeleteOptions{})
 	if err != nil {
-		writeError(w, err.Error(), http.StatusNotFound)
+		slog.Error("failed to delete dungeon", "component", "api", "dungeon", name, "namespace", ns, "error", err)
+		writeError(w, sanitizeK8sError(err), http.StatusNotFound)
 		return
 	}
 	slog.Info("dungeon deleted", "component", "api", "dungeon", name, "namespace", ns)
@@ -1188,6 +1192,7 @@ func sanitizeK8sError(err error) string {
 		return "Internal server error"
 	}
 }
+
 
 // rollDice rolls dice based on difficulty using seeded randomness.
 func rollDice(difficulty string, isBoss bool, uid string) int64 {
