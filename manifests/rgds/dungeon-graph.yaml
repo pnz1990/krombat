@@ -25,6 +25,9 @@ spec:
       weaponUses: integer | default=0
       armorBonus: integer | default=0
       shieldBonus: integer | default=0
+      helmetBonus: integer | default=0
+      pantsBonus: integer | default=0
+      bootsBonus: integer | default=0
       poisonTurns: integer | default=0
       burnTurns: integer | default=0
       stunTurns: integer | default=0
@@ -244,9 +247,9 @@ spec:
             }
 
           # === MANA POTION ===
-          manaAfterCommon: "${string(schema.spec.heroMana + 2 < 5 ? schema.spec.heroMana + 2 : 5)}"
-          manaAfterRare:   "${string(schema.spec.heroMana + 3 < 5 ? schema.spec.heroMana + 3 : 5)}"
-          manaAfterEpic:   "${string(schema.spec.heroMana + 5 < 5 ? schema.spec.heroMana + 5 : 5)}"
+          manaAfterCommon: "${string(schema.spec.heroMana + 2 < 8 ? schema.spec.heroMana + 2 : 8)}"
+          manaAfterRare:   "${string(schema.spec.heroMana + 3 < 8 ? schema.spec.heroMana + 3 : 8)}"
+          manaAfterEpic:   "${string(schema.spec.heroMana + 8 < 8 ? schema.spec.heroMana + 8 : 8)}"
 
           # === EQUIP WEAPON ===
           weaponBonusCommon: "5"
@@ -263,6 +266,21 @@ spec:
           shieldBonusCommon: "10"
           shieldBonusRare:   "15"
           shieldBonusEpic:   "25"
+
+          # === EQUIP HELMET (crit chance %) ===
+          helmetBonusCommon: "5"
+          helmetBonusRare:   "10"
+          helmetBonusEpic:   "15"
+
+          # === EQUIP PANTS (dodge chance %) ===
+          pantsBonusCommon: "5"
+          pantsBonusRare:   "10"
+          pantsBonusEpic:   "15"
+
+          # === EQUIP BOOTS (status resist %) ===
+          bootsBonusCommon: "20"
+          bootsBonusRare:   "40"
+          bootsBonusEpic:   "60"
 
           # === ROOM 2 HP ARRAYS ===
           # Room 2 HP scales from Room 1 base: monsters ×1.5, boss ×1.3
