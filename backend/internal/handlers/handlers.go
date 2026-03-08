@@ -197,9 +197,13 @@ func (h *Handler) CreateDungeon(w http.ResponseWriter, r *http.Request) {
 		},
 	}}
 
-	result, err := h.client.Dynamic.Resource(k8s.DungeonGVR).Namespace(req.Namespace).Create(
-		context.Background(), dungeon, metav1.CreateOptions{})
-	if err != nil {
+	var result *unstructured.Unstructured
+	if err := retryK8s(3, func() error {
+		var createErr error
+		result, createErr = h.client.Dynamic.Resource(k8s.DungeonGVR).Namespace(req.Namespace).Create(
+			context.Background(), dungeon, metav1.CreateOptions{})
+		return createErr
+	}); err != nil {
 		slog.Error("failed to create dungeon", "component", "api", "dungeon", req.Name, "error", err)
 		writeError(w, sanitizeK8sError(err), http.StatusInternalServerError)
 		return
@@ -274,9 +278,10 @@ func (h *Handler) DeleteDungeon(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := h.client.Dynamic.Resource(k8s.DungeonGVR).Namespace(ns).Delete(
-		context.Background(), name, metav1.DeleteOptions{})
-	if err != nil {
+	if err := retryK8s(3, func() error {
+		return h.client.Dynamic.Resource(k8s.DungeonGVR).Namespace(ns).Delete(
+			context.Background(), name, metav1.DeleteOptions{})
+	}); err != nil {
 		slog.Error("failed to delete dungeon", "component", "api", "dungeon", name, "namespace", ns, "error", err)
 		writeError(w, sanitizeK8sError(err), http.StatusNotFound)
 		return
@@ -1114,14 +1119,44 @@ func (h *Handler) processAction(ctx context.Context, ns, name, action string, w 
 
 // ---- helpers ----------------------------------------------------------------
 
+// retryK8s retries fn up to attempts times, sleeping with linear backoff between
+// retries. Client errors (4xx — not found, already exists, invalid, forbidden)
+// are not retried since they indicate a caller mistake, not a transient failure.
+func retryK8s(attempts int, fn func() error) error {
+	var err error
+	for i := 0; i < attempts; i++ {
+		err = fn()
+		if err == nil {
+			return nil
+		}
+		if isClientError(err) {
+			return err
+		}
+		time.Sleep(time.Duration(i+1) * 200 * time.Millisecond)
+	}
+	return err
+}
+
+// isClientError reports whether err is a Kubernetes 4xx client error that
+// should not be retried (as opposed to a transient 5xx / network failure).
+func isClientError(err error) bool {
+	errStr := strings.ToLower(err.Error())
+	return strings.Contains(errStr, "not found") ||
+		strings.Contains(errStr, "already exists") ||
+		strings.Contains(errStr, "invalid") ||
+		strings.Contains(errStr, "forbidden")
+}
+
 func (h *Handler) patchDungeon(ctx context.Context, ns, name string, patch map[string]interface{}) error {
 	data, err := json.Marshal(patch)
 	if err != nil {
 		return err
 	}
-	_, err = h.client.Dynamic.Resource(k8s.DungeonGVR).Namespace(ns).Patch(
-		ctx, name, types.MergePatchType, data, metav1.PatchOptions{})
-	return err
+	return retryK8s(3, func() error {
+		_, err := h.client.Dynamic.Resource(k8s.DungeonGVR).Namespace(ns).Patch(
+			ctx, name, types.MergePatchType, data, metav1.PatchOptions{})
+		return err
+	})
 }
 
 func (h *Handler) patchAndRespond(ctx context.Context, ns, name string, patch map[string]interface{}, w http.ResponseWriter) error {
@@ -1192,7 +1227,6 @@ func sanitizeK8sError(err error) string {
 		return "Internal server error"
 	}
 }
-
 
 // rollDice rolls dice based on difficulty using seeded randomness.
 func rollDice(difficulty string, isBoss bool, uid string) int64 {
