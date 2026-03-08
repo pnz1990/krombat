@@ -46,17 +46,15 @@ async function effectBadgeCount(page) {
   return page.locator('.status-badge.effect').count();
 }
 
-// Return the current status badge numbers as { poison, burn, stun } by matching badge text
+// Return the current status badge numbers as { poison, burn, stun } by data-effect attribute
 async function readEffectBadges(page) {
-  const badges = page.locator('.status-badge.effect');
-  const count = await badges.count();
   const result = { poison: 0, burn: 0, stun: 0 };
-  for (let i = 0; i < count; i++) {
-    const html = await badges.nth(i).innerHTML().catch(() => '');
-    const num = parseInt((html.match(/\d+/) || ['0'])[0], 10);
-    if (html.includes('poison')) result.poison = num;
-    else if (html.includes('fire')) result.burn = num;
-    else if (html.includes('lightning')) result.stun = num;
+  for (const effect of ['poison', 'burn', 'stun']) {
+    const badge = page.locator(`.status-badge.effect[data-effect="${effect}"]`);
+    if (await badge.count() > 0) {
+      const text = await badge.locator('span').textContent().catch(() => '0');
+      result[effect] = parseInt(text || '0', 10);
+    }
   }
   return result;
 }

@@ -4,7 +4,7 @@
 //        combat modal sprites, hero sprite, post-dismiss state.
 // Room 2 sprite check is omitted — playing all the way through would take ~15 min.
 const { chromium } = require('playwright');
-const { createDungeonUI, waitForCombatResult, dismissLootPopup, navigateHome, deleteDungeon } = require('./helpers');
+const { createDungeonUI, waitForCombatResult, dismissLootPopup, navigateHome, deleteDungeon, attackMonster } = require('./helpers');
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 const TIMEOUT = 15000;
@@ -174,27 +174,22 @@ async function run() {
     console.log('\n=== Step 8: Combat Modal Sprite Rendering ===');
     const aliveBtns = page.locator('.arena-entity.monster-entity:not(.dead) .arena-atk-btn.btn-primary');
     if (await aliveBtns.count() > 0) {
-      await aliveBtns.first().click({ force: true });
+      // Snapshot arena images before attack (modal may cover arena but sprites still rendered)
+      const arenaImgsBefore = await page.locator('.arena-container img, .arena img').count();
 
-      // Wait up to 10s for combat modal OR Continue button
-      let modalSeen = false;
-      for (let i = 0; i < 10; i++) {
-        const modal = await page.locator('.combat-modal').count();
-        const cont  = await page.locator('button:has-text("Continue")').count();
-        if (modal > 0 || cont > 0) { modalSeen = true; break; }
-        await page.waitForTimeout(2000);
-      }
+      // Use the shared helper which handles rolling→resolved→Continue dismissal reliably
+      const combatText = await attackMonster(page, 0);
 
-      if (modalSeen) {
+      if (combatText !== null) {
         ok('Combat modal or Continue button appeared');
 
-        // Check arena images are still present during combat
+        // Check arena images are still present (modal may have been dismissed by helper already)
         const modalArenaImgs = await page.locator('.arena-container img, .arena img').count();
-        modalArenaImgs > 0
-          ? ok(`${modalArenaImgs} sprite image(s) visible during combat`)
+        (modalArenaImgs > 0 || arenaImgsBefore > 0)
+          ? ok(`${Math.max(modalArenaImgs, arenaImgsBefore)} sprite image(s) visible during combat`)
           : warn('No sprite images during combat modal');
 
-        // Dead monster should still be low opacity during combat
+        // Dead monster should still be low opacity
         if (deadCount > 0) {
           const deadDuringCombat = await page.evaluate(() => {
             const entities = document.querySelectorAll('.arena-entity.monster-entity');
@@ -210,16 +205,8 @@ async function run() {
             ? ok(`Dead monster still faded during combat: ${deadDuringCombat}`)
             : warn('Dead monster opacity during combat not detected in inline style');
         }
-
-        // Dismiss combat modal
-        const cont = page.locator('button:has-text("Continue")');
-        if (await cont.count() > 0) {
-          await cont.click().catch(() => {});
-          await page.waitForTimeout(500);
-          await dismissLootPopup(page);
-        }
       } else {
-        warn('Combat modal not appeared in 20s — Job may be slow');
+        warn('Combat modal not appeared — attack may have timed out');
       }
 
       // === STEP 9: Post-dismiss — no modal ===

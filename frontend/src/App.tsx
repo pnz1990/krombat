@@ -1080,9 +1080,9 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
 
                 <div className="status-row">
                   {modifier !== 'none' && <Tooltip text={`${modifier.startsWith('curse') ? 'Curse' : 'Blessing'}: ${status?.modifier || modifier}`}><div className={`status-badge ${modifier.startsWith('curse') ? 'curse' : 'blessing'}`}><ItemSprite id={modifier} size={18} /></div></Tooltip>}
-                  {poison > 0 && <Tooltip text={`Poison: -5 HP per turn, ${poison} turns remaining`}><div className="status-badge effect"><PixelIcon name="poison" size={12} /><span>{poison}</span></div></Tooltip>}
-                  {burn > 0 && <Tooltip text={`Burn: -8 HP per turn, ${burn} turns remaining`}><div className="status-badge effect"><PixelIcon name="fire" size={12} /><span>{burn}</span></div></Tooltip>}
-                  {stun > 0 && <Tooltip text={`Stun: skip next attack, ${stun} turns remaining`}><div className="status-badge effect"><PixelIcon name="lightning" size={12} /><span>{stun}</span></div></Tooltip>}
+                  {poison > 0 && <Tooltip text={`Poison: -5 HP per turn, ${poison} turns remaining`}><div className="status-badge effect" data-effect="poison"><PixelIcon name="poison" size={12} /><span>{poison}</span></div></Tooltip>}
+                  {burn > 0 && <Tooltip text={`Burn: -8 HP per turn, ${burn} turns remaining`}><div className="status-badge effect" data-effect="burn"><PixelIcon name="fire" size={12} /><span>{burn}</span></div></Tooltip>}
+                  {stun > 0 && <Tooltip text={`Stun: skip next attack, ${stun} turns remaining`}><div className="status-badge effect" data-effect="stun"><PixelIcon name="lightning" size={12} /><span>{stun}</span></div></Tooltip>}
                 </div>
 
                 {items.length > 0 && (
