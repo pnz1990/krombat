@@ -12,11 +12,15 @@ spec:
     spec:
       dungeonName: string | required=true
       hp: integer | required=true
+      maxHP: integer | default=400
       difficulty: string | default="normal"
       monstersAlive: integer | default=1
     status:
       entityState: "${bossState.data.entityState}"
       hp: "${bossState.data.hp}"
+      phase: "${bossState.data.phase}"
+      damageMultiplier: "${bossState.data.damageMultiplier}"
+      specialAttackChance: "${bossState.data.specialAttackChance}"
 
   resources:
     - id: bossState
@@ -30,9 +34,44 @@ spec:
             game.k8s.example/dungeon: ${schema.spec.dungeonName}
             game.k8s.example/entity: boss
             game.k8s.example/state: "${schema.spec.hp > 0 ? (schema.spec.monstersAlive == 0 ? 'ready' : 'pending') : 'defeated'}"
+            game.k8s.example/phase: >-
+              ${
+                schema.spec.hp <= 0 ? 'defeated' :
+                schema.spec.hp * 100 / (schema.spec.maxHP > 0 ? schema.spec.maxHP : 400) > 50 ? 'phase1' :
+                schema.spec.hp * 100 / (schema.spec.maxHP > 0 ? schema.spec.maxHP : 400) > 25 ? 'phase2' :
+                'phase3'
+              }
         data:
           entityState: "${schema.spec.hp > 0 ? (schema.spec.monstersAlive == 0 ? 'ready' : 'pending') : 'defeated'}"
           hp: "${string(schema.spec.hp)}"
+          # Phase derived from HP % of maxHP:
+          #   Phase 1: >50% HP  (100-51%)
+          #   Phase 2: >25% HP  (50-26%)
+          #   Phase 3: >0% HP   (25-1%)
+          #   Phase defeated:   HP == 0
+          phase: >-
+            ${
+              schema.spec.hp <= 0 ? 'defeated' :
+              schema.spec.hp * 100 / (schema.spec.maxHP > 0 ? schema.spec.maxHP : 400) > 50 ? 'phase1' :
+              schema.spec.hp * 100 / (schema.spec.maxHP > 0 ? schema.spec.maxHP : 400) > 25 ? 'phase2' :
+              'phase3'
+            }
+          # Damage multiplier per phase: 1.0x / 1.5x / 2.0x (stored as integer *10)
+          damageMultiplier: >-
+            ${
+              schema.spec.hp <= 0 ? '10' :
+              schema.spec.hp * 100 / (schema.spec.maxHP > 0 ? schema.spec.maxHP : 400) > 50 ? '10' :
+              schema.spec.hp * 100 / (schema.spec.maxHP > 0 ? schema.spec.maxHP : 400) > 25 ? '15' :
+              '20'
+            }
+          # Special attack chance per phase: 20% / 40% / 60%
+          specialAttackChance: >-
+            ${
+              schema.spec.hp <= 0 ? '0' :
+              schema.spec.hp * 100 / (schema.spec.maxHP > 0 ? schema.spec.maxHP : 400) > 50 ? '20' :
+              schema.spec.hp * 100 / (schema.spec.maxHP > 0 ? schema.spec.maxHP : 400) > 25 ? '40' :
+              '60'
+            }
 
     # Loot CR — boss always drops on kill (hp == 0), always rare or epic
     #

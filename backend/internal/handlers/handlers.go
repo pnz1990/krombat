@@ -360,6 +360,7 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 		return err
 	}
 	spec := getMap(dungeon.Object, "spec")
+	dungeonStatus := getMap(dungeon.Object, "status")
 
 	heroHP := getInt(spec, "heroHP")
 	heroClass := getString(spec, "heroClass", "warrior")
@@ -368,6 +369,16 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 	tauntActive := getInt(spec, "tauntActive")
 	backstabCD := getInt(spec, "backstabCooldown")
 	attackSeq := getInt(spec, "attackSeq")
+
+	// Boss phase damage multiplier from kro-derived status (boss-graph CEL).
+	// Stored as integer *10: phase1=10 (1.0x), phase2=15 (1.5x), phase3=20 (2.0x).
+	// Default to 10 (1.0x) if status not yet populated.
+	bossDmgMultiplierStr := getString(dungeonStatus, "bossDamageMultiplier", "10")
+	bossDmgMultiplier, _ := strconv.ParseInt(bossDmgMultiplierStr, 10, 64)
+	if bossDmgMultiplier <= 0 {
+		bossDmgMultiplier = 10
+	}
+	bossPhaseStr := getString(dungeonStatus, "bossPhase", "phase1")
 
 	// Conflict guard: if the client sent a known sequence number that doesn't
 	// match the current spec, another request already advanced the dungeon
@@ -652,6 +663,15 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 		default:
 			counter = 5
 		}
+		// Apply boss phase multiplier (derived from boss-graph CEL via kro status).
+		// Phase 1: ×1.0, Phase 2: ×1.5, Phase 3: ×2.0 — stored as integer *10.
+		counter = counter * bossDmgMultiplier / 10
+		phaseNote := ""
+		if bossPhaseStr == "phase2" {
+			phaseNote = " [ENRAGED ×1.5]"
+		} else if bossPhaseStr == "phase3" {
+			phaseNote = " [BERSERK ×2.0]"
+		}
 		enemyAction := ""
 		effectNote := ""
 		if newBossHP > 0 {
@@ -688,7 +708,7 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 				counter = heroHP - 1
 			}
 			heroHP = max64(heroHP-counter, 0)
-			enemyAction = fmt.Sprintf("Boss strikes back for %d damage! (Hero HP: %d)", counter, heroHP)
+			enemyAction = fmt.Sprintf("Boss strikes back for %d damage!%s (Hero HP: %d)", counter, phaseNote, heroHP)
 
 			// Status effects from boss — boots provide status resist
 			effectRoll := seededRoll(attackUID+"-fx", 100)

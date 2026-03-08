@@ -688,6 +688,43 @@ body {
   100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 }
 
+/* Boss phase visual effects */
+.boss-entity.boss-phase2 { filter: drop-shadow(0 0 10px #ff8800) drop-shadow(0 0 20px #ff4400); }
+.boss-entity.boss-phase3 { filter: drop-shadow(0 0 12px #ff0000) drop-shadow(0 0 24px #cc0000); animation: bossEntrance 0.8s ease-out, berserkPulse 1.2s ease-in-out infinite; }
+@keyframes berserkPulse {
+  0%, 100% { filter: drop-shadow(0 0 12px #ff0000) drop-shadow(0 0 24px #cc0000); }
+  50% { filter: drop-shadow(0 0 20px #ff3333) drop-shadow(0 0 40px #ff0000); }
+}
+
+/* Boss phase badge */
+.boss-phase-badge {
+  position: absolute;
+  top: -48px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: 'Press Start 2P', monospace;
+  font-size: 7px;
+  padding: 3px 6px;
+  border-radius: 3px;
+  white-space: nowrap;
+  z-index: 10;
+  animation: phaseBadgePulse 1.5s ease-in-out infinite;
+}
+.boss-phase-badge.phase2 {
+  background: rgba(255, 136, 0, 0.9);
+  color: #fff;
+  border: 1px solid #ff8800;
+}
+.boss-phase-badge.phase3 {
+  background: rgba(204, 0, 0, 0.9);
+  color: #fff;
+  border: 1px solid #ff0000;
+}
+@keyframes phaseBadgePulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
 /* Hero entity */
 .hero-entity { z-index: 3; }
 
