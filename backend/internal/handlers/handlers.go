@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"math/rand"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -92,6 +93,10 @@ var defaultHP = map[string]struct{ monster, boss int64 }{
 	"hard":   {80, 800},
 }
 
+// validDNSLabel matches valid Kubernetes namespace names (RFC 1123 DNS label).
+// Must be lowercase alphanumeric or hyphens, start/end with alphanumeric, max 63 chars.
+var validDNSLabel = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
+
 type CreateDungeonReq struct {
 	Name       string `json:"name"`
 	Monsters   int64  `json:"monsters"`
@@ -108,6 +113,10 @@ func (h *Handler) CreateDungeon(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Name == "" || req.Monsters < 1 || req.Monsters > 10 {
 		writeError(w, "invalid name or monsters (1-10)", http.StatusBadRequest)
+		return
+	}
+	if !validDNSLabel.MatchString(req.Name) {
+		writeError(w, "dungeon name must be a valid DNS label (lowercase alphanumeric and hyphens only, max 63 chars, must start and end with alphanumeric)", http.StatusBadRequest)
 		return
 	}
 	if req.Difficulty != "easy" && req.Difficulty != "normal" && req.Difficulty != "hard" {

@@ -111,6 +111,7 @@ body {
   border: 2px solid var(--border);
   width: 140px;
 }
+.input-error { font-size: 6px; color: var(--accent); margin-top: 4px; max-width: 200px; line-height: 1.6; }
 
 /* Dungeon View */
 .dungeon-header {
