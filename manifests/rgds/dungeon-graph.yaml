@@ -217,36 +217,36 @@ spec:
           pendingSeq: "${string(schema.spec.actionSeq)}"
 
           # === USE HP POTION ===
-          # new heroHP after use (clamped to class max)
+          # new heroHP after use (clamped to class max, using ternary since math.least unavailable)
           hpAfterPotion: >-
             ${
               string(
-                schema.spec.heroClass == 'warrior' ? math.least(schema.spec.heroHP + 999, 200) :
-                schema.spec.heroClass == 'mage'    ? math.least(schema.spec.heroHP + 999, 120) :
-                                                     math.least(schema.spec.heroHP + 999, 150)
+                schema.spec.heroClass == 'warrior' ? (schema.spec.heroHP + 999 < 200 ? schema.spec.heroHP + 999 : 200) :
+                schema.spec.heroClass == 'mage'    ? (schema.spec.heroHP + 999 < 120 ? schema.spec.heroHP + 999 : 120) :
+                                                     (schema.spec.heroHP + 999 < 150 ? schema.spec.heroHP + 999 : 150)
               )
             }
           hpAfterPotionCommon: >-
             ${
               string(
-                schema.spec.heroClass == 'warrior' ? math.least(schema.spec.heroHP + 20, 200) :
-                schema.spec.heroClass == 'mage'    ? math.least(schema.spec.heroHP + 20, 120) :
-                                                     math.least(schema.spec.heroHP + 20, 150)
+                schema.spec.heroClass == 'warrior' ? (schema.spec.heroHP + 20 < 200 ? schema.spec.heroHP + 20 : 200) :
+                schema.spec.heroClass == 'mage'    ? (schema.spec.heroHP + 20 < 120 ? schema.spec.heroHP + 20 : 120) :
+                                                     (schema.spec.heroHP + 20 < 150 ? schema.spec.heroHP + 20 : 150)
               )
             }
           hpAfterPotionRare: >-
             ${
               string(
-                schema.spec.heroClass == 'warrior' ? math.least(schema.spec.heroHP + 40, 200) :
-                schema.spec.heroClass == 'mage'    ? math.least(schema.spec.heroHP + 40, 120) :
-                                                     math.least(schema.spec.heroHP + 40, 150)
+                schema.spec.heroClass == 'warrior' ? (schema.spec.heroHP + 40 < 200 ? schema.spec.heroHP + 40 : 200) :
+                schema.spec.heroClass == 'mage'    ? (schema.spec.heroHP + 40 < 120 ? schema.spec.heroHP + 40 : 120) :
+                                                     (schema.spec.heroHP + 40 < 150 ? schema.spec.heroHP + 40 : 150)
               )
             }
 
           # === MANA POTION ===
-          manaAfterCommon: "${string(math.least(schema.spec.heroMana + 2, 5))}"
-          manaAfterRare:   "${string(math.least(schema.spec.heroMana + 3, 5))}"
-          manaAfterEpic:   "${string(math.least(schema.spec.heroMana + 5, 5))}"
+          manaAfterCommon: "${string(schema.spec.heroMana + 2 < 5 ? schema.spec.heroMana + 2 : 5)}"
+          manaAfterRare:   "${string(schema.spec.heroMana + 3 < 5 ? schema.spec.heroMana + 3 : 5)}"
+          manaAfterEpic:   "${string(schema.spec.heroMana + 5 < 5 ? schema.spec.heroMana + 5 : 5)}"
 
           # === EQUIP WEAPON ===
           weaponBonusCommon: "5"

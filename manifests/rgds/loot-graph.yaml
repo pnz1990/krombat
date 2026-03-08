@@ -14,6 +14,7 @@ spec:
       itemType: string | required=true
       rarity: string | default="common"
       stat: integer | default=0
+      dropped: boolean | default=false
     status:
       itemName: "${lootSecret.metadata.name}"
       description: "${lootSecret.data.description}"
