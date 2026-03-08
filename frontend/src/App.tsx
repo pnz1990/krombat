@@ -1022,7 +1022,7 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
           {!gameOver && !attackPhase && (
             <div className="ability-bar">
               {spec.heroClass === 'mage' && (
-                <button className="btn btn-ability" disabled={(spec.heroMana ?? 0) < 2 || heroHP >= 80}
+                <button className="btn btn-ability" disabled={(spec.heroMana ?? 0) < 2 || heroHP >= maxHeroHP}
                   onClick={() => onAttack('hero', 0)}>
                   <PixelIcon name="heal" size={12} /> Heal
                 </button>
