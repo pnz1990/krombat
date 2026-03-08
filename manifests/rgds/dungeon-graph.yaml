@@ -130,6 +130,8 @@ spec:
     - id: modifierCR
       includeWhen:
         - ${schema.spec.modifier != "none"}
+      readyWhen:
+        - "self.status.?modifierType.orValue('') != ''"
       template:
         apiVersion: game.k8s.example/v1alpha1
         kind: Modifier
