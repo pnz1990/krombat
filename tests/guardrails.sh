@@ -350,6 +350,10 @@ grep -q "boss-phase2\|boss-phase3" frontend/src/App.tsx && pass "Frontend applie
 grep -q "boss-phase-badge" frontend/src/App.tsx && pass "Frontend renders boss phase badge" || fail "Frontend missing boss phase badge"
 grep -q "ENRAGED\|BERSERK" frontend/src/App.tsx && pass "Frontend emits phase transition events to combat log" || fail "Frontend missing phase transition log events"
 
+# --- KroGraph concept reference sanity ---
+echo "=== KroGraph concept reference guardrails"
+! grep -q "concept: 'secrets'" frontend/src/KroGraph.tsx && pass "KroGraph has no dangling 'secrets' concept reference" || fail "KroGraph references unknown concept 'secrets' — use 'secret-output'"
+
 # --- Summary ---
 
 echo ""
