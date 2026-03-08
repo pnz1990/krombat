@@ -16,6 +16,7 @@ import (
 	"github.com/pnz1990/krombat/backend/internal/ws"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 )
 
@@ -1507,4 +1508,65 @@ func sliceInt(v interface{}) int64 {
 		return int64(x)
 	}
 	return 0
+}
+
+// GetDungeonResource fetches a child resource of a dungeon for the kro Inspector panel.
+// GET /api/v1/dungeons/{namespace}/{name}/resources?kind=hero
+func (h *Handler) GetDungeonResource(w http.ResponseWriter, r *http.Request) {
+	ns := r.PathValue("namespace")
+	name := r.PathValue("name")
+	kind := r.URL.Query().Get("kind")
+	ctx := r.Context()
+
+	type resourceDef struct {
+		gvr     schema.GroupVersionResource
+		resName string
+	}
+
+	grp := "game.k8s.example"
+	ver := "v1alpha1"
+	coreGrp := ""
+	coreVer := "v1"
+
+	var def *resourceDef
+	switch kind {
+	case "dungeon":
+		def = &resourceDef{schema.GroupVersionResource{Group: grp, Version: ver, Resource: "dungeons"}, name}
+	case "hero":
+		def = &resourceDef{schema.GroupVersionResource{Group: grp, Version: ver, Resource: "heroes"}, name + "-hero"}
+	case "boss":
+		def = &resourceDef{schema.GroupVersionResource{Group: grp, Version: ver, Resource: "bosses"}, name + "-boss"}
+	case "namespace":
+		def = &resourceDef{schema.GroupVersionResource{Group: coreGrp, Version: coreVer, Resource: "namespaces"}, ns}
+	case "herostate":
+		def = &resourceDef{schema.GroupVersionResource{Group: coreGrp, Version: coreVer, Resource: "configmaps"}, name + "-hero-state"}
+	case "bossstate":
+		def = &resourceDef{schema.GroupVersionResource{Group: coreGrp, Version: coreVer, Resource: "configmaps"}, name + "-boss-state"}
+	case "gameconfig":
+		def = &resourceDef{schema.GroupVersionResource{Group: coreGrp, Version: coreVer, Resource: "configmaps"}, name + "-game-config"}
+	default:
+		writeError(w, "unknown kind: "+kind, http.StatusBadRequest)
+		return
+	}
+
+	var obj *unstructured.Unstructured
+	var err error
+	if def.gvr.Group == "" {
+		if kind == "namespace" {
+			obj, err = h.client.Dynamic.Resource(def.gvr).Get(ctx, def.resName, metav1.GetOptions{})
+		} else {
+			obj, err = h.client.Dynamic.Resource(def.gvr).Namespace(ns).Get(ctx, def.resName, metav1.GetOptions{})
+		}
+	} else {
+		obj, err = h.client.Dynamic.Resource(def.gvr).Namespace(ns).Get(ctx, def.resName, metav1.GetOptions{})
+	}
+	if err != nil {
+		writeError(w, "resource not found: "+err.Error(), http.StatusNotFound)
+		return
+	}
+
+	obj.SetManagedFields(nil)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(obj.Object)
 }

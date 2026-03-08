@@ -74,6 +74,12 @@ export class ApiError extends Error {
   }
 }
 
+export async function getDungeonResource(ns: string, name: string, kind: string): Promise<any> {
+  const r = await fetch(`${BASE}/dungeons/${ns}/${name}/resources?kind=${encodeURIComponent(kind)}`)
+  if (!r.ok) return null
+  return r.json()
+}
+
 export async function submitAttack(ns: string, dungeon: string, target: string, damage: number, seq?: number) {
   const r = await fetch(`${BASE}/dungeons/${ns}/${dungeon}/attacks`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
