@@ -99,8 +99,8 @@ const ITEM_STRIP: Record<string, { frames: number; frameW: number; frameH: numbe
   armor:     { frames: 6, frameW: 848, frameH: 832, file: '/sprites/items/armor.png' },
 }
 
-// Map item type+rarity to strip and index, or direct file path
-type ItemMapEntry = { strip: string; index: number; file?: never } | { file: string; strip?: never; index?: never }
+// Map item type+rarity to strip and index, or direct file path, or emoji
+type ItemMapEntry = { strip: string; index: number; file?: never; emoji?: never } | { file: string; strip?: never; index?: never; emoji?: never } | { emoji: string; strip?: never; index?: never; file?: never }
 const ITEM_MAP: Record<string, ItemMapEntry> = {
   'weapon-common':     { strip: 'weapons', index: 0 },
   'weapon-rare':       { strip: 'weapons', index: 1 },
@@ -126,6 +126,12 @@ const ITEM_MAP: Record<string, ItemMapEntry> = {
   'boots-common':      { file: '/sprites/items/boots/1.png' },
   'boots-rare':        { file: '/sprites/items/boots/2.png' },
   'boots-epic':        { file: '/sprites/items/boots/3.png' },
+  'ring-common':       { emoji: '💍' },
+  'ring-rare':         { emoji: '💍' },
+  'ring-epic':         { emoji: '💍' },
+  'amulet-common':     { emoji: '📿' },
+  'amulet-rare':       { emoji: '📿' },
+  'amulet-epic':       { emoji: '📿' },
 }
 
 const MODIFIER_MAP: Record<string, { file: string }> = {
@@ -138,8 +144,13 @@ const MODIFIER_MAP: Record<string, { file: string }> = {
 }
 
 export function ItemSprite({ id, size = 24 }: { id: string; size?: number }) {
-  const mapping: { strip?: string; index?: number; file?: string } | undefined = ITEM_MAP[id] || MODIFIER_MAP[id]
+  const mapping: { strip?: string; index?: number; file?: string; emoji?: string } | undefined = ITEM_MAP[id] || MODIFIER_MAP[id]
   if (!mapping) return <span style={{ fontSize: size * 0.6 }}>📦</span>
+
+  // Emoji-based (no sprite file available)
+  if ('emoji' in mapping && mapping.emoji) {
+    return <span style={{ fontSize: size * 0.75, lineHeight: 1, display: 'inline-block', verticalAlign: 'middle' }}>{mapping.emoji}</span>
+  }
 
   // Individual image file
   if (mapping.file) {

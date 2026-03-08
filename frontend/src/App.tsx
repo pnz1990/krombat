@@ -1281,7 +1281,9 @@ function DungeonView({ cr, prevCr, onBack, onAttack, events, k8sLog, showLoot, o
                lootDrop.includes('manapotion') ? 'Use to restore mana' :
                lootDrop.includes('helmet') ? 'Equip for a chance to land critical hits' :
                lootDrop.includes('pants') ? 'Equip for a chance to dodge counter-attacks' :
-               lootDrop.includes('boots') ? 'Equip to resist status effects' : 'A mysterious item'}
+               lootDrop.includes('boots') ? 'Equip to resist status effects' :
+               lootDrop.includes('ring') ? 'Equip for passive HP regen each round' :
+               lootDrop.includes('amulet') ? 'Equip to boost all damage dealt' : 'A mysterious item'}
             </div>
             <button className="btn btn-gold" onClick={onDismissLoot}>Got it!</button>
           </div>
@@ -1593,18 +1595,18 @@ function DungeonView({ cr, prevCr, onBack, onAttack, events, k8sLog, showLoot, o
                        </div>
                      </Tooltip>
                    </div>
-                   <div className="equip-row">
-                     <Tooltip text={rb > 0 ? `Ring equipped: +${rb} HP regen at start of each round` : 'Ring — none equipped'}>
-                       <div className={`equip-slot${rb > 0 ? ' filled' : ' empty'}`}>
-                         {rb > 0 ? <><ItemSprite id={rb >= 12 ? 'ring-epic' : rb >= 8 ? 'ring-rare' : 'ring-common'} size={22} /><span className="slot-stat">+{rb}</span></> : <PixelIcon name="ring" size={14} color="#333" />}
-                       </div>
-                     </Tooltip>
-                     <Tooltip text={amb > 0 ? `Amulet equipped: +${amb}% to all damage dealt` : 'Amulet — none equipped'}>
-                       <div className={`equip-slot${amb > 0 ? ' filled' : ' empty'}`}>
-                         {amb > 0 ? <><ItemSprite id={amb >= 30 ? 'amulet-epic' : amb >= 20 ? 'amulet-rare' : 'amulet-common'} size={22} /><span className="slot-stat">+{amb}%</span></> : <PixelIcon name="amulet" size={14} color="#333" />}
-                       </div>
-                     </Tooltip>
-                   </div>
+                    <div className="equip-row">
+                      <Tooltip text={rb > 0 ? `Ring equipped: +${rb} HP regen at start of each round` : 'Ring — none equipped'}>
+                        <div className={`equip-slot${rb > 0 ? ' filled' : ' empty'}`}>
+                          {rb > 0 ? <><span style={{ fontSize: 16, lineHeight: 1 }}>💍</span><span className="slot-stat">+{rb}/t</span></> : <PixelIcon name="ring" size={14} color="#333" />}
+                        </div>
+                      </Tooltip>
+                      <Tooltip text={amb > 0 ? `Amulet equipped: +${amb}% to all damage dealt` : 'Amulet — none equipped'}>
+                        <div className={`equip-slot${amb > 0 ? ' filled' : ' empty'}`}>
+                          {amb > 0 ? <><span style={{ fontSize: 16, lineHeight: 1 }}>📿</span><span className="slot-stat">+{amb}%</span></> : <PixelIcon name="amulet" size={14} color="#333" />}
+                        </div>
+                      </Tooltip>
+                    </div>
                 </div>
 
                 <div className="status-row">
