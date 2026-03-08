@@ -8,7 +8,7 @@ import { PixelIcon } from './PixelIcon'
 import {
   InsightCard, KroConceptModal, KroGlossary,
   useKroGlossary, getInsightForEvent, kroAnnotate,
-  KRO_STATUS_TIPS, CelTrace, KroExpertCertificate, type CelTraceData,
+  KRO_STATUS_TIPS, CelTrace, KroExpertCertificate, KroOnboardingOverlay, KRO_CONCEPTS, type CelTraceData,
   type InsightTrigger, type KroConceptId,
 } from './KroTeach'
 import { KroGraphPanel } from './KroGraph'
@@ -55,6 +55,7 @@ export default function App() {
   const attackingRef = useRef(false)
   const [roomLoading, setRoomLoading] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
+  const [showOnboarding, setShowOnboarding] = useState(() => !localStorage.getItem('kroOnboardingDone'))
   const [showCheat, setShowCheat] = useState(false)
   const [deleting, setDeleting] = useState<Set<string>>(new Set())
   const [resumePrompt, setResumePrompt] = useState<{ ns: string; name: string } | null>(null)
@@ -139,6 +140,11 @@ export default function App() {
               if (d.spec.modifier && d.spec.modifier !== 'none') triggerInsight('modifier-present')
               // Teach resource chaining once status is populated (Hero CR → dungeon status)
               if (d.status?.maxHeroHP) triggerInsight('resource-chaining')
+              // Teach status.conditions when kro reports an error/not-ready condition
+              const conditions = (d.status?.conditions as any[]) || []
+              if (conditions.some((c: any) => c.type === 'Error' || (c.type === 'Ready' && c.status === 'False'))) {
+                triggerInsight('status-conditions')
+              }
             }
             return
           } catch {
@@ -234,8 +240,11 @@ export default function App() {
       const crField = isItem ? `action: ${target}` : `target: ${target}\n  damage: ${damage}`
       addK8s(`kubectl apply -f ${crKind.toLowerCase()}.yaml`, `${crKind.toLowerCase()}.game.k8s.example created`,
         `apiVersion: game.k8s.example/v1alpha1\nkind: ${crKind}\nmetadata:\n  name: ${selected.name}-${target}-${Date.now() % 100000}\nspec:\n  dungeonName: ${selected.name}\n  dungeonNamespace: ${selected.ns}\n  ${crField}`)
-      // Teach: Attack CR = empty RGD pattern; first combat attack = CEL basics
-      if (!isItem && !isAbility) triggerInsight('attack-cr')
+      // Teach: Attack CR = empty RGD pattern; first combat attack = CEL basics; externalRef watch loop
+      if (!isItem && !isAbility) {
+        triggerInsight('attack-cr')
+        triggerInsight('externalRef')
+      }
 
       let updated = detail!
 
@@ -470,6 +479,7 @@ export default function App() {
 
       {!selected ? (
         <>
+          {showOnboarding && <KroOnboardingOverlay onDismiss={() => setShowOnboarding(false)} />}
           <CreateForm onCreate={handleCreate} />
           {resumePrompt && (
             <div className="card" style={{ borderColor: '#f5c518', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '8px 12px' }}>
@@ -682,7 +692,7 @@ function EventLogTabs({ events, k8sLog, kroUnlocked, onViewKroConcept }: {
         <button className={`log-tab${tab === 'game' ? ' active' : ''}`} onClick={() => setTab('game')}>Game Log</button>
         <button className={`log-tab${tab === 'k8s' ? ' active' : ''}`} onClick={() => setTab('k8s')}>K8s Log</button>
         <button className={`log-tab kro-tab${tab === 'kro' ? ' active' : ''}`} onClick={() => setTab('kro')}>
-          kro ({kroUnlocked.size}/13)
+          kro ({kroUnlocked.size}/{Object.keys(KRO_CONCEPTS).length})
         </button>
       </div>
 
@@ -974,7 +984,7 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
     return 'phase1'
   })()
   // During room 2 transition, bossHP=0 is stale from room 1 — not a real victory
-  const inRoomTransition = (spec.currentRoom || 1) === 2 && spec.bossHP <= 0 && allMonstersDead && (spec.room2BossHP || 0) > 0
+  const inRoomTransition = (spec.currentRoom || 1) === 2 && spec.bossHP <= 0 && allMonstersDead && (spec.room2BossHP || 0) > 0 && (spec.room2MonsterHP?.length ?? 0) > 0
   const gameOver = isDefeated || (!inRoomTransition && spec.bossHP <= 0 && allMonstersDead)
   const isVictory = gameOver && !isDefeated && (spec.currentRoom || 1) === 2
   const [showCertificate, setShowCertificate] = useState(false)
