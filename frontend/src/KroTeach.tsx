@@ -778,6 +778,8 @@ export interface CelTraceData {
   modifier?: string     // e.g. "curse-darkness", "blessing-strength"
   helmetBonus?: number  // crit chance %
   pantsBonus?: number   // dodge chance %
+  bossHP?: number       // current boss HP (>0 means fighting boss)
+  maxBossHP?: number    // boss max HP for phase % calculation
 }
 
 /**
@@ -930,6 +932,18 @@ export function CelTrace({ data, onLearnMore }: { data: CelTraceData; onLearnMor
       expr: `schema.spec.backstabCooldown == 0 ? damage * 3 : damage`,
       result: dmgMatch ? String(Number(dmgMatch[1])) : '3x',
       note: 'Backstab: 3× damage, sets cooldown=3',
+    })
+  }
+
+  // Boss phase — show CEL ternary when fighting boss
+  if ((data.bossHP ?? 0) > 0 && (data.maxBossHP ?? 0) > 0) {
+    const pct = Math.round(((data.bossHP!) / (data.maxBossHP!)) * 100)
+    const phase = pct <= 25 ? 'BERSERK' : pct <= 50 ? 'ENRAGED' : 'normal'
+    const phaseResult = phase === 'BERSERK' ? '"berserk" (3x dmg)' : phase === 'ENRAGED' ? '"enraged" (2x dmg)' : '"normal"'
+    celLines.push({
+      expr: `bossHP <= maxBossHP*0.25 ? "berserk" : bossHP <= maxBossHP*0.5 ? "enraged" : "normal"`,
+      result: phaseResult,
+      note: `boss at ${pct}% HP → ${phase} phase`,
     })
   }
 
