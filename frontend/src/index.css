@@ -727,6 +727,52 @@ body {
   50% { opacity: 0.7; }
 }
 
+/* Boss phase transition flash overlay */
+.boss-phase-flash-overlay {
+  position: absolute;
+  top: -60px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: 'Press Start 2P', monospace;
+  font-size: 9px;
+  padding: 4px 8px;
+  border-radius: 3px;
+  white-space: nowrap;
+  z-index: 15;
+  animation: phaseFlashIn 1.5s ease forwards;
+  pointer-events: none;
+}
+.boss-phase-flash-overlay.enraged {
+  background: rgba(255, 100, 0, 0.95);
+  color: #fff;
+  border: 1px solid #ff8800;
+  box-shadow: 0 0 16px #ff8800, 0 0 32px #ff4400;
+}
+.boss-phase-flash-overlay.berserk {
+  background: rgba(180, 0, 0, 0.95);
+  color: #fff;
+  border: 1px solid #ff0000;
+  box-shadow: 0 0 16px #ff0000, 0 0 32px #cc0000;
+}
+@keyframes phaseFlashIn {
+  0%   { opacity: 0; transform: translateX(-50%) scale(0.6); }
+  20%  { opacity: 1; transform: translateX(-50%) scale(1.2); }
+  40%  { transform: translateX(-50%) scale(1); }
+  70%  { opacity: 1; }
+  100% { opacity: 0; transform: translateX(-50%) scale(1) translateY(-12px); }
+}
+
+/* Boss entity shake on phase transition */
+.boss-phase-flash-enraged { animation: bossEntrance 0.8s ease-out, bossShake 0.4s ease 0.1s; }
+.boss-phase-flash-berserk { animation: bossEntrance 0.8s ease-out, bossShake 0.4s ease 0.1s, bossShake 0.3s ease 0.6s; }
+@keyframes bossShake {
+  0%, 100% { transform: translateX(-50%); }
+  20% { transform: translateX(calc(-50% - 8px)); }
+  40% { transform: translateX(calc(-50% + 8px)); }
+  60% { transform: translateX(calc(-50% - 5px)); }
+  80% { transform: translateX(calc(-50% + 5px)); }
+}
+
 /* Hero entity */
 .hero-entity { z-index: 3; }
 
