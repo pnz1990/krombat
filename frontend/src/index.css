@@ -552,6 +552,8 @@ body {
 .status-badge.blessing { background: #0a1a0a; border: 1px solid #ffd700; }
 .status-badge.effect { background: #0a0a1a; border: 1px solid #555; flex-direction: column; }
 .status-badge.effect span { font-size: 6px; color: #aaa; }
+.status-badge.effect.taunt { border-color: #4a90d9; color: #4a90d9; background: #0a0f1a; }
+.status-badge.effect.taunt span { color: #4a90d9; }
 
 .backpack { align-self: center; }
 .backpack-label { font-size: 7px; color: #555; margin-bottom: 2px; text-align: center; }

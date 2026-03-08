@@ -465,7 +465,8 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 		tauntNote = " [Taunt active: -60% counter dmg]"
 		tauntActive = 2
 	} else if tauntActive > 1 {
-		tauntActive--
+		// Taunt protected exactly 1 turn — expire it now
+		tauntActive = 0
 	}
 
 	// Determine real target (strip -backstab suffix)
