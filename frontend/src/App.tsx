@@ -202,6 +202,8 @@ export default function App() {
       triggerInsight('spec-schema')
       // forEach is always in play when creating a dungeon with multiple monsters
       if (monsters > 1) triggerInsight('forEach')
+      // resourceGroup-API — fire 3s later so it doesn't compete with the first two cards
+      setTimeout(() => triggerInsight('dungeon-created-2nd'), 3000)
       localStorage.setItem('lastDungeon', JSON.stringify({ ns: 'default', name }))
       navigate(`/dungeon/default/${name}`)
     } catch (e: any) { setError(e.message) }
@@ -287,6 +289,7 @@ export default function App() {
         // Teach specific item/room events
         if (target === 'enter-room-2') triggerInsight('enter-room-2')
         if (target === 'open-treasure') triggerInsight('treasure-opened')
+        if (target.startsWith('equip-boots')) triggerInsight('boots-equipped')
         return // Items done — don't fall through to combat/loot logic
       } else {
         // Combat: backend is synchronous — attackSeq increments before API returns.

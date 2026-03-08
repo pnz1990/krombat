@@ -29,6 +29,8 @@ export type KroConceptId =
   | 'externalRef'
   | 'status-conditions'
   | 'reconcile-loop'
+  | 'resourceGroup-api'
+  | 'cel-has-macro'
 
 export interface KroConcept {
   id: KroConceptId
@@ -402,6 +404,70 @@ for {
     learnMore: 'backend/internal/handlers/handlers.go — processCombat poll loop',
   },
 
+  'resourceGroup-api': {
+    id: 'resourceGroup-api',
+    title: 'ResourceGroup API — How kro Registers New CRDs',
+    tagline: 'kro reads your RGD and installs a brand-new Kubernetes API group — instantly.',
+    body: `When you created the Dungeon, kro did something powerful: it read \`dungeon-graph\` and called the Kubernetes API aggregation layer to register \`game.k8s.example/v1alpha1\` as a first-class Kubernetes API.
+
+That means \`kubectl get dungeon\` works exactly like \`kubectl get pod\` — because kro made Dungeon a real Kubernetes resource, with its own OpenAPI schema, validation, and RBAC.
+
+This is kro's "ResourceGroup API" pattern:
+1. You write an RGD YAML with \`spec.schema.apiVersion\` and \`spec.schema.kind\`
+2. kro registers a CRD for that group/version/kind
+3. Kubernetes' API server now serves your custom resource natively
+4. Any controller, tool, or GitOps agent can use \`kubectl get/apply/watch dungeon\` immediately
+
+No code. No webhook boilerplate. Just an RGD.`,
+    snippet: `# dungeon-graph.yaml — the schema block tells kro to register the CRD
+spec:
+  schema:
+    apiVersion: game.k8s.example/v1alpha1
+    kind: Dungeon
+    spec:
+      monsters: integer | default=3
+      difficulty: string | default=normal
+      heroClass: string | default=warrior
+
+# After kro processes this:
+$ kubectl api-resources | grep game.k8s.example
+dungeons    game.k8s.example/v1alpha1    true    Dungeon`,
+    learnMore: 'manifests/rgds/dungeon-graph.yaml — spec.schema block',
+  },
+
+  'cel-has-macro': {
+    id: 'cel-has-macro',
+    title: 'CEL has() — Safe Optional Field Access',
+    tagline: 'Check if a field exists before reading it — the Kubernetes-native way.',
+    body: `In Kubernetes CEL expressions, fields are often optional. Reading \`self.spec.modifier\` when modifier is unset throws an evaluation error. The \`has()\` macro lets you guard safely:
+
+\`\`\`
+has(self.spec.modifier) ? self.spec.modifier : "none"
+\`\`\`
+
+kro uses the equivalent \`?.orValue()\` syntax (from the CEL optional types extension):
+
+\`\`\`
+self.spec.?modifier.orValue("none")
+\`\`\`
+
+Both patterns appear throughout the dungeon-graph RGD — in \`readyWhen\` conditions, status expressions, and \`includeWhen\` guards. This is the same pattern used in Kubernetes \`ValidatingAdmissionPolicy\` and \`CRD validation rules\`.
+
+When to use each:
+- **\`has()\`** — existence check only (returns bool)
+- **\`?.orValue()\`** — existence check + default value (returns the field or a default)`,
+    snippet: `# In boss-graph.yaml readyWhen
+readyWhen:
+  - "self.status.?livingMonsters.orValue(1) == 0"
+
+# Equivalent CEL using has():
+# has(self.status.livingMonsters) && self.status.livingMonsters == 0
+
+# In ValidatingAdmissionPolicy (same pattern, different context):
+# has(object.spec.tolerations) && object.spec.tolerations.exists(t, t.key == "gpu")`,
+    learnMore: 'manifests/rgds/boss-graph.yaml — readyWhen block',
+  },
+
   'spec-mutation': {
     id: 'spec-mutation',
     title: 'Spec Mutation Triggers Full Reconcile',
@@ -443,6 +509,8 @@ export function getInsightForEvent(event: string): InsightTrigger | null {
   if (event === 'externalRef') return { conceptId: 'externalRef', headline: 'Your attack created an Attack CR — kro watched it and re-reconciled the dungeon graph' }
   if (event === 'status-conditions') return { conceptId: 'status-conditions', headline: 'kro is reporting its reconcile status via status.conditions — the Kubernetes health contract' }
   if (event === 'second-attack') return { conceptId: 'reconcile-loop', headline: 'The ~1s pause after every action is the kro reconcile loop: watch → CEL eval → write' }
+  if (event === 'dungeon-created-2nd') return { conceptId: 'resourceGroup-api', headline: 'kro registered Dungeon as a real Kubernetes API — kubectl get dungeon works natively' }
+  if (event === 'boots-equipped') return { conceptId: 'cel-has-macro', headline: 'has() lets CEL safely access optional spec fields — used throughout dungeon-graph readyWhen' }
   return null
 }
 
@@ -552,6 +620,7 @@ const CONCEPT_ORDER: KroConceptId[] = [
   'forEach', 'includeWhen', 'readyWhen', 'status-aggregation',
   'seeded-random', 'secret-output', 'empty-rgd', 'spec-mutation',
   'externalRef', 'status-conditions', 'reconcile-loop',
+  'resourceGroup-api', 'cel-has-macro',
 ]
 
 interface KroGlossaryProps {
