@@ -1268,6 +1268,71 @@ body {
   letter-spacing: 0.5px;
 }
 
+/* ─── RGD Diff Viewer (graph panel) ─────────────────────────────────────── */
+
+.kro-rgd-diff {
+  margin-top: 8px;
+  border: 1px solid #0f3460;
+  border-radius: 3px;
+  background: #05070f;
+  overflow: hidden;
+  animation: slideInBottom 0.2s ease;
+}
+
+.kro-rgd-diff-header {
+  display: flex;
+  align-items: center;
+  padding: 4px 8px;
+  background: #0a0f20;
+  border-bottom: 1px solid #0f3460;
+  gap: 4px;
+}
+
+.kro-rgd-diff-rows {
+  padding: 4px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.kro-rgd-diff-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 6px;
+  font-family: 'Press Start 2P', monospace;
+  flex-wrap: wrap;
+}
+
+.kro-rgd-diff-field {
+  color: #7ec8e3;
+  min-width: 120px;
+}
+
+.kro-rgd-diff-from {
+  color: #ff6b6b;
+  text-decoration: line-through;
+}
+
+.kro-rgd-diff-arrow {
+  color: #555;
+}
+
+.kro-rgd-diff-to {
+  color: #6bff8e;
+  font-weight: bold;
+}
+
+.kro-rgd-diff-note {
+  color: #00d4ff;
+  font-size: 5px;
+  font-style: italic;
+  margin-left: 4px;
+  opacity: 0.8;
+}
+
 /* ─── CEL Trace (combat modal) ───────────────────────────────────────────── */
 
 .cel-trace {

@@ -40,6 +40,7 @@ export default function App() {
   const [detail, setDetail] = useState<DungeonCR | null>(null)
   const detailRef = useRef(detail)
   detailRef.current = detail
+  const prevDetailRef = useRef<DungeonCR | null>(null)
   const [events, setEvents] = useState<WSEvent[]>([])
   const [k8sLog, setK8sLog] = useState<{ ts: string; cmd: string; res: string; yaml?: string }[]>([])
   const addK8s = (cmd: string, res: string, yaml?: string) => {
@@ -91,6 +92,7 @@ export default function App() {
       const sel = selectedRef.current
       if (sel) {
         const d = await getDungeon(sel.ns, sel.name)
+        prevDetailRef.current = detailRef.current
         setDetail(d)
       }
       consecutiveFailures.current = 0
@@ -112,6 +114,7 @@ export default function App() {
     if (lastEvent?.type === 'DUNGEON_UPDATE' && lastEvent.payload && selected) {
       const cr = lastEvent.payload as DungeonCR
       if (cr?.metadata?.name === selected.name) {
+        prevDetailRef.current = detailRef.current
         setDetail(cr)
       }
       // WS delivered the full CR — skip redundant HTTP round-trip while connected
@@ -134,6 +137,7 @@ export default function App() {
           try {
             const d = await getDungeon(selected.ns, selected.name)
             if (!cancelled) {
+              prevDetailRef.current = detailRef.current
               setDetail(d)
               setLoading(false)
               // Teach modifier concept if this dungeon has one
@@ -497,6 +501,7 @@ export default function App() {
       ) : detail ? (
         <DungeonView
           cr={detail}
+          prevCr={prevDetailRef.current}
           onBack={() => { navigate('/'); refresh() }}
           onAttack={handleAttack}
           attackPhase={attackPhase}
@@ -943,8 +948,8 @@ function HelpModal({ onClose, onCheat }: { onClose: () => void; onCheat: () => v
     </div>
   )
 }
-function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoot, onCloseLoot, attackPhase, roomLoading, animPhase, attackTarget, showHelp, onToggleHelp, showCheat, onToggleCheat, floatingDmg, combatModal, onDismissCombat, lootDrop, onDismissLoot, wsConnected, apiError, kroUnlocked, onViewKroConcept, reconciling }: {
-  cr: DungeonCR; onBack: () => void; onAttack: (t: string, d: number) => void; events: WSEvent[]; k8sLog: { ts: string; cmd: string; res: string; yaml?: string }[]
+function DungeonView({ cr, prevCr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoot, onCloseLoot, attackPhase, roomLoading, animPhase, attackTarget, showHelp, onToggleHelp, showCheat, onToggleCheat, floatingDmg, combatModal, onDismissCombat, lootDrop, onDismissLoot, wsConnected, apiError, kroUnlocked, onViewKroConcept, reconciling }: {
+  cr: DungeonCR; prevCr?: DungeonCR | null; onBack: () => void; onAttack: (t: string, d: number) => void; events: WSEvent[]; k8sLog: { ts: string; cmd: string; res: string; yaml?: string }[]
   showLoot: boolean; onOpenLoot: () => void; onCloseLoot: () => void
   attackPhase: string | null; roomLoading: boolean
   animPhase: string; attackTarget: string | null
@@ -1518,7 +1523,7 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
         </div>
       </div>
 
-      <KroGraphPanel cr={cr} reconciling={reconciling} onViewConcept={onViewKroConcept} />
+      <KroGraphPanel cr={cr} prevCr={prevCr} reconciling={reconciling} onViewConcept={onViewKroConcept} />
 
       <EventLogTabs events={events} k8sLog={k8sLog} kroUnlocked={kroUnlocked} onViewKroConcept={onViewKroConcept} />
     </div>

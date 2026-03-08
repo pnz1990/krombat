@@ -678,11 +678,12 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 			counter = applyModifierToCounter(modifier, counter)
 			if armorBonus > 0 {
 				counter = counter * (100 - armorBonus) / 100
-				if shieldBonus > 0 {
-					if seededRoll(attackUID+"-shield", 100) < shieldBonus {
-						counter = 0
-						classNote += " Shield blocked!"
-					}
+			}
+			// Shield block is independent of armor — works even with no armor equipped
+			if shieldBonus > 0 && counter > 0 {
+				if seededRoll(attackUID+"-shield", 100) < shieldBonus {
+					counter = 0
+					classNote += " Shield blocked!"
 				}
 			}
 			if heroClass == "warrior" {
@@ -849,10 +850,17 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 		if armorBonus > 0 {
 			totalCounter = totalCounter * (100 - armorBonus) / 100
 		}
+		// Shield block is independent of armor — works even with no armor equipped
+		if shieldBonus > 0 && totalCounter > 0 {
+			if seededRoll(attackUID+"-shield-m", 100) < shieldBonus {
+				totalCounter = 0
+				classNote += " Shield blocked!"
+			}
+		}
 		enemyAction := ""
 		if totalCounter > 0 {
 			if heroClass == "warrior" {
-				totalCounter = totalCounter * 4 / 5
+				totalCounter = totalCounter * 3 / 4 // 25% reduction (consistent with boss path)
 			} else if heroClass == "rogue" {
 				if seededRoll(attackUID+"-dodge-monster", 100) < 25 {
 					totalCounter = 0

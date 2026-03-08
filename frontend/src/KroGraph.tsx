@@ -660,12 +660,88 @@ export function KroGraph({ cr, reconciling, onNodeClick }: KroGraphProps) {
 
 interface KroGraphPanelProps {
   cr: DungeonCR
+  prevCr?: DungeonCR | null
   reconciling: boolean
   onViewConcept: (id: KroConceptId) => void
 }
 
-export function KroGraphPanel({ cr, reconciling, onViewConcept }: KroGraphPanelProps) {
+interface DiffEntry {
+  field: string
+  from: string
+  to: string
+  note?: string
+}
+
+function computeRGDDiff(prev: DungeonCR | null | undefined, curr: DungeonCR): DiffEntry[] {
+  if (!prev) return []
+  const diff: DiffEntry[] = []
+  const ps: any = prev.spec || {}
+  const cs: any = curr.spec || {}
+  const pst: any = prev.status || {}
+  const cst: any = curr.status || {}
+
+  const check = (field: string, note?: string) => {
+    const a = ps[field], b = cs[field]
+    if (a !== b && (a !== undefined || b !== undefined)) {
+      diff.push({ field, from: String(a ?? '—'), to: String(b ?? '—'), note })
+    }
+  }
+  const checkSt = (field: string, note?: string) => {
+    const a = pst[field], b = cst[field]
+    if (a !== b && (a !== undefined || b !== undefined)) {
+      diff.push({ field: `status.${field}`, from: String(a ?? '—'), to: String(b ?? '—'), note })
+    }
+  }
+
+  check('heroHP', 'spec.heroHP')
+  check('bossHP', 'spec.bossHP')
+  check('heroMana', 'spec.heroMana')
+  check('poisonTurns', 'spec.poisonTurns')
+  check('burnTurns', 'spec.burnTurns')
+  check('stunTurns', 'spec.stunTurns')
+  check('weaponBonus', 'spec.weaponBonus')
+  check('weaponUses', 'spec.weaponUses')
+  check('armorBonus', 'spec.armorBonus')
+  check('currentRoom', 'spec.currentRoom')
+  check('treasureOpened', 'spec.treasureOpened')
+  check('doorUnlocked', 'spec.doorUnlocked')
+  check('lastLootDrop', 'spec.lastLootDrop')
+
+  // monsterHP array — show per-index changes
+  const pm: number[] = (ps.monsterHP as number[]) || []
+  const cm: number[] = (cs.monsterHP as number[]) || []
+  const maxM = Math.max(pm.length, cm.length)
+  for (let i = 0; i < maxM; i++) {
+    if ((pm[i] ?? -1) !== (cm[i] ?? -1)) {
+      const killed = (pm[i] ?? 0) > 0 && (cm[i] ?? 0) === 0
+      diff.push({ field: `spec.monsterHP[${i}]`, from: String(pm[i] ?? '—'), to: String(cm[i] ?? '—'), note: killed ? '→ Loot CR includeWhen fires' : undefined })
+    }
+  }
+
+  checkSt('livingMonsters', 'kro re-aggregated from Monster CRs')
+  checkSt('bossState', 'boss-graph CEL ternary')
+  checkSt('bossPhase', 'boss-graph phase CEL')
+  checkSt('victory', 'dungeon-graph status')
+  checkSt('defeat', 'dungeon-graph status')
+
+  return diff
+}
+
+export function KroGraphPanel({ cr, prevCr, reconciling, onViewConcept }: KroGraphPanelProps) {
   const [collapsed, setCollapsed] = useState(false)
+  const [diff, setDiff] = useState<DiffEntry[]>([])
+  const [diffVisible, setDiffVisible] = useState(false)
+  const diffTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    const entries = computeRGDDiff(prevCr, cr)
+    if (entries.length > 0) {
+      setDiff(entries)
+      setDiffVisible(true)
+      if (diffTimerRef.current) clearTimeout(diffTimerRef.current)
+      diffTimerRef.current = setTimeout(() => setDiffVisible(false), 8000)
+    }
+  }, [cr?.spec?.attackSeq, cr?.spec?.actionSeq])
 
   return (
     <div className="kro-graph-panel">
@@ -695,6 +771,32 @@ export function KroGraphPanel({ cr, reconciling, onViewConcept }: KroGraphPanelP
           <div className="kro-graph-scroll">
             <KroGraph cr={cr} reconciling={reconciling} onNodeClick={onViewConcept} />
           </div>
+
+          {/* RGD Diff Viewer — transient before→after on every reconcile */}
+          {diffVisible && diff.length > 0 && (
+            <div className="kro-rgd-diff">
+              <div className="kro-rgd-diff-header">
+                <span className="kro-insight-badge" style={{ fontSize: 6 }}>kro</span>
+                <span style={{ fontSize: 7, color: '#00d4ff', marginLeft: 6 }}>What just changed (spec patch → kro reconcile)</span>
+                <button
+                  onClick={() => setDiffVisible(false)}
+                  style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#555', cursor: 'pointer', fontFamily: 'inherit', fontSize: 10 }}
+                >✕</button>
+              </div>
+              <div className="kro-rgd-diff-rows">
+                {diff.map((d, i) => (
+                  <div key={i} className="kro-rgd-diff-row">
+                    <span className="kro-rgd-diff-field">{d.field}</span>
+                    <span className="kro-rgd-diff-from">{d.from}</span>
+                    <span className="kro-rgd-diff-arrow">→</span>
+                    <span className="kro-rgd-diff-to">{d.to}</span>
+                    {d.note && <span className="kro-rgd-diff-note">{d.note}</span>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="kro-graph-hint">
             Hover nodes for details · Click to learn the kro concept
           </div>
