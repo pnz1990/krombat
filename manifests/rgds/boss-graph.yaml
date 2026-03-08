@@ -35,6 +35,17 @@ spec:
           hp: "${string(schema.spec.hp)}"
 
     # Loot CR — boss always drops on kill (hp == 0), always rare or epic
+    #
+    # DEDUPLICATION NOTE (issue #126):
+    # CEL has no let-bindings so indexOf must be re-evaluated each time it is used.
+    # The stat field uses a flat 1D lookup table indexed by (typeIdx * 2 + rarityBucket)
+    # instead of a cascading ternary that re-evaluated indexOf 9 times.
+    #
+    # Seeds:  -boss-typ → typeIdx = indexOf % 4   (item type)
+    #         -boss-rar → rarIdx  = indexOf % 36  (rarity bucket: <18→0 rare, else 1 epic)
+    #
+    # Stat table (typeIdx * 2 + rarityBucket):
+    #   [weapon: 10,20]  [armor: 20,30]  [hppotion: 40,999]  [shield: 15,25]
     - id: lootCR
       includeWhen:
         - ${schema.spec.hp == 0}
@@ -68,34 +79,16 @@ spec:
                 ) % 4)
               ]
             }
-          # Stat based on itemType and rarity
+          # Stat based on itemType and rarity — flat lookup table [typeIdx * 2 + rarityBucket]
           stat: >-
             ${
-              (
+              [10,20, 20,30, 40,999, 15,25][
                 int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(
                   random.seededString(1, schema.spec.dungeonName + '-boss-typ')
-                ) % 4) == 0 ? (
+                ) % 4) * 2 + (
                   int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(
                     random.seededString(1, schema.spec.dungeonName + '-boss-rar')
-                  ) % 36) < 18 ? 10 : 20
-                ) :
-                int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(
-                  random.seededString(1, schema.spec.dungeonName + '-boss-typ')
-                ) % 4) == 1 ? (
-                  int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(
-                    random.seededString(1, schema.spec.dungeonName + '-boss-rar')
-                  ) % 36) < 18 ? 20 : 30
-                ) :
-                int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(
-                  random.seededString(1, schema.spec.dungeonName + '-boss-typ')
-                ) % 4) == 2 ? (
-                  int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(
-                    random.seededString(1, schema.spec.dungeonName + '-boss-rar')
-                  ) % 36) < 18 ? 40 : 999
-                ) : (
-                  int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(
-                    random.seededString(1, schema.spec.dungeonName + '-boss-rar')
-                  ) % 36) < 18 ? 15 : 25
+                  ) % 36) < 18 ? 0 : 1
                 )
-              )
+              ]
             }

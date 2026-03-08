@@ -36,6 +36,21 @@ spec:
 
     # Loot CR — pre-rolled at spawn, revealed only when monster is killed (hp == 0)
     # Seed: dungeonName + index — unique per dungeon run (name includes timestamp)
+    #
+    # DEDUPLICATION NOTE (issue #126):
+    # CEL has no let-bindings, so indexOf must be re-evaluated wherever its result is used.
+    # To minimize duplication the stat field uses a flat 1D lookup table indexed by:
+    #   (typeIdx * 3 + rarityBucket)
+    # instead of a cascading ternary that re-evaluated indexOf 15 times.
+    #
+    # Alphabet: 'abcdefghijklmnopqrstuvwxyz0123456789' (36 chars, 0-indexed)
+    # Seeds:  -typ → typeIdx = indexOf % 5   (item type)
+    #         -rar → rarIdx  = indexOf % 36  (rarity bucket: <22→0 common, <33→1 rare, else 2 epic)
+    #         -drop→ dropIdx = indexOf % 36  (compared to difficulty threshold)
+    #
+    # Stat table (typeIdx * 3 + rarityBucket):
+    #   [weapon:  5,10,20]  [armor:  10,20,30]  [hppotion:  20,40,999]
+    #   [manapotion: 2,3,5] [shield: 10,15,25]
     - id: lootCR
       includeWhen:
         - ${schema.spec.hp == 0}
@@ -65,64 +80,29 @@ spec:
             }
           rarity: >-
             ${
-              int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(
-                random.seededString(1, schema.spec.dungeonName + '-m' + string(schema.spec.index) + '-rar')
-              ) % 36) < 22 ? 'common' :
-              int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(
-                random.seededString(1, schema.spec.dungeonName + '-m' + string(schema.spec.index) + '-rar')
-              ) % 36) < 33 ? 'rare' : 'epic'
+              ['common','rare','epic'][
+                int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(
+                  random.seededString(1, schema.spec.dungeonName + '-m' + string(schema.spec.index) + '-rar')
+                ) % 36) < 22 ? 0 :
+                int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(
+                  random.seededString(1, schema.spec.dungeonName + '-m' + string(schema.spec.index) + '-rar')
+                ) % 36) < 33 ? 1 : 2
+              ]
             }
           stat: >-
             ${
-              (
+              [5,10,20, 10,20,30, 20,40,999, 2,3,5, 10,15,25][
                 int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(
                   random.seededString(1, schema.spec.dungeonName + '-m' + string(schema.spec.index) + '-typ')
-                ) % 5) == 0 ? (
+                ) % 5) * 3 + (
                   int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(
                     random.seededString(1, schema.spec.dungeonName + '-m' + string(schema.spec.index) + '-rar')
-                  ) % 36) < 22 ? 5 :
+                  ) % 36) < 22 ? 0 :
                   int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(
                     random.seededString(1, schema.spec.dungeonName + '-m' + string(schema.spec.index) + '-rar')
-                  ) % 36) < 33 ? 10 : 20
-                ) :
-                int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(
-                  random.seededString(1, schema.spec.dungeonName + '-m' + string(schema.spec.index) + '-typ')
-                ) % 5) == 1 ? (
-                  int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(
-                    random.seededString(1, schema.spec.dungeonName + '-m' + string(schema.spec.index) + '-rar')
-                  ) % 36) < 22 ? 10 :
-                  int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(
-                    random.seededString(1, schema.spec.dungeonName + '-m' + string(schema.spec.index) + '-rar')
-                  ) % 36) < 33 ? 20 : 30
-                ) :
-                int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(
-                  random.seededString(1, schema.spec.dungeonName + '-m' + string(schema.spec.index) + '-typ')
-                ) % 5) == 2 ? (
-                  int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(
-                    random.seededString(1, schema.spec.dungeonName + '-m' + string(schema.spec.index) + '-rar')
-                  ) % 36) < 22 ? 20 :
-                  int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(
-                    random.seededString(1, schema.spec.dungeonName + '-m' + string(schema.spec.index) + '-rar')
-                  ) % 36) < 33 ? 40 : 999
-                ) :
-                int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(
-                  random.seededString(1, schema.spec.dungeonName + '-m' + string(schema.spec.index) + '-typ')
-                ) % 5) == 3 ? (
-                  int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(
-                    random.seededString(1, schema.spec.dungeonName + '-m' + string(schema.spec.index) + '-rar')
-                  ) % 36) < 22 ? 2 :
-                  int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(
-                    random.seededString(1, schema.spec.dungeonName + '-m' + string(schema.spec.index) + '-rar')
-                  ) % 36) < 33 ? 3 : 5
-                ) : (
-                  int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(
-                    random.seededString(1, schema.spec.dungeonName + '-m' + string(schema.spec.index) + '-rar')
-                  ) % 36) < 22 ? 10 :
-                  int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(
-                    random.seededString(1, schema.spec.dungeonName + '-m' + string(schema.spec.index) + '-rar')
-                  ) % 36) < 33 ? 15 : 25
+                  ) % 36) < 33 ? 1 : 2
                 )
-              )
+              ]
             }
           # dropped: true if drop roll passes threshold
           # alphabet index 0-35, thresholds: easy=22/36≈61%, normal=16/36≈44%, hard=13/36≈36%
