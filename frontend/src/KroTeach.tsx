@@ -679,6 +679,9 @@ export interface CelTraceData {
   heroClass: string
   heroAction: string    // from spec.lastHeroAction
   combatLog: string     // from spec.lastCombatLog (JSON)
+  modifier?: string     // e.g. "curse-darkness", "blessing-strength"
+  helmetBonus?: number  // crit chance %
+  pantsBonus?: number   // dodge chance %
 }
 
 /**
@@ -726,6 +729,62 @@ export function CelTrace({ data, onLearnMore }: { data: CelTraceData; onLearnMor
       note: 'counter-attack reduced',
     })
   }
+
+  // Modifier branch — show ternary with resolved multiplier
+  if (data.modifier && data.modifier !== 'none') {
+    let modExpr = ''
+    let modResult = ''
+    let modNote = ''
+    if (data.modifier === 'curse-darkness') {
+      modExpr = `spec.modifier == 'curse-darkness' ? damage * 0.75 : damage`
+      modResult = '× 0.75'
+      modNote = 'Curse of Darkness: hero deals 25% less damage'
+    } else if (data.modifier === 'blessing-strength') {
+      modExpr = `spec.modifier == 'blessing-strength' ? damage * 1.25 : damage`
+      modResult = '× 1.25'
+      modNote = 'Blessing of Strength: hero deals 25% more damage'
+    } else if (data.modifier === 'blessing-fortune') {
+      modExpr = `spec.modifier == 'blessing-fortune' ? damage * 1.15 : damage`
+      modResult = '× 1.15'
+      modNote = 'Blessing of Fortune: hero deals 15% more damage'
+    } else if (data.modifier === 'curse-fury') {
+      modExpr = `spec.modifier == 'curse-fury' ? counter * 1.25 : counter`
+      modResult = '× 1.25 (enemy)'
+      modNote = 'Curse of Fury: enemies deal 25% more damage'
+    } else if (data.modifier === 'curse-fortitude') {
+      modExpr = `spec.modifier == 'curse-fortitude' ? counter * 1.15 : counter`
+      modResult = '× 1.15 (enemy)'
+      modNote = 'Curse of Fortitude: enemies deal 15% more damage'
+    } else if (data.modifier === 'blessing-resilience') {
+      modExpr = `spec.modifier == 'blessing-resilience' ? counter * 0.85 : counter`
+      modResult = '× 0.85 (enemy)'
+      modNote = 'Blessing of Resilience: take 15% less damage'
+    }
+    if (modExpr) {
+      celLines.push({ expr: modExpr, result: modResult, note: modNote })
+    }
+  }
+
+  // Helmet — critical hit chance
+  if ((data.helmetBonus ?? 0) > 0) {
+    const critFired = data.heroAction.includes('CRIT') || data.heroAction.includes('Critical')
+    celLines.push({
+      expr: `seededRoll(uid+'-helmet-crit', 100) < spec.helmetBonus`,
+      result: critFired ? 'true → 2x damage' : 'false',
+      note: `${data.helmetBonus}% crit chance (helmet)`,
+    })
+  }
+
+  // Pants — dodge chance
+  if ((data.pantsBonus ?? 0) > 0) {
+    const dodgeFired = data.heroAction.includes('dodged') || data.heroAction.includes('Pants dodge')
+    celLines.push({
+      expr: `seededRoll(uid+'-pants-dodge', 100) < spec.pantsBonus`,
+      result: dodgeFired ? 'true → counter = 0' : 'false',
+      note: `${data.pantsBonus}% extra dodge (pants)`,
+    })
+  }
+
   if (data.heroClass === 'mage') {
     celLines.push({
       expr: `schema.spec.heroClass == 'mage' ? 1.3 : 1.0`,

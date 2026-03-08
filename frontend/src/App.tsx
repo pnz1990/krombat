@@ -1122,6 +1122,9 @@ function DungeonView({ cr, prevCr, onBack, onAttack, events, k8sLog, showLoot, o
                       heroClass: spec.heroClass || 'warrior',
                       heroAction: combatModal.heroAction,
                       combatLog: combatModal.spec?.lastCombatLog || '',
+                      modifier: spec.modifier,
+                      helmetBonus: spec.helmetBonus,
+                      pantsBonus: spec.pantsBonus,
                     }}
                     onLearnMore={() => onViewKroConcept('cel-basics')}
                   />
