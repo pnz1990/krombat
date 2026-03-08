@@ -377,7 +377,7 @@ export default function App() {
         const prevAllDead = (detail?.spec.monsterHP || []).every((hp: number) => hp <= 0)
         const nowAllDead = (updated.spec.monsterHP || []).every((hp: number) => hp <= 0)
         if (nowAllDead && !prevAllDead) { addEvent('🐉', 'Boss unlocked! All monsters slain!'); triggerInsight('boss-ready') }
-        if (newBossHP <= 0 && prevBossHP > 0) { addEvent('🏆', 'VICTORY! Boss defeated!'); triggerInsight('boss-killed') }
+        if (newBossHP <= 0 && prevBossHP > 0) { addEvent('🏆', 'VICTORY! Boss defeated!'); triggerInsight('boss-killed'); setTimeout(() => triggerInsight('boss-phase-complete'), 2000) }
         // Boss phase transitions
         const prevMaxBossHP = Number(detail?.status?.maxBossHP) || (prevBossHP > 0 ? prevBossHP : 1)
         const newMaxBossHP = Number(updated.status?.maxBossHP) || prevMaxBossHP

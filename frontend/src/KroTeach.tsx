@@ -13,6 +13,7 @@ import { useState, useEffect, useCallback } from 'react'
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 export type KroConceptId =
+  | 'status-phase'
   | 'rgd'
   | 'spec-schema'
   | 'resource-chaining'
@@ -402,6 +403,38 @@ for {
     learnMore: 'backend/internal/handlers/handlers.go — processCombat poll loop',
   },
 
+  'status-phase': {
+    id: 'status-phase',
+    title: 'status.phase — kro\'s Lifecycle Summary',
+    tagline: 'kro derives a human-readable phase from all sub-resource conditions — one field tells you everything.',
+    body: `After victory, the Dungeon CR reaches its terminal state. kro synthesizes the top-level \`status.phase\` by evaluating all sub-resource conditions:
+
+- **Initializing** — kro is creating sub-resources for the first time
+- **Progressing** — some sub-resources are not yet Ready
+- **Active** — all sub-resources are Ready, game is running
+- **Degraded** — one or more sub-resources failed or have error conditions
+- **Completed** — all terminal conditions met (boss defeated, dungeon finished)
+
+This is the same convention used by KEP-2943 (Kubernetes Enhancement Proposal for standard conditions). kro follows the convention so any tool that speaks Kubernetes — ArgoCD, Flux, kubectl wait — can watch \`status.phase\` to know when your resource graph is healthy.
+
+\`kubectl wait dungeon my-dungeon --for=jsonpath='{.status.phase}'=Active\` blocks until kro has fully reconciled all 7 sub-resources.`,
+    snippet: `# Watch phase from CLI
+$ kubectl get dungeon my-dungeon -o jsonpath='{.status.phase}'
+Active
+
+# Or wait for terminal state:
+$ kubectl wait dungeon my-dungeon \\
+    --for=jsonpath='{.status.phase}'=Completed \\
+    --timeout=120s
+
+# kro assembles phase from conditions like:
+# conditions:
+#   - type: AllResourcesReady   status: "True"
+#   - type: Reconciling         status: "False"
+#   → phase: Active`,
+    learnMore: 'manifests/rgds/dungeon-graph.yaml — status.conditions block',
+  },
+
   'spec-mutation': {
     id: 'spec-mutation',
     title: 'Spec Mutation Triggers Full Reconcile',
@@ -443,6 +476,7 @@ export function getInsightForEvent(event: string): InsightTrigger | null {
   if (event === 'externalRef') return { conceptId: 'externalRef', headline: 'Your attack created an Attack CR — kro watched it and re-reconciled the dungeon graph' }
   if (event === 'status-conditions') return { conceptId: 'status-conditions', headline: 'kro is reporting its reconcile status via status.conditions — the Kubernetes health contract' }
   if (event === 'second-attack') return { conceptId: 'reconcile-loop', headline: 'The ~1s pause after every action is the kro reconcile loop: watch → CEL eval → write' }
+  if (event === 'boss-phase-complete') return { conceptId: 'status-phase', headline: 'kro set status.phase=Completed — all sub-resource conditions resolved to terminal state' }
   return null
 }
 
@@ -551,7 +585,7 @@ const CONCEPT_ORDER: KroConceptId[] = [
   'rgd', 'spec-schema', 'resource-chaining', 'cel-basics', 'cel-ternary',
   'forEach', 'includeWhen', 'readyWhen', 'status-aggregation',
   'seeded-random', 'secret-output', 'empty-rgd', 'spec-mutation',
-  'externalRef', 'status-conditions', 'reconcile-loop',
+  'externalRef', 'status-conditions', 'reconcile-loop', 'status-phase',
 ]
 
 interface KroGlossaryProps {
