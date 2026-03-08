@@ -8,7 +8,7 @@ import { PixelIcon } from './PixelIcon'
 import {
   InsightCard, KroConceptModal, KroGlossary,
   useKroGlossary, getInsightForEvent, kroAnnotate,
-  KRO_STATUS_TIPS, CelTrace, type CelTraceData,
+  KRO_STATUS_TIPS, CelTrace, KroExpertCertificate, type CelTraceData,
   type InsightTrigger, type KroConceptId,
 } from './KroTeach'
 import { KroGraphPanel } from './KroGraph'
@@ -976,6 +976,16 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
   // During room 2 transition, bossHP=0 is stale from room 1 — not a real victory
   const inRoomTransition = (spec.currentRoom || 1) === 2 && spec.bossHP <= 0 && allMonstersDead && (spec.room2BossHP || 0) > 0
   const gameOver = isDefeated || (!inRoomTransition && spec.bossHP <= 0 && allMonstersDead)
+  const isVictory = gameOver && !isDefeated && (spec.currentRoom || 1) === 2
+  const [showCertificate, setShowCertificate] = useState(false)
+  // Auto-show certificate once on room-2 victory
+  const certShownRef = useRef(false)
+  useEffect(() => {
+    if (isVictory && !certShownRef.current) {
+      certShownRef.current = true
+      setTimeout(() => setShowCertificate(true), 800)
+    }
+  }, [isVictory])
   const [showDoorModal, setShowDoorModal] = useState(false)
   const [doorPassword, setDoorPassword] = useState('')
   const autoTriggeredRef = useRef('')
@@ -1122,10 +1132,23 @@ function DungeonView({ cr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoo
       )}
 
       {gameOver && !isDefeated && (spec.currentRoom || 1) === 2 && (
-        <div className="victory-banner">
+        <div className="victory-banner" style={{ cursor: 'pointer' }} onClick={() => setShowCertificate(true)}>
           <h2><PixelIcon name="crown" size={18} /> VICTORY! <PixelIcon name="crown" size={18} /></h2>
           <p className="loot">The dungeon has been conquered!</p>
+          <p style={{ fontSize: 7, color: 'var(--text-dim)', marginTop: 4 }}>Click for your kro certificate →</p>
         </div>
+      )}
+
+      {showCertificate && (
+        <KroExpertCertificate
+          dungeonName={dungeonName}
+          heroClass={spec.heroClass || 'warrior'}
+          difficulty={spec.difficulty || 'normal'}
+          turns={spec.attackSeq || 0}
+          unlocked={kroUnlocked}
+          k8sLog={k8sLog}
+          onClose={() => setShowCertificate(false)}
+        />
       )}
 
       {lootDrop && !combatModal && (

@@ -1326,3 +1326,37 @@ body {
 .cel-trace-expr { color: #9b59b6; font-family: 'Press Start 2P', monospace; }
 .cel-trace-val  { color: #00ff41; white-space: nowrap; }
 .cel-trace-note { color: #555; }
+
+/* ─── kro Expert Certificate ──────────────────────────────────────────────── */
+.kro-cert-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 2000;
+  display: flex; align-items: center; justify-content: center;
+}
+.kro-cert-modal {
+  background: #0a0e1a; border: 2px solid #f5c518; border-radius: 6px;
+  padding: 24px; max-width: 480px; width: 90%; font-family: 'Press Start 2P', monospace;
+  box-shadow: 0 0 40px rgba(245,197,24,0.3);
+  animation: certEntrance 0.4s ease-out;
+}
+@keyframes certEntrance {
+  0% { opacity: 0; transform: scale(0.85); }
+  100% { opacity: 1; transform: scale(1); }
+}
+.kro-cert-header { text-align: center; margin-bottom: 20px; }
+.kro-cert-badge { font-size: 32px; margin-bottom: 8px; }
+.kro-cert-title { font-size: 14px; color: #f5c518; margin-bottom: 4px; }
+.kro-cert-subtitle { font-size: 7px; color: #888; }
+.kro-cert-body { border: 1px solid #1a2a3a; border-radius: 4px; padding: 12px; margin-bottom: 16px; }
+.kro-cert-field { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.kro-cert-field:last-child { margin-bottom: 0; }
+.kro-cert-label { font-size: 7px; color: #888; }
+.kro-cert-value { font-size: 8px; color: #eee; }
+.kro-cert-section-title { font-size: 7px; color: #888; margin-bottom: 10px; }
+.kro-cert-concept-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 16px; }
+.kro-cert-concept { display: flex; align-items: center; gap: 6px; font-size: 6px; }
+.kro-cert-concept.done { color: #4ade80; }
+.kro-cert-concept.locked { color: #444; }
+.kro-cert-concept-check { font-size: 8px; }
+.kro-cert-hint { font-size: 7px; color: #888; text-align: center; margin-bottom: 16px; line-height: 1.8; }
+.kro-cert-hint strong { color: #f5c518; }
+.kro-cert-actions { display: flex; gap: 8px; justify-content: center; }
