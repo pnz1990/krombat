@@ -10,7 +10,7 @@ metadata:
   name: dungeon-reaper
 rules:
   - apiGroups: [game.k8s.example]
-    resources: [dungeons]
+    resources: [dungeons, attacks, actions]
     verbs: [get, list, delete]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -33,6 +33,7 @@ metadata:
   namespace: rpg-system
 spec:
   schedule: "*/10 * * * *"
+  concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 1
   failedJobsHistoryLimit: 1
   jobTemplate:
@@ -64,6 +65,17 @@ spec:
                     if [ "$AGE" -gt "$MAX_AGE_SECONDS" ]; then
                       NS=$(echo "$DUNGEON" | cut -d/ -f1)
                       NAME=$(echo "$DUNGEON" | cut -d/ -f2)
+
+                      # Active-game guard: skip dungeon if it has any running Attack or Action CRs
+                      ACTIVE_ATTACKS=$(kubectl get attacks -n "$NS" -o json 2>/dev/null | jq '[.items[] | select(.status.phase != "Completed" and .status.phase != "Failed")] | length' 2>/dev/null || echo 0)
+                      ACTIVE_ACTIONS=$(kubectl get actions -n "$NS" -o json 2>/dev/null | jq '[.items[] | select(.status.phase != "Completed" and .status.phase != "Failed")] | length' 2>/dev/null || echo 0)
+                      ACTIVE_TOTAL=$((ACTIVE_ATTACKS + ACTIVE_ACTIONS))
+
+                      if [ "$ACTIVE_TOTAL" -gt 0 ]; then
+                        echo "Skipping dungeon $NAME (namespace $NS) — $ACTIVE_TOTAL active CR(s) in progress"
+                        continue
+                      fi
+
                       echo "Deleting dungeon $NAME (namespace $NS, age: $((AGE/3600))h)"
                       kubectl delete dungeon "$NAME" -n "$NS" --wait=false || true
                     fi
@@ -73,3 +85,10 @@ spec:
               env:
                 - name: MAX_AGE_HOURS
                   value: "4"
+              resources:
+                requests:
+                  memory: "64Mi"
+                  cpu: "50m"
+                limits:
+                  memory: "128Mi"
+                  cpu: "100m"
