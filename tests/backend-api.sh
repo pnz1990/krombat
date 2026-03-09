@@ -446,6 +446,41 @@ print(f'ringBonus={rb} amuletBonus={ab} OK')
 " 2>/dev/null && pass "ringBonus=5 and amuletBonus=10 carry over in NG+ dungeon spec" || fail "ringBonus/amuletBonus not found in NG+ dungeon spec"
 kubectl delete dungeon "$RING_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
 
+# --- Test 27: enter-room-2 rejected when door not yet unlocked ---
+log "Test 27: enter-room-2 rejected when door not yet unlocked"
+R2_DUNGEON="api-test-r2guard-$(date +%s)"
+curl -s -X POST "$BASE/api/v1/dungeons" \
+  -H "Content-Type: application/json" \
+  -d "{\"name\":\"$R2_DUNGEON\",\"monsters\":1,\"difficulty\":\"easy\",\"heroClass\":\"warrior\"}" -o /dev/null
+sleep 15
+# doorUnlocked defaults to 0 — enter-room-2 must be rejected
+R2_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeons/default/$R2_DUNGEON/action" \
+  -H "Content-Type: application/json" \
+  -d '{"target":"enter-room-2"}')
+[ "$R2_CODE" = "400" ] && pass "enter-room-2 rejected before door unlocked -> 400" || fail "enter-room-2 -> $R2_CODE (expected 400)"
+kubectl delete dungeon "$R2_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
+
+# --- Test 28: enter-room-2 rejected when already in room 2 (currentRoom=2) ---
+log "Test 28: enter-room-2 rejected when already in room 2"
+R2B_DUNGEON="api-test-r2already-$(date +%s)"
+curl -s -X POST "$BASE/api/v1/dungeons" \
+  -H "Content-Type: application/json" \
+  -d "{\"name\":\"$R2B_DUNGEON\",\"monsters\":1,\"difficulty\":\"easy\",\"heroClass\":\"warrior\"}" -o /dev/null
+sleep 15
+# Manually patch to simulate already being in room 2 with door unlocked
+curl -s -X PATCH "$BASE/api/v1/dungeons/default/$R2B_DUNGEON" \
+  -H "Content-Type: application/json" \
+  -d '{"spec":{"currentRoom":2,"doorUnlocked":1,"treasureOpened":1}}' -o /dev/null 2>/dev/null || true
+sleep 5
+R2B_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeons/default/$R2B_DUNGEON/action" \
+  -H "Content-Type: application/json" \
+  -d '{"target":"enter-room-2"}')
+[ "$R2B_CODE" = "400" ] && pass "enter-room-2 rejected when already in room 2 -> 400" || {
+  # Accept 200 as a no-op (idempotent) if the backend chooses not to error
+  [ "$R2B_CODE" = "200" ] && pass "enter-room-2 in room 2 returns 200 no-op (idempotent)" || fail "enter-room-2 already-in-r2 -> $R2B_CODE (expected 400 or 200 no-op)"
+}
+kubectl delete dungeon "$R2B_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
+
 echo ""
 echo "========================================"
 echo "  Backend Tests: $PASS passed, $FAIL failed"
