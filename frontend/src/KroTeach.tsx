@@ -34,6 +34,8 @@ export type KroConceptId =
   | 'cel-has-macro'
   | 'ownerReferences'
   | 'cel-playground'
+  | 'cel-filter'
+  | 'cel-string-ops'
 
 export interface KroConcept {
   id: KroConceptId
@@ -560,9 +562,79 @@ schema.spec.bossHP > 0
   : "defeated"`,
     learnMore: 'manifests/rgds/dungeon-graph.yaml — any CEL expression in the status block',
   },
-}
 
-// ─── Insight trigger mapping ──────────────────────────────────────────────────
+  'cel-filter': {
+    id: 'cel-filter',
+    title: 'CEL Collection Macros — filter, map, exists, all',
+    tagline: 'CEL iterates Kubernetes lists natively: no loops, no scripts.',
+    body: `CEL includes powerful collection macros that let kro iterate over resource lists directly inside an RGD expression.
+
+In Krombat, every time a monster dies, \`dungeon-graph\` runs this expression to update \`livingMonsters\`:
+
+\`\`\`
+monsterCRs.filter(m, int(m.status.currentHP) > 0).size()
+\`\`\`
+
+This walks every Monster CR in the dungeon namespace, picks the ones with HP > 0, and counts them — in a single CEL line, without any controller code.
+
+The four core macros are:
+- \`list.filter(x, predicate)\` — keep items where predicate is true
+- \`list.map(x, expr)\` — transform each item
+- \`list.exists(x, predicate)\` — true if any item matches
+- \`list.all(x, predicate)\` — true if all items match
+
+kro evaluates these macros against live Kubernetes objects during every reconcile cycle.`,
+    snippet: `# dungeon-graph.yaml — livingMonsters aggregation
+status:
+  livingMonsters: >-
+    \${monsterCRs.filter(m,
+        int(m.status.currentHP) > 0
+      ).size()}
+
+# boss-graph.yaml — gating on all monsters dead
+spec:
+  readyWhen:
+    monstersCleared: >-
+      \${int(schema.spec.monstersAlive) == 0}`,
+    learnMore: 'manifests/rgds/dungeon-graph.yaml (status.livingMonsters) and boss-graph.yaml (readyWhen)',
+  },
+
+  'cel-string-ops': {
+    id: 'cel-string-ops',
+    title: 'CEL Type Coercion & String Ops',
+    tagline: 'CEL is strictly typed — int(), string(), and + do the work.',
+    body: `CEL is a strongly-typed language. Unlike JavaScript, you cannot concatenate a number and a string without an explicit cast. This matters a lot in kro RGDs, where spec fields are often strings that need to be used as integers (and vice versa).
+
+In Krombat, the loot randomisation uses this pattern to generate a deterministic seed:
+
+\`\`\`
+string(int(schema.spec.name, 36) % 100)
+\`\`\`
+
+Breaking it down:
+1. \`int(schema.spec.name, 36)\` — parses the dungeon name as a base-36 number (all ASCII chars are valid base-36 digits)
+2. \`% 100\` — takes the modulo to get a number 0–99
+3. \`string(...)\` — converts back to string for the \`seededString\` call
+
+Other common patterns in the RGDs:
+- \`int(m.status.currentHP)\` — coerce status string to int for comparisons
+- \`string(schema.spec.monsters)\` — coerce int to string for label concatenation
+- \`"Dungeon: " + schema.spec.name\` — string concatenation (both sides must be string)`,
+    snippet: `# monster-graph.yaml — seeded loot roll
+spec:
+  lootSeed: >-
+    \${string(
+        int(schema.spec.name, 36) % 100
+      )}
+
+# hero-graph.yaml — int coercion for HP comparison
+status:
+  alive: >-
+    \${int(schema.spec.heroHP) > 0}`,
+    learnMore: 'manifests/rgds/monster-graph.yaml (lootSeed) and hero-graph.yaml (alive status)',
+  },
+}
+// ─── end KRO_CONCEPTS ────────────────────────────────────────────────────────
 
 /** Map game events to insight triggers */
 export function getInsightForEvent(event: string): InsightTrigger | null {
@@ -573,12 +645,14 @@ export function getInsightForEvent(event: string): InsightTrigger | null {
   if (event === 'first-attack') return { conceptId: 'cel-basics', headline: 'Your damage was computed by a CEL expression in a ConfigMap' }
   if (event === 'monster-killed') return { conceptId: 'includeWhen', headline: 'A Loot CR appeared because monster HP hit 0 (includeWhen)' }
   if (event === 'boss-ready') return { conceptId: 'cel-ternary', headline: 'Boss transitioned pending → ready via a CEL ternary in boss-graph' }
-  if (event === 'boss-killed') return { conceptId: 'status-aggregation', headline: 'Victory state aggregated from Hero + Boss + Monster CR statuses' }
+  if (event === 'boss-killed') return { conceptId: 'cel-filter', headline: 'kro ran .filter() on all Monster CRs to re-aggregate livingMonsters to 0' }
+  if (event === 'all-monsters-dead') return { conceptId: 'status-aggregation', headline: 'All monsters dead — kro aggregated victory state from Hero + Boss + Monster CRs' }
   if (event === 'treasure-opened') return { conceptId: 'secret-output', headline: 'Opening treasure created a Kubernetes Secret via treasure-graph' }
   if (event === 'enter-room-2') return { conceptId: 'spec-mutation', headline: 'One spec patch triggered a full kro reconcile of the resource graph' }
   if (event === 'modifier-present') return { conceptId: 'readyWhen', headline: 'dungeon-graph waited for modifier-graph via readyWhen before proceeding' }
   if (event === 'forEach') return { conceptId: 'forEach', headline: 'kro created one Monster CR per entry in monsterHP[] via forEach' }
   if (event === 'loot-drop') return { conceptId: 'seeded-random', headline: 'Loot type and rarity rolled via random.seededString() in monster-graph' }
+  if (event === 'loot-drop-string-ops') return { conceptId: 'cel-string-ops', headline: 'That seed was built with int(name, 36) — CEL base-36 string → int coercion' }
   if (event === 'attack-cr') return { conceptId: 'empty-rgd', headline: 'Attack CR is defined by an RGD with resources:[] — a CRD factory' }
   if (event === 'externalRef') return { conceptId: 'externalRef', headline: 'Your attack created an Attack CR — kro watched it and re-reconciled the dungeon graph' }
   if (event === 'status-conditions') return { conceptId: 'status-conditions', headline: 'kro is reporting its reconcile status via status.conditions — the Kubernetes health contract' }
@@ -586,6 +660,7 @@ export function getInsightForEvent(event: string): InsightTrigger | null {
   if (event === 'dungeon-created-2nd') return { conceptId: 'resourceGroup-api', headline: 'kro registered Dungeon as a real Kubernetes API — kubectl get dungeon works natively' }
   if (event === 'boots-equipped') return { conceptId: 'cel-has-macro', headline: 'has() lets CEL safely access optional spec fields — used throughout dungeon-graph readyWhen' }
   if (event === 'dungeon-deleted') return { conceptId: 'ownerReferences', headline: 'Deleting the Dungeon CR triggered cascading deletion of all 9 child resources via ownerReferences' }
+  if (event === 'cel-playground-unlocked') return { conceptId: 'cel-playground', headline: 'Open the CEL Playground to write and evaluate live kro expressions against your dungeon' }
   return null
 }
 
@@ -696,6 +771,7 @@ const CONCEPT_ORDER: KroConceptId[] = [
   'seeded-random', 'secret-output', 'empty-rgd', 'spec-mutation',
   'externalRef', 'status-conditions', 'reconcile-loop',
   'resourceGroup-api', 'cel-has-macro', 'ownerReferences', 'cel-playground',
+  'cel-filter', 'cel-string-ops',
 ]
 
 interface KroGlossaryProps {

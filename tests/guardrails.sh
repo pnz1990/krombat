@@ -430,6 +430,15 @@ echo "=== Mini-map guardrails"
 grep -q "DungeonMiniMap\|dungeon-minimap" frontend/src/App.tsx && pass "App.tsx renders DungeonMiniMap component" || fail "DungeonMiniMap missing from App.tsx"
 grep -q "dungeon-minimap" frontend/src/index.css && pass "Mini-map CSS class defined in index.css" || fail "Mini-map CSS missing from index.css"
 
+# --- CEL teaching guardrails ---
+echo "=== CEL teaching guardrails"
+grep -q "cel-filter" frontend/src/KroTeach.tsx && pass "KroTeach.tsx defines cel-filter concept" || fail "cel-filter concept missing from KroTeach.tsx"
+grep -q "cel-string-ops" frontend/src/KroTeach.tsx && pass "KroTeach.tsx defines cel-string-ops concept" || fail "cel-string-ops concept missing from KroTeach.tsx"
+grep -q "cel-playground-unlocked" frontend/src/KroTeach.tsx && pass "KroTeach.tsx maps cel-playground-unlocked event" || fail "cel-playground-unlocked event missing from KroTeach.tsx"
+grep -q "playgroundFiredRef\|cel-playground-unlocked" frontend/src/App.tsx && pass "App.tsx auto-triggers cel-playground at 10 concepts" || fail "App.tsx missing cel-playground auto-trigger"
+grep -q "all-monsters-dead" frontend/src/App.tsx && pass "App.tsx triggers all-monsters-dead for status-aggregation" || fail "all-monsters-dead event missing from App.tsx"
+grep -q "loot-drop-string-ops" frontend/src/App.tsx && pass "App.tsx triggers loot-drop-string-ops for cel-string-ops" || fail "loot-drop-string-ops event missing from App.tsx"
+
 # --- Summary ---
 
 echo ""
