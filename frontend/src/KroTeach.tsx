@@ -288,19 +288,26 @@ status:
     id: 'seeded-random',
     title: 'random.seededString() — Deterministic Randomness',
     tagline: 'kro extends CEL with seeded random for reproducible results.',
-    body: `kro ships a CEL extension function \`random.seededString(seed, alphabet, length)\` that generates a deterministic pseudo-random string from a seed.
-Dice rolls in this game use the lastCombatLog field as a seed — so the same attack submitted twice with the same combat log produces the same "random" number. This makes the game reproducible and auditable from the CR spec alone.`,
-    snippet: `# dungeon-graph — dice roll via random.seededString
-data:
-  diceRoll: >-
-    \${string(
-      int(random.seededString(
-        schema.spec.lastCombatLog,   # seed (changes every attack)
-        'abcdefghijklmnopqrstuvwxyz0123456789',
-        8                            # length of random string
-      ), 36) % 20 + 1               # base-36 → mod → dice value
-    )}`,
-    learnMore: 'manifests/rgds/dungeon-graph.yaml — combatResult ConfigMap',
+    body: `kro ships a CEL extension function \`random.seededString(length, seed)\` that generates a deterministic string from a seed using SHA-256. The same seed always produces the same output — making loot drops reproducible and auditable from the CR spec alone.
+
+Loot type and rarity are pre-rolled at monster spawn using the dungeon name and monster index as the seed. When the monster dies, kro creates the Loot CR with the pre-determined item — and the Go backend computes the same name using the identical SHA-256 algorithm, so they always agree.`,
+    snippet: `# monster-graph — loot type pre-rolled at spawn
+spec:
+  itemType: >-
+    \${
+      ['weapon','armor','hppotion','manapotion','shield','helmet','pants','boots'][
+        int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(
+          random.seededString(1, schema.spec.dungeonName + '-m' + string(schema.spec.index) + '-typ')
+        ) % 8)
+      ]
+    }
+  dropped: >-
+    \${
+      int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(
+        random.seededString(1, schema.spec.dungeonName + '-m' + string(schema.spec.index) + '-drop')
+      ) % 36) < (schema.spec.difficulty == 'easy' ? 22 : schema.spec.difficulty == 'hard' ? 13 : 16)
+    }`,
+    learnMore: 'manifests/rgds/monster-graph.yaml — lootCR spec',
   },
 
   'secret-output': {
@@ -609,35 +616,38 @@ spec:
     id: 'cel-string-ops',
     title: 'CEL Type Coercion & String Ops',
     tagline: 'CEL is strictly typed — int(), string(), and + do the work.',
-    body: `CEL is a strongly-typed language. Unlike JavaScript, you cannot concatenate a number and a string without an explicit cast. This matters a lot in kro RGDs, where spec fields are often strings that need to be used as integers (and vice versa).
+    body: `CEL is a strongly-typed language. Unlike JavaScript, you cannot concatenate a number and a string without an explicit cast. This matters a lot in kro RGDs, where spec fields are often integers that need to become strings for labels or ConfigMap data (and vice versa).
 
-In Krombat, the loot randomisation uses this pattern to generate a deterministic seed:
+In Krombat, loot seeds are built by concatenating the dungeon name (a string) with the monster index (an integer), requiring an explicit \`string()\` cast:
 
 \`\`\`
-string(int(schema.spec.name, 36) % 100)
+schema.spec.dungeonName + '-m' + string(schema.spec.index) + '-typ'
 \`\`\`
 
-Breaking it down:
-1. \`int(schema.spec.name, 36)\` — parses the dungeon name as a base-36 number (all ASCII chars are valid base-36 digits)
-2. \`% 100\` — takes the modulo to get a number 0–99
-3. \`string(...)\` — converts back to string for the \`seededString\` call
+The result is passed directly to \`random.seededString()\` — no base-36 conversion needed, because the seed is just a stable unique string.
 
 Other common patterns in the RGDs:
-- \`int(m.status.currentHP)\` — coerce status string to int for comparisons
-- \`string(schema.spec.monsters)\` — coerce int to string for label concatenation
+- \`string(schema.spec.hp)\` — coerce int to string for ConfigMap data values
+- \`string(schema.spec.stat)\` — int stat stored as string in Secret.stringData
 - \`"Dungeon: " + schema.spec.name\` — string concatenation (both sides must be string)`,
-    snippet: `# monster-graph.yaml — seeded loot roll
+    snippet: `# monster-graph.yaml — seed built from string concat
 spec:
-  lootSeed: >-
-    \${string(
-        int(schema.spec.name, 36) % 100
-      )}
+  itemType: >-
+    \${
+      ['weapon','armor','hppotion',...][
+        int('abcdefghijklmnopqrstuvwxyz0123456789'.indexOf(
+          random.seededString(1,
+            schema.spec.dungeonName + '-m' + string(schema.spec.index) + '-typ'
+          )
+        ) % 8)
+      ]
+    }
 
-# hero-graph.yaml — int coercion for HP comparison
-status:
-  alive: >-
-    \${int(schema.spec.heroHP) > 0}`,
-    learnMore: 'manifests/rgds/monster-graph.yaml (lootSeed) and hero-graph.yaml (alive status)',
+# loot-graph.yaml — int coerced to string for Secret data
+stringData:
+  stat: "\${string(schema.spec.stat)}"
+  description: "\${'A ' + schema.spec.rarity + ' weapon (+' + string(schema.spec.stat) + ' dmg)'}"`,
+    learnMore: 'manifests/rgds/monster-graph.yaml (itemType) and loot-graph.yaml (stringData)',
   },
 }
 // ─── end KRO_CONCEPTS ────────────────────────────────────────────────────────

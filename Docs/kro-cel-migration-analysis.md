@@ -27,7 +27,7 @@ This document answers: **which parts of the backend can be moved into kro CEL to
 | `modifier-graph` | `effect` (human-readable description string) | Not read by backend — UI reads from dungeon status |
 | `loot-graph` | `description` string per loot item | Not read by backend — UI reads from Loot CR status |
 | `treasure-graph` | `state` (opened/unopened), `loot` key string | Not read by backend — UI reads from dungeon status |
-| `monster-graph` + `boss-graph` | Loot CR creation via `includeWhen: hp==0`, seeded item type/rarity/stat | Backend mirrors this exact math in `computeMonsterLoot()` / `computeBossLoot()` to generate item name strings |
+| `monster-graph` + `boss-graph` | Loot CR creation via `includeWhen: hp==0`, seeded item type/rarity/stat via `random.seededString` (SHA-256 internally) | Backend mirrors this exact math in `computeMonsterLoot()` / `computeBossLoot()` using `kroSeededRoll` (same SHA-256 algorithm), so `spec.lastLootDrop` always matches the kro Loot CR |
 
 ### What Go does today (the game engine)
 
@@ -65,7 +65,7 @@ CEL (Common Expression Language) is a **pure, side-effect-free expression evalua
 - **Maintain mutable state across evaluations** — each reconcile is a fresh evaluation
 
 kro adds two CEL extensions beyond the standard library:
-- `random.seededString(length, seed)` — returns a deterministic pseudo-random string from a seed
+- `random.seededString(length, seed)` — returns a deterministic string from a seed using SHA-256 internally (source: `kubernetes-sigs/kro/pkg/cel/library/random.go`). The output character is drawn from `"0123456789abcdefghijklmnopqrstuvwxyz"` (digits-first); the CEL expressions then call `indexOf` on `"abcdefghijklmnopqrstuvwxyz0123456789"` (letters-first) to get a numeric index.
 - `lists.range(n)` — returns `[0, 1, ..., n-1]`
 
 ---
