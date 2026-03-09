@@ -1023,6 +1023,25 @@ function HelpModal({ onClose, onCheat }: { onClose: () => void; onCheat: () => v
     </div>
   )
 }
+function getModifierArenaStyle(modifier: string | undefined): React.CSSProperties {
+  switch (modifier) {
+    case 'curse-darkness':
+      return { filter: 'brightness(0.75) contrast(1.1)', boxShadow: '0 0 30px rgba(180,0,0,0.4) inset' }
+    case 'curse-fury':
+      return { filter: 'hue-rotate(15deg) saturate(1.3)', boxShadow: '0 0 30px rgba(220,50,50,0.5) inset' }
+    case 'curse-fortitude':
+      return { filter: 'contrast(1.15)', boxShadow: '0 0 20px rgba(100,100,100,0.4) inset' }
+    case 'blessing-strength':
+      return { boxShadow: '0 0 30px rgba(245,197,24,0.4) inset' }
+    case 'blessing-resilience':
+      return { boxShadow: '0 0 30px rgba(46,204,113,0.4) inset' }
+    case 'blessing-fortune':
+      return {}
+    default:
+      return {}
+  }
+}
+
 function DungeonView({ cr, prevCr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoot, onCloseLoot, attackPhase, roomLoading, animPhase, attackTarget, showHelp, onToggleHelp, showCheat, onToggleCheat, floatingDmg, bossPhaseFlash, combatModal, onDismissCombat, lootDrop, onDismissLoot, wsConnected, apiError, kroUnlocked, onViewKroConcept, reconciling }: {
   cr: DungeonCR; prevCr?: DungeonCR | null; onBack: () => void; onAttack: (t: string, d: number) => void; events: WSEvent[]; k8sLog: { ts: string; cmd: string; res: string; yaml?: string }[]
   showLoot: boolean; onOpenLoot: () => void; onCloseLoot: () => void
@@ -1337,7 +1356,7 @@ function DungeonView({ cr, prevCr, onBack, onAttack, events, k8sLog, showLoot, o
       <div className="game-layout">
         {/* LEFT PANEL — Dungeon Arena */}
         <div className="left-panel">
-          <div className="dungeon-arena">
+          <div className={`dungeon-arena${spec.modifier === 'blessing-fortune' ? ' arena-blessing-fortune' : ''}`} style={getModifierArenaStyle(spec.modifier)}>
             {/* Stone floor texture layers */}
             <div className="arena-floor" />
             <div className="arena-glow" />
@@ -1509,9 +1528,8 @@ function DungeonView({ cr, prevCr, onBack, onAttack, events, k8sLog, showLoot, o
               </div>
             )}
 
-            {/* Victory glow */}
-            {/* Flying bats */}
-            <DungeonBats />
+            {/* Flying bats — Room 2 only (bat-boss lives here) */}
+            {(spec.currentRoom || 1) === 2 && <DungeonBats />}
 
             {/* Room 1 cleared — 3s celebration overlay */}
             {showRoom1Cleared && (
