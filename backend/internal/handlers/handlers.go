@@ -1545,6 +1545,52 @@ func sliceInt(v interface{}) int64 {
 	return 0
 }
 
+// CelEvalHandler evaluates a CEL expression against the live dungeon spec.
+// POST /api/v1/dungeons/{namespace}/{name}/cel-eval
+// Body: { "expr": "schema.spec.heroHP > 100" }
+// Returns: { "result": "true" } or { "error": "..." }
+func (h *Handler) CelEvalHandler(w http.ResponseWriter, r *http.Request) {
+	ns := r.PathValue("namespace")
+	name := r.PathValue("name")
+	if !validateNamespace(w, ns) {
+		return
+	}
+
+	var req struct {
+		Expr string `json:"expr"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Expr == "" {
+		writeError(w, "invalid request body: expected {\"expr\":\"...\"}", http.StatusBadRequest)
+		return
+	}
+
+	dungeon, err := h.client.Dynamic.Resource(k8s.DungeonGVR).Namespace(ns).Get(
+		r.Context(), name, metav1.GetOptions{})
+	if err != nil {
+		writeError(w, sanitizeK8sError(err), http.StatusNotFound)
+		return
+	}
+
+	spec := getMap(dungeon.Object, "spec")
+	// Flatten spec into string-keyed interface{} map, keeping int64/string/bool types.
+	bindings := make(map[string]interface{}, len(spec)+4)
+	for k, v := range spec {
+		bindings[k] = v
+	}
+	// Expose metadata as well
+	bindings["name"] = dungeon.GetName()
+	bindings["namespace"] = dungeon.GetNamespace()
+
+	result, celErr := EvalCEL(req.Expr, bindings)
+
+	w.Header().Set("Content-Type", "application/json")
+	if celErr != "" {
+		json.NewEncoder(w).Encode(map[string]string{"error": celErr})
+		return
+	}
+	json.NewEncoder(w).Encode(map[string]string{"result": result})
+}
+
 // GetDungeonResource fetches a child resource of a dungeon for the kro Inspector panel.
 // GET /api/v1/dungeons/{namespace}/{name}/resources?kind=hero[&index=0]
 func (h *Handler) GetDungeonResource(w http.ResponseWriter, r *http.Request) {

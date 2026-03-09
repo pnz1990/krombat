@@ -1627,3 +1627,226 @@ body {
   text-align: center;
   padding: 16px 0;
 }
+
+/* ─── CEL Playground ──────────────────────────────────────────────────────── */
+.kro-playground-modal {
+  max-width: 760px !important;
+  width: 96vw;
+  text-align: left;
+}
+.kro-playground-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.kro-playground-title {
+  font-size: 10px;
+  color: var(--gold);
+  font-family: 'Press Start 2P', monospace;
+}
+.kro-playground-subtitle {
+  font-size: 7px;
+  color: #888;
+  font-family: 'Press Start 2P', monospace;
+  flex: 1;
+}
+.kro-playground-context {
+  font-size: 7px;
+  font-family: 'Press Start 2P', monospace;
+  color: #555;
+  margin-bottom: 10px;
+  padding: 4px 8px;
+  background: #050810;
+  border: 1px solid #1a2a3a;
+  border-radius: 3px;
+}
+.kro-playground-context-label { color: #888; }
+.kro-playground-context-value { color: #00d4ff; margin: 0 4px; }
+.kro-playground-context-hint { color: #444; }
+
+.kro-playground-body {
+  display: flex;
+  gap: 14px;
+  min-height: 240px;
+}
+.kro-playground-left {
+  flex: 1.2;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.kro-playground-right {
+  flex: 0.8;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.kro-playground-editor-label {
+  font-size: 7px;
+  font-family: 'Press Start 2P', monospace;
+  color: #888;
+}
+.kro-playground-hint {
+  color: #444;
+  font-size: 6px;
+  margin-left: 8px;
+}
+.kro-playground-input {
+  width: 100%;
+  background: #050810;
+  border: 1px solid #1e3a5f;
+  color: #9b59b6;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 7px;
+  padding: 8px;
+  border-radius: 3px;
+  resize: vertical;
+  line-height: 1.8;
+  outline: none;
+  box-sizing: border-box;
+}
+.kro-playground-input:focus {
+  border-color: #00d4ff;
+  box-shadow: 0 0 6px rgba(0,212,255,0.2);
+}
+.kro-playground-run {
+  align-self: flex-start;
+  font-size: 8px;
+  padding: 6px 16px;
+}
+.kro-playground-result {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 3px;
+  font-family: 'Press Start 2P', monospace;
+}
+.kro-playground-result-ok {
+  background: #001a0a;
+  border: 1px solid #00ff41;
+}
+.kro-playground-result-err {
+  background: #1a0505;
+  border: 1px solid #e74c3c;
+}
+.kro-playground-result-label {
+  font-size: 6px;
+  color: #888;
+  text-transform: uppercase;
+}
+.kro-playground-result-val {
+  font-size: 9px;
+  color: #00ff41;
+  word-break: break-all;
+}
+.kro-playground-result-err .kro-playground-result-val { color: #e74c3c; }
+
+.kro-playground-examples-label {
+  font-size: 7px;
+  font-family: 'Press Start 2P', monospace;
+  color: #888;
+  margin-top: 6px;
+}
+.kro-playground-examples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.kro-playground-example-btn {
+  background: #0a1420;
+  border: 1px solid #1e3a5f;
+  color: #5dade2;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 6px;
+  padding: 3px 6px;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: border-color 0.15s;
+}
+.kro-playground-example-btn:hover {
+  border-color: #00d4ff;
+  color: #00d4ff;
+}
+.kro-playground-history-label {
+  font-size: 7px;
+  font-family: 'Press Start 2P', monospace;
+  color: #888;
+}
+.kro-playground-history-empty {
+  font-size: 6px;
+  font-family: 'Press Start 2P', monospace;
+  color: #333;
+  text-align: center;
+  padding: 24px 8px;
+}
+.kro-playground-history {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 260px;
+}
+.kro-playground-history-item {
+  background: #050810;
+  border: 1px solid #1a2a3a;
+  border-radius: 3px;
+  padding: 5px 8px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.kro-playground-history-item:hover { border-color: #00d4ff; }
+.kro-playground-history-err { border-color: #3a1a1a !important; }
+.kro-playground-history-expr {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 6px;
+  color: #9b59b6;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.kro-playground-history-result {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 7px;
+  color: #00ff41;
+  margin-top: 2px;
+}
+.kro-playground-history-err .kro-playground-history-result { color: #e74c3c; }
+
+.kro-playground-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px solid #1a2a3a;
+  flex-wrap: wrap;
+}
+.kro-playground-supported {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 6px;
+  color: #444;
+  text-align: right;
+}
+
+/* Playground button in Glossary header */
+.kro-glossary-playground-btn {
+  background: #0a1420;
+  border: 1px solid #9b59b6;
+  color: #9b59b6;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 6px;
+  padding: 3px 7px;
+  cursor: pointer;
+  border-radius: 2px;
+  margin-left: auto;
+  transition: border-color 0.15s, color 0.15s;
+}
+.kro-glossary-playground-btn:hover {
+  border-color: #c39bd3;
+  color: #c39bd3;
+}
