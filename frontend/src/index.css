@@ -1915,3 +1915,10 @@ body {
 .lb-row.lb-victory td:first-child { border-left: 2px solid var(--gold); }
 .lb-row.lb-defeat td:first-child { border-left: 2px solid #e94560; }
 .lb-row.lb-room1-cleared td:first-child { border-left: 2px solid #00ff41; }
+
+/* ── New Game+ ────────────────────────────────────────────────────────────── */
+.ng-plus-badge {
+  border-color: #00ff41 !important;
+  color: #00ff41 !important;
+  font-weight: bold;
+}

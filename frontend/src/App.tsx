@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { DungeonSummary, DungeonCR, listDungeons, getDungeon, createDungeon, submitAttack, deleteDungeon, ApiError, LeaderboardEntry, getLeaderboard } from './api'
+import { DungeonSummary, DungeonCR, listDungeons, getDungeon, createDungeon, createNewGamePlus, submitAttack, deleteDungeon, ApiError, LeaderboardEntry, getLeaderboard } from './api'
 import { useWebSocket, WSEvent } from './useWebSocket'
 
 import { Sprite, getMonsterSprite, getMonsterName, SpriteAction, ItemSprite } from './Sprite'
@@ -554,6 +554,31 @@ export default function App() {
     }
   }
 
+  const handleNewGamePlus = async () => {
+    if (!detail) return
+    const spec = detail.spec
+    const runCount = (spec.runCount ?? 0) + 1
+    // Generate a new dungeon name: append or increment run suffix
+    const baseName = selected?.name?.replace(/-ng\d+$/, '') ?? 'dungeon'
+    const newName = `${baseName}-ng${runCount}`
+    const ns = selected?.ns ?? 'default'
+    if (!confirm(`Start New Game+ (Run #${runCount}) as "${newName}"?\nEnemies are 25% stronger per run. Gear carries over!`)) return
+    try {
+      await createNewGamePlus(newName, spec.monsters ?? 3, spec.difficulty ?? 'normal', spec.heroClass ?? 'warrior', {
+        runCount,
+        weaponBonus: spec.weaponBonus,
+        weaponUses: spec.weaponUses,
+        armorBonus: spec.armorBonus,
+        shieldBonus: spec.shieldBonus,
+        helmetBonus: spec.helmetBonus,
+        pantsBonus: spec.pantsBonus,
+        ringBonus: spec.ringBonus,
+        amuletBonus: spec.amuletBonus,
+      }, ns)
+      navigate(`/dungeon/${ns}/${newName}`)
+    } catch (e: any) { setError(e.message) }
+  }
+
   return (
     <div className="app">
       <header className="header">
@@ -596,6 +621,7 @@ export default function App() {
           cr={detail}
           prevCr={prevDetailRef.current}
           onBack={() => { navigate('/'); refresh() }}
+          onNewGamePlus={handleNewGamePlus}
           onAttack={handleAttack}
           attackPhase={attackPhase}
           roomLoading={roomLoading}
@@ -711,6 +737,9 @@ function DungeonList({ dungeons, onSelect, onDelete, deleting, lastDungeon, onOp
           </div>
           <div className="stats">
             <span className={`tag tag-${d.difficulty}`}>{d.difficulty}</span>
+            {d.runCount != null && d.runCount > 0 && (
+              <span className="tag ng-plus-badge" title={`New Game+ run #${d.runCount}`}>⭐ NG+{d.runCount}</span>
+            )}
             <span>Monsters: {d.livingMonsters ?? '?'}</span>
             <span>Boss: {d.bossState === 'pending' ? 'Locked' : d.bossState === 'ready' ? 'Ready' : d.bossState === 'defeated' ? 'Defeated' : d.bossState ?? '?'}</span>
             {d.modifier && d.modifier !== 'none' && (
@@ -1176,8 +1205,8 @@ function getModifierArenaStyle(modifier: string | undefined): React.CSSPropertie
   }
 }
 
-function DungeonView({ cr, prevCr, onBack, onAttack, events, k8sLog, showLoot, onOpenLoot, onCloseLoot, attackPhase, roomLoading, animPhase, attackTarget, showHelp, onToggleHelp, showCheat, onToggleCheat, floatingDmg, bossPhaseFlash, combatModal, onDismissCombat, lootDrop, onDismissLoot, wsConnected, apiError, kroUnlocked, onViewKroConcept, reconciling }: {
-  cr: DungeonCR; prevCr?: DungeonCR | null; onBack: () => void; onAttack: (t: string, d: number) => void; events: WSEvent[]; k8sLog: { ts: string; cmd: string; res: string; yaml?: string }[]
+function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sLog, showLoot, onOpenLoot, onCloseLoot, attackPhase, roomLoading, animPhase, attackTarget, showHelp, onToggleHelp, showCheat, onToggleCheat, floatingDmg, bossPhaseFlash, combatModal, onDismissCombat, lootDrop, onDismissLoot, wsConnected, apiError, kroUnlocked, onViewKroConcept, reconciling }: {
+  cr: DungeonCR; prevCr?: DungeonCR | null; onBack: () => void; onNewGamePlus?: () => void; onAttack: (t: string, d: number) => void; events: WSEvent[]; k8sLog: { ts: string; cmd: string; res: string; yaml?: string }[]
   showLoot: boolean; onOpenLoot: () => void; onCloseLoot: () => void
   attackPhase: string | null; roomLoading: boolean
   animPhase: string; attackTarget: string | null
@@ -1424,6 +1453,11 @@ function DungeonView({ cr, prevCr, onBack, onAttack, events, k8sLog, showLoot, o
             <button className="btn btn-gold" style={{ fontSize: 7 }} onClick={() => setShowCertificate(true)}>
               View kro Certificate →
             </button>
+            {onNewGamePlus && (
+              <button className="btn btn-gold" style={{ fontSize: 7, borderColor: '#00ff41', color: '#00ff41', background: 'rgba(0,255,65,0.08)' }} onClick={onNewGamePlus}>
+                ⭐ New Game+
+              </button>
+            )}
             <button className="btn" style={{ fontSize: 7 }} onClick={onBack}>
               ← New Dungeon
             </button>

@@ -119,6 +119,16 @@ type CreateDungeonReq struct {
 	Difficulty string `json:"difficulty"`
 	HeroClass  string `json:"heroClass"`
 	Namespace  string `json:"namespace"`
+	// New Game+ carry-over fields (optional, 0 = fresh start)
+	RunCount    int64 `json:"runCount"`
+	WeaponBonus int64 `json:"weaponBonus"`
+	WeaponUses  int64 `json:"weaponUses"`
+	ArmorBonus  int64 `json:"armorBonus"`
+	ShieldBonus int64 `json:"shieldBonus"`
+	HelmetBonus int64 `json:"helmetBonus"`
+	PantsBonus  int64 `json:"pantsBonus"`
+	RingBonus   int64 `json:"ringBonus"`
+	AmuletBonus int64 `json:"amuletBonus"`
 }
 
 func (h *Handler) CreateDungeon(w http.ResponseWriter, r *http.Request) {
@@ -182,6 +192,32 @@ func (h *Handler) CreateDungeon(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// New Game+ scaling: each completed run multiplies monster HP by 1.25
+	// and adds +10% hero HP per run (compounded). runCount is the number of
+	// prior completed runs (0 = fresh start, 1 = first New Game+, etc.)
+	runCount := req.RunCount
+	if runCount < 0 || runCount > 20 {
+		runCount = 0 // clamp to reasonable range
+	}
+	if runCount > 0 {
+		// Scale monster HP: 1.25^runCount (integer approximation)
+		// 1 run: 125%, 2 runs: 156%, 3 runs: 195%, etc.
+		scale := int64(100)
+		for i := int64(0); i < runCount; i++ {
+			scale = scale * 125 / 100
+		}
+		for i := range monsterHP {
+			monsterHP[i] = monsterHP[i].(int64) * scale / 100
+		}
+		hp.boss = hp.boss * scale / 100
+		// Hero HP +10% per run (compounded)
+		heroHPScale := int64(100)
+		for i := int64(0); i < runCount; i++ {
+			heroHPScale = heroHPScale * 110 / 100
+		}
+		heroHP = heroHP * heroHPScale / 100
+	}
+
 	// Assign monster types for Room 1: goblin(0), skeleton(1), archer(2+even), shaman(3+odd)
 	// Archers (index % 2 == 0, index >= 2): 20% chance to stun instead of poison
 	// Shamans (index % 2 == 1, index >= 3): 30% chance to heal another monster on counter
@@ -199,21 +235,47 @@ func (h *Handler) CreateDungeon(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	dungeonSpec := map[string]interface{}{
+		"monsters":     req.Monsters,
+		"difficulty":   req.Difficulty,
+		"monsterHP":    monsterHP,
+		"bossHP":       hp.boss,
+		"heroHP":       heroHP,
+		"heroClass":    heroClass,
+		"heroMana":     heroMana,
+		"modifier":     modifier,
+		"monsterTypes": monsterTypes,
+		"runCount":     runCount,
+	}
+	// Carry over gear bonuses from prior run (New Game+)
+	if req.WeaponBonus > 0 {
+		dungeonSpec["weaponBonus"] = req.WeaponBonus
+		dungeonSpec["weaponUses"] = req.WeaponUses
+	}
+	if req.ArmorBonus > 0 {
+		dungeonSpec["armorBonus"] = req.ArmorBonus
+	}
+	if req.ShieldBonus > 0 {
+		dungeonSpec["shieldBonus"] = req.ShieldBonus
+	}
+	if req.HelmetBonus > 0 {
+		dungeonSpec["helmetBonus"] = req.HelmetBonus
+	}
+	if req.PantsBonus > 0 {
+		dungeonSpec["pantsBonus"] = req.PantsBonus
+	}
+	if req.RingBonus > 0 {
+		dungeonSpec["ringBonus"] = req.RingBonus
+	}
+	if req.AmuletBonus > 0 {
+		dungeonSpec["amuletBonus"] = req.AmuletBonus
+	}
+
 	dungeon := &unstructured.Unstructured{Object: map[string]interface{}{
 		"apiVersion": "game.k8s.example/v1alpha1",
 		"kind":       "Dungeon",
 		"metadata":   map[string]interface{}{"name": req.Name},
-		"spec": map[string]interface{}{
-			"monsters":     req.Monsters,
-			"difficulty":   req.Difficulty,
-			"monsterHP":    monsterHP,
-			"bossHP":       hp.boss,
-			"heroHP":       heroHP,
-			"heroClass":    heroClass,
-			"heroMana":     heroMana,
-			"modifier":     modifier,
-			"monsterTypes": monsterTypes,
-		},
+		"spec":       dungeonSpec,
 	}}
 
 	var result *unstructured.Unstructured
@@ -251,6 +313,7 @@ func (h *Handler) ListDungeons(w http.ResponseWriter, r *http.Request) {
 		BossState      interface{} `json:"bossState"`
 		Victory        interface{} `json:"victory"`
 		Modifier       interface{} `json:"modifier"`
+		RunCount       interface{} `json:"runCount"`
 	}
 	items := []summary{}
 	for _, d := range list.Items {
@@ -267,6 +330,7 @@ func (h *Handler) ListDungeons(w http.ResponseWriter, r *http.Request) {
 			BossState:      status["bossState"],
 			Victory:        status["victory"],
 			Modifier:       spec["modifier"],
+			RunCount:       spec["runCount"],
 		})
 	}
 	w.Header().Set("Content-Type", "application/json")

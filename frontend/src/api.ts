@@ -3,7 +3,7 @@ const BASE = '/api/v1'
 export interface DungeonSummary {
   name: string; namespace: string; difficulty: string
   livingMonsters: number | null; bossState: string | null; victory: boolean | null
-  modifier?: string | null
+  modifier?: string | null; runCount?: number | null
 }
 
 // GetDungeon now returns the raw Dungeon CR — all state is in spec + status
@@ -31,6 +31,7 @@ export interface DungeonCR {
     treasureOpened?: number
     currentRoom?: number; doorUnlocked?: number; room2BossHP?: number; room2MonsterHP?: number[]
     monsterTypes?: string[]
+    runCount?: number
     lastHeroAction?: string; lastEnemyAction?: string; lastCombatLog?: string; lastLootDrop?: string
     attackSeq?: number; actionSeq?: number
   }
@@ -59,6 +60,24 @@ export async function createDungeon(name: string, monsters: number, difficulty: 
   const r = await fetch(`${BASE}/dungeons`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name, monsters, difficulty, heroClass, namespace }),
+  })
+  if (!r.ok) throw new Error(await r.text())
+  return r.json()
+}
+
+export interface NewGamePlusOptions {
+  runCount: number
+  weaponBonus?: number; weaponUses?: number; armorBonus?: number; shieldBonus?: number
+  helmetBonus?: number; pantsBonus?: number; ringBonus?: number; amuletBonus?: number
+}
+
+export async function createNewGamePlus(
+  name: string, monsters: number, difficulty: string, heroClass: string,
+  opts: NewGamePlusOptions, namespace: string = 'default'
+) {
+  const r = await fetch(`${BASE}/dungeons`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, monsters, difficulty, heroClass, namespace, ...opts }),
   })
   if (!r.ok) throw new Error(await r.text())
   return r.json()
