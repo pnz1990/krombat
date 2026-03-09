@@ -126,6 +126,15 @@ export default function App() {
     setInsightQueue(q => [...q, trigger])
   }, [unlock])
 
+  // Auto-surface CEL Playground once the player is engaged (10+ concepts unlocked)
+  const playgroundFiredRef = useRef(false)
+  useEffect(() => {
+    if (!playgroundFiredRef.current && unlocked.size >= 10) {
+      playgroundFiredRef.current = true
+      setTimeout(() => triggerInsight('cel-playground-unlocked'), 2000)
+    }
+  }, [unlocked.size, triggerInsight])
+
   const { connected, lastEvent } = useWebSocket(selected?.ns, selected?.name)
   const selectedRef = useRef(selected)
   selectedRef.current = selected
@@ -385,6 +394,7 @@ export default function App() {
       if (!isItem && pollSucceeded && updated.spec.lastLootDrop) {
         setLootDrop(updated.spec.lastLootDrop)
         triggerInsight('loot-drop')
+        setTimeout(() => triggerInsight('loot-drop-string-ops'), 4000)
       }
       await new Promise(r => setTimeout(r, 100))
 
@@ -426,7 +436,7 @@ export default function App() {
         const newBossHP = updated.spec.bossHP ?? 1
         const prevAllDead = (detail?.spec.monsterHP || []).every((hp: number) => hp <= 0)
         const nowAllDead = (updated.spec.monsterHP || []).every((hp: number) => hp <= 0)
-        if (nowAllDead && !prevAllDead) { addEvent('🐉', 'Boss unlocked! All monsters slain!'); triggerInsight('boss-ready') }
+        if (nowAllDead && !prevAllDead) { addEvent('🐉', 'Boss unlocked! All monsters slain!'); triggerInsight('boss-ready'); triggerInsight('all-monsters-dead') }
         if (newBossHP <= 0 && prevBossHP > 0) { addEvent('🏆', 'VICTORY! Boss defeated!'); triggerInsight('boss-killed') }
         // Boss phase transitions
         const prevMaxBossHP = Number(detail?.status?.maxBossHP) || (prevBossHP > 0 ? prevBossHP : 1)
