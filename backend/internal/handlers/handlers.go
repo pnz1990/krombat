@@ -281,6 +281,15 @@ func (h *Handler) DeleteDungeon(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Read dungeon spec before deletion to capture run stats for the leaderboard.
+	ctx := context.Background()
+	if dungeon, err := h.client.Dynamic.Resource(k8s.DungeonGVR).Namespace(ns).Get(ctx, name, metav1.GetOptions{}); err == nil {
+		spec, _ := dungeon.Object["spec"].(map[string]interface{})
+		if spec != nil {
+			go h.recordLeaderboard(spec, name)
+		}
+	}
+
 	if err := retryK8s(3, func() error {
 		return h.client.Dynamic.Resource(k8s.DungeonGVR).Namespace(ns).Delete(
 			context.Background(), name, metav1.DeleteOptions{})
@@ -291,6 +300,166 @@ func (h *Handler) DeleteDungeon(w http.ResponseWriter, r *http.Request) {
 	}
 	slog.Info("dungeon deleted", "component", "api", "dungeon", name, "namespace", ns)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// LeaderboardEntry represents a single completed dungeon run.
+type LeaderboardEntry struct {
+	DungeonName string `json:"dungeonName"`
+	HeroClass   string `json:"heroClass"`
+	Difficulty  string `json:"difficulty"`
+	Outcome     string `json:"outcome"`
+	TotalTurns  int64  `json:"totalTurns"`
+	CurrentRoom int64  `json:"currentRoom"`
+	Timestamp   string `json:"timestamp"`
+}
+
+const leaderboardCMName = "krombat-leaderboard"
+const leaderboardNamespace = "rpg-system"
+const leaderboardMaxEntries = 100
+
+var leaderboardGVR = schema.GroupVersionResource{Group: "", Version: "v1", Resource: "configmaps"}
+
+// recordLeaderboard writes a run completion entry to the krombat-leaderboard ConfigMap.
+// Called asynchronously before dungeon deletion. Silently skips on any error.
+func (h *Handler) recordLeaderboard(spec map[string]interface{}, dungeonName string) {
+	heroClass, _ := spec["heroClass"].(string)
+	difficulty, _ := spec["difficulty"].(string)
+	heroHP := getInt(spec, "heroHP")
+	bossHP := getInt(spec, "bossHP")
+	currentRoom := getInt(spec, "currentRoom")
+	attackSeq := getInt(spec, "attackSeq")
+	actionSeq := getInt(spec, "actionSeq")
+
+	outcome := "in-progress"
+	if heroHP <= 0 {
+		outcome = "defeat"
+	} else {
+		monsterHPRaw, _ := spec["monsterHP"].([]interface{})
+		allDead := true
+		for _, v := range monsterHPRaw {
+			if sliceInt(v) > 0 {
+				allDead = false
+				break
+			}
+		}
+		if bossHP <= 0 && allDead && currentRoom >= 2 {
+			outcome = "victory"
+		} else if bossHP <= 0 && allDead {
+			outcome = "room1-cleared"
+		}
+	}
+
+	totalTurns := attackSeq + actionSeq
+	entry := LeaderboardEntry{
+		DungeonName: dungeonName,
+		HeroClass:   heroClass,
+		Difficulty:  difficulty,
+		Outcome:     outcome,
+		TotalTurns:  totalTurns,
+		CurrentRoom: currentRoom,
+		Timestamp:   time.Now().UTC().Format(time.RFC3339),
+	}
+
+	entryJSON, err := json.Marshal(entry)
+	if err != nil {
+		slog.Warn("leaderboard: failed to marshal entry", "error", err)
+		return
+	}
+
+	ctx := context.Background()
+	cmClient := h.client.Dynamic.Resource(leaderboardGVR).Namespace(leaderboardNamespace)
+
+	// Try to get existing ConfigMap
+	existing, err := cmClient.Get(ctx, leaderboardCMName, metav1.GetOptions{})
+	if err != nil {
+		// Create new ConfigMap
+		newCM := &unstructured.Unstructured{Object: map[string]interface{}{
+			"apiVersion": "v1",
+			"kind":       "ConfigMap",
+			"metadata": map[string]interface{}{
+				"name":      leaderboardCMName,
+				"namespace": leaderboardNamespace,
+			},
+			"data": map[string]interface{}{
+				entry.Timestamp + "-" + dungeonName: string(entryJSON),
+			},
+		}}
+		if _, createErr := cmClient.Create(ctx, newCM, metav1.CreateOptions{}); createErr != nil {
+			slog.Warn("leaderboard: failed to create ConfigMap", "error", createErr)
+		}
+		return
+	}
+
+	// Append to existing ConfigMap data
+	data, _ := existing.Object["data"].(map[string]interface{})
+	if data == nil {
+		data = map[string]interface{}{}
+	}
+
+	// Enforce max entries: drop oldest if over limit
+	if len(data) >= leaderboardMaxEntries {
+		// Find and remove oldest key (keys are timestamp-prefixed so lexicographic sort works)
+		oldest := ""
+		for k := range data {
+			if oldest == "" || k < oldest {
+				oldest = k
+			}
+		}
+		delete(data, oldest)
+	}
+
+	key := entry.Timestamp + "-" + dungeonName
+	data[key] = string(entryJSON)
+
+	patch := map[string]interface{}{
+		"data": data,
+	}
+	patchJSON, _ := json.Marshal(patch)
+	if _, patchErr := cmClient.Patch(ctx, leaderboardCMName, types.MergePatchType, patchJSON, metav1.PatchOptions{}); patchErr != nil {
+		slog.Warn("leaderboard: failed to patch ConfigMap", "error", patchErr)
+	}
+}
+
+// GetLeaderboard returns the top 20 completed runs sorted by fewest turns.
+func (h *Handler) GetLeaderboard(w http.ResponseWriter, r *http.Request) {
+	ctx := context.Background()
+	cmClient := h.client.Dynamic.Resource(leaderboardGVR).Namespace(leaderboardNamespace)
+
+	cm, err := cmClient.Get(ctx, leaderboardCMName, metav1.GetOptions{})
+	if err != nil {
+		// No leaderboard yet — return empty list
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode([]LeaderboardEntry{})
+		return
+	}
+
+	data, _ := cm.Object["data"].(map[string]interface{})
+	entries := make([]LeaderboardEntry, 0, len(data))
+	for _, v := range data {
+		raw, _ := v.(string)
+		var e LeaderboardEntry
+		if json.Unmarshal([]byte(raw), &e) == nil {
+			entries = append(entries, e)
+		}
+	}
+
+	// Sort by fewest turns (ascending), then by timestamp descending for ties
+	for i := 1; i < len(entries); i++ {
+		for j := i; j > 0; j-- {
+			a, b := entries[j-1], entries[j]
+			if a.TotalTurns > b.TotalTurns || (a.TotalTurns == b.TotalTurns && a.Timestamp < b.Timestamp) {
+				entries[j-1], entries[j] = entries[j], entries[j-1]
+			}
+		}
+	}
+
+	// Cap at top 20
+	if len(entries) > 20 {
+		entries = entries[:20]
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(entries)
 }
 
 type CreateAttackReq struct {
