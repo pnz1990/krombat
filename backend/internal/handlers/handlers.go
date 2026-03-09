@@ -1982,6 +1982,12 @@ func (h *Handler) GetDungeonResource(w http.ResponseWriter, r *http.Request) {
 		def = &resourceDef{schema.GroupVersionResource{Group: coreGrp, Version: coreVer, Resource: "configmaps"}, name + "-game-config"}
 	case "combatresult":
 		def = &resourceDef{schema.GroupVersionResource{Group: coreGrp, Version: coreVer, Resource: "configmaps"}, name + "-combat-result"}
+	case "combatcm":
+		def = &resourceDef{schema.GroupVersionResource{Group: coreGrp, Version: coreVer, Resource: "configmaps"}, name + "-combat-result"}
+	case "modifiercm":
+		def = &resourceDef{schema.GroupVersionResource{Group: coreGrp, Version: coreVer, Resource: "configmaps"}, name + "-modifier-state"}
+	case "actioncm":
+		def = &resourceDef{schema.GroupVersionResource{Group: coreGrp, Version: coreVer, Resource: "configmaps"}, name + "-action-state"}
 	case "treasurecm":
 		def = &resourceDef{schema.GroupVersionResource{Group: coreGrp, Version: coreVer, Resource: "configmaps"}, name + "-treasure"}
 	case "treasuresecret":

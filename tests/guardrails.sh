@@ -447,6 +447,15 @@ grep -q "playgroundFiredRef\|cel-playground-unlocked" frontend/src/App.tsx && pa
 grep -q "all-monsters-dead" frontend/src/App.tsx && pass "App.tsx triggers all-monsters-dead for status-aggregation" || fail "all-monsters-dead event missing from App.tsx"
 grep -q "loot-drop-string-ops" frontend/src/App.tsx && pass "App.tsx triggers loot-drop-string-ops for cel-string-ops" || fail "loot-drop-string-ops event missing from App.tsx"
 
+# --- KroGraph Inspector guardrails ---
+echo "=== KroGraph Inspector guardrails"
+grep -q "'hero-cm'" frontend/src/KroGraph.tsx && pass "KroGraph kindMap uses hero-cm (correct node ID)" || fail "KroGraph kindMap still has stale hero-state key"
+grep -q "'boss-cm'" frontend/src/KroGraph.tsx && pass "KroGraph kindMap uses boss-cm (correct node ID)" || fail "KroGraph kindMap still has stale boss-state key"
+grep -q "'gameconfig-cm'" frontend/src/KroGraph.tsx && pass "KroGraph kindMap uses gameconfig-cm (correct node ID)" || fail "KroGraph kindMap still has stale game-config key"
+grep -q "'modifier-cm'" frontend/src/KroGraph.tsx && pass "KroGraph kindMap includes modifier-cm" || fail "KroGraph kindMap missing modifier-cm"
+grep -q "helmetBonus\|pantsBonus\|bootsBonus" frontend/src/KroGraph.tsx && pass "KroGraph RGD diff viewer tracks all item bonus fields" || fail "KroGraph missing helmet/pants/boots in diff viewer"
+grep -q "modifiercm\|combatcm" frontend/src/api.ts && pass "api.ts VALID_RESOURCE_KINDS includes modifiercm/combatcm" || fail "api.ts missing modifiercm or combatcm kinds"
+
 # --- Summary ---
 
 echo ""
