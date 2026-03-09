@@ -25,18 +25,24 @@ async function run() {
     await page.goto(BASE_URL, { timeout: TIMEOUT });
     await page.waitForSelector('input[placeholder="my-dungeon"]', { timeout: TIMEOUT });
 
-    // ── Leaderboard button visible on home screen ──────────────────────────────
-    console.log('\n  [Leaderboard button on home screen]');
-    const lbBtn = page.locator('button.leaderboard-btn');
-    await lbBtn.waitFor({ timeout: TIMEOUT }).catch(() => {});
-    (await lbBtn.count() > 0) ? ok('Leaderboard button visible') : fail('Leaderboard button not found (.leaderboard-btn)');
-    (await lbBtn.textContent()).toLowerCase().includes('leaderboard')
-      ? ok('Leaderboard button text correct')
-      : fail('Leaderboard button text incorrect');
+    // ── Leaderboard accessible via hamburger menu on home screen ──────────────
+    console.log('\n  [Leaderboard via hamburger menu]');
+    const hamBtn = page.locator('button.hamburger-btn[aria-label="Menu"]');
+    await hamBtn.waitFor({ timeout: TIMEOUT }).catch(() => {});
+    (await hamBtn.count() > 0) ? ok('Hamburger menu button visible on home screen') : fail('Hamburger button not found (.hamburger-btn)');
+
+    await hamBtn.click();
+    await page.waitForTimeout(300);
+
+    const lbItem = page.locator('button.hamburger-item:has-text("Leaderboard")');
+    (await lbItem.count() > 0) ? ok('Leaderboard item present in hamburger menu') : fail('Leaderboard item not found in hamburger menu');
+    (await lbItem.textContent()).toLowerCase().includes('leaderboard')
+      ? ok('Leaderboard item text correct')
+      : fail('Leaderboard item text incorrect');
 
     // ── Open leaderboard panel ────────────────────────────────────────────────
     console.log('\n  [Open leaderboard panel]');
-    await lbBtn.click();
+    await lbItem.click();
     await page.waitForTimeout(1000);
 
     const panel = page.locator('.leaderboard-panel');

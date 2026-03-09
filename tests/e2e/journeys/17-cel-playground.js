@@ -45,16 +45,23 @@ async function run() {
     const tabSwitched = await switchToTab(page, 'kro');
     tabSwitched ? ok('kro tab is present and clickable') : fail('kro tab not found');
 
-    // ── CEL Playground button present ─────────────────────────────────────────
-    console.log('\n  [Playground button]');
-    const pgBtn = page.locator('button.kro-glossary-playground-btn');
-    await pgBtn.waitFor({ timeout: TIMEOUT }).catch(() => {});
-    (await pgBtn.count() > 0) ? ok('CEL Playground button visible in kro tab') : fail('CEL Playground button not found');
-    (await pgBtn.textContent()).includes('CEL Playground') ? ok('Button text contains "CEL Playground"') : fail('Button text incorrect');
+    // ── CEL Playground button present in hamburger menu ──────────────────────
+    console.log('\n  [Playground button in hamburger menu]');
+    const hamburgerBtn = page.locator('button.hamburger-btn[aria-label="Menu"]');
+    await hamburgerBtn.waitFor({ timeout: TIMEOUT }).catch(() => {});
+    (await hamburgerBtn.count() > 0) ? ok('Hamburger menu button present in dungeon toolbar') : fail('Hamburger button not found');
+
+    await hamburgerBtn.click();
+    await page.waitForTimeout(300);
+
+    const pgItem = page.locator('button.hamburger-item:has-text("CEL Playground")');
+    await pgItem.waitFor({ timeout: TIMEOUT }).catch(() => {});
+    (await pgItem.count() > 0) ? ok('CEL Playground item visible in hamburger menu') : fail('CEL Playground item not found in hamburger menu');
+    (await pgItem.textContent()).includes('CEL Playground') ? ok('Item text contains "CEL Playground"') : fail('Item text incorrect');
 
     // ── Open playground ───────────────────────────────────────────────────────
     console.log('\n  [Open Playground]');
-    await pgBtn.click();
+    await pgItem.click();
     await page.waitForTimeout(500);
 
     const modal = page.locator('.kro-playground-modal');
@@ -191,12 +198,16 @@ async function run() {
     // Re-open playground if it was closed by learn button
     const modalVisible = await page.locator('.kro-playground-modal').count() > 0;
     if (!modalVisible) {
-      // Switch to kro tab and re-open
-      await switchToTab(page, 'kro');
-      const pgBtn2 = page.locator('button.kro-glossary-playground-btn');
-      if (await pgBtn2.count() > 0) {
-        await pgBtn2.click();
-        await page.waitForTimeout(400);
+      // Re-open via hamburger menu
+      const hBtn = page.locator('button.hamburger-btn[aria-label="Menu"]');
+      if (await hBtn.count() > 0) {
+        await hBtn.click();
+        await page.waitForTimeout(300);
+        const pgItem2 = page.locator('button.hamburger-item:has-text("CEL Playground")');
+        if (await pgItem2.count() > 0) {
+          await pgItem2.click();
+          await page.waitForTimeout(400);
+        }
       }
     }
 

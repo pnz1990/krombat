@@ -433,22 +433,28 @@ async function runTests() {
      const roomText = await page.textContent('body');
      roomText.includes('Room') || roomText.includes('room') ? ok('Room indicator present') : ok('Room indicator (may not show for room 1)');
 
-     // === SECTION 21: Leaderboard button on home screen ===
+     // === SECTION 21: Leaderboard via hamburger menu on home screen ===
      console.log('\n=== Leaderboard ===');
      await page.goto(BASE_URL, { timeout: TIMEOUT });
      await page.waitForTimeout(1500);
-     const lbBtn = page.locator('button.leaderboard-btn');
-     (await lbBtn.count() > 0) ? ok('Leaderboard button present on home screen') : fail('Leaderboard button missing (.leaderboard-btn)');
-     if (await lbBtn.count() > 0) {
-       await lbBtn.click();
-       await page.waitForTimeout(800);
-       const panel = page.locator('.leaderboard-panel');
-       (await panel.count() > 0) ? ok('Leaderboard panel opens on click') : fail('Leaderboard panel not visible after click');
-       // Close it
-       const closeBtn = page.locator('.leaderboard-close');
-       if (await closeBtn.count() > 0) await closeBtn.click();
+     const hamBtn = page.locator('button.hamburger-btn[aria-label="Menu"]');
+     (await hamBtn.count() > 0) ? ok('Hamburger menu button present on home screen') : fail('Hamburger button missing (.hamburger-btn)');
+     if (await hamBtn.count() > 0) {
+       await hamBtn.click();
        await page.waitForTimeout(300);
-       (await panel.count() === 0) ? ok('Leaderboard panel closes') : ok('Leaderboard panel close (may have animation)');
+       const lbItem = page.locator('button.hamburger-item:has-text("Leaderboard")');
+       (await lbItem.count() > 0) ? ok('Leaderboard item visible in hamburger menu') : fail('Leaderboard item missing in hamburger menu');
+       if (await lbItem.count() > 0) {
+         await lbItem.click();
+         await page.waitForTimeout(800);
+         const panel = page.locator('.leaderboard-panel');
+         (await panel.count() > 0) ? ok('Leaderboard panel opens on click') : fail('Leaderboard panel not visible after click');
+         // Close it
+         const closeBtn = page.locator('.leaderboard-close');
+         if (await closeBtn.count() > 0) await closeBtn.click();
+         await page.waitForTimeout(300);
+         (await panel.count() === 0) ? ok('Leaderboard panel closes') : ok('Leaderboard panel close (may have animation)');
+       }
      }
 
      // === SECTION 22: NG+ badge hidden for fresh dungeons ===

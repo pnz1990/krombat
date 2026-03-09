@@ -1940,3 +1940,42 @@ body {
   font-size: 8px; color: #555; padding: 0 2px; transition: color 0.3s;
 }
 .minimap-icon { font-size: 9px; margin-left: 2px; }
+
+/* Hamburger menu */
+.hamburger-btn {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 12px;
+  width: 28px; height: 28px;
+  background: var(--bg-card);
+  color: var(--text-dim);
+  border: 1px solid #444;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.hamburger-btn:hover { color: var(--text); border-color: #666; }
+.hamburger-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 2px;
+  background: var(--bg-card);
+  border: 1px solid #444;
+  z-index: 500;
+  min-width: 120px;
+  display: flex;
+  flex-direction: column;
+}
+.hamburger-item {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 7px;
+  padding: 7px 10px;
+  background: none;
+  border: none;
+  border-bottom: 1px solid #2a2a2a;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+}
+.hamburger-item:last-child { border-bottom: none; }
+.hamburger-item:hover { background: rgba(255,255,255,0.06); color: var(--gold); }
