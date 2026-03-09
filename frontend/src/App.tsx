@@ -1327,7 +1327,8 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
   const maxMonsterHP = Number(status?.maxMonsterHP) || Math.max(...(spec.monsterHP || [1]))
   const maxBossHP = Number(status?.maxBossHP) || spec.bossHP
   const heroHP = spec.heroHP ?? 100
-  const maxHeroHP = Number(status?.maxHeroHP) || heroHP
+  const classMaxHP = spec.heroClass === 'warrior' ? 200 : spec.heroClass === 'mage' ? 120 : 150
+  const maxHeroHP = Number(status?.maxHeroHP) || classMaxHP
   const isDefeated = status?.defeated || heroHP <= 0
   const allMonstersDead = (spec.monsterHP || []).every((hp: number) => hp <= 0)
   const bossState = spec.bossHP <= 0 ? 'defeated' : allMonstersDead ? 'ready' : 'pending'
