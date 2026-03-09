@@ -2,26 +2,55 @@
 
 ## What This Is
 
-A turn-based dungeon RPG where the entire game state lives in Kubernetes, orchestrated by kro ResourceGraphDefinitions on Amazon EKS. Demonstrates Kubernetes as a general-purpose state machine.
+A turn-based dungeon RPG where game state lives in Kubernetes Custom Resources on Amazon EKS, with kro ResourceGraphDefinitions orchestrating the resource graph. Demonstrates Kubernetes as a general-purpose state machine.
 
 ---
 
 ## Architecture
 
 - **EKS Auto Mode** cluster (`krombat`, K8s 1.34) in `us-west-2`, account `569190534191`
-- **kro** (EKS Managed Capability) — nine RGDs orchestrate the game via CR chaining:
-  - `dungeon-graph` (parent): Dungeon CR → Namespace, Hero CR, Monster CRs, Boss CR, Treasure CR, Modifier CR, GameConfig CM
+- **kro** (EKS Managed Capability) — nine RGDs manage the resource graph and derived status:
+  - `dungeon-graph` (parent): Dungeon CR → Namespace, Hero CR, Monster CRs, Boss CR, Treasure CR, Modifier CR, GameConfig CM, combatResult CM, actionResult CM
   - `hero-graph`: Hero CR → ConfigMap (HP, class, mana, stats via CEL)
   - `monster-graph`: Monster CR → ConfigMap (alive/dead from HP)
-  - `boss-graph`: Boss CR → ConfigMap (pending/ready/defeated from HP + monstersAlive)
+  - `boss-graph`: Boss CR → ConfigMap (pending/ready/defeated from HP + monstersAlive; boss phase + damage multiplier via CEL)
   - `treasure-graph`: Treasure CR → ConfigMap + Secret (opened/unopened state via CEL)
   - `modifier-graph`: Modifier CR → ConfigMap (curse/blessing effects via CEL)
   - `loot-graph`: Loot CR → Secret (item data: type, rarity, stat, description via CEL)
-  - `attack-graph`: Attack CR → Job (COMBAT ONLY: monster/boss attacks, class abilities)
-  - `action-graph`: Action CR → Job (NON-COMBAT: equip, use item, treasure, door, room transition)
+  - `attack-graph`: defines the Attack CRD (no resources — CRD only)
+  - `action-graph`: defines the Action CRD (no resources — CRD only)
 - **Argo CD** (EKS Managed Capability) — GitOps from `manifests/`. GitHub webhook for ~6s sync
-- **Go Backend** — REST API + WebSocket in `rpg-system`. ONLY touches Dungeon, Attack, and Action CRs. Routes item targets to Action CR, combat targets to Attack CR
+- **Go Backend** — REST API + WebSocket in `rpg-system`. Creates/patches Dungeon CRs, creates Attack and Action CRs to trigger state changes. **The Go backend IS the game engine**: all combat math, damage, HP mutations, item effects, status effects, loot drops, and room transitions are computed in Go (`handlers.go`). The `combatResult` and `actionResult` ConfigMaps in dungeon-graph contain pre-computed CEL values (equip bonuses, HP-after-potion, Room 2 HP, etc.) but the backend currently re-derives all of these independently — those CEL blocks are scaffolding for a future migration, not active logic.
 - **React Frontend** — 8-bit pixel art with circular dungeon arena, Tibia-style equipment panel, combat modal with dice rolling. All state from Dungeon CR `spec` (not `status` — status can be stale after room transitions)
+
+### What kro actually computes (active, not dead code)
+
+| RGD | What kro CEL computes that matters |
+|---|---|
+| `dungeon-graph` | Namespace, all child CRs, GameConfig CM (dice formula, HP/counter tables), Dungeon status fields |
+| `boss-graph` | `entityState` (pending/ready/defeated), `bossPhase` (phase1/2/3), `damageMultiplier` (1.0/1.3/1.6) |
+| `hero-graph` | `maxHP`, `maxMana`, `classNote` in status |
+| `monster-graph` | `entityState` (alive/dead) per monster |
+| `modifier-graph` | `effect` description string, `multiplier` |
+| `treasure-graph` | `state` (opened/unopened), loot key string |
+| `loot-graph` | Item `type`, `rarity`, `stat`, `description` |
+
+### What the Go backend computes (the actual game engine)
+
+- All combat math: dice rolls (seeded by Attack CR UID), hero damage (class multipliers, backstab, weapon, helmet, amulet), boss counter-attack chain (armor, shield, warrior/rogue/pants defense, taunt reduction, one-shot floor), monster counter-attack + archer stun + shaman heal abilities
+- Status effects: DoT application (poison −5/turn, burn −8/turn, stun), infliction chances per boss/monster type, boots resist rolls
+- Mana lifecycle: consumption per attack, heal cost, regen on kill, mana restore on room entry
+- Loot drops: kill-transition detection, drop chance by difficulty, rarity roll, item type selection (seeded by dungeon name + index)
+- Item effects: all 27 equip cases (9 types × 3 rarities), potion healing (class-clamped), inventory add/remove/cap
+- Room transitions: Room 2 HP scaling (monsters ×1.5, boss ×1.3), modifier adjustments, monster type reassignment, state resets
+- Leaderboard: outcome derivation, turn counting, ConfigMap storage (`krombat-leaderboard` in `rpg-system` — plain ConfigMap, no kro interface)
+
+### What the frontend computes (display + necessary spec re-derivation)
+
+- `gameOver`, `isVictory`, `bossState`, `allMonstersDead` — re-derived from `spec` fields (intentional: `status` is stale after room transitions)
+- `bossPhase` fallback — re-derives from `spec.bossHP / maxBossHP` when `status.bossPhase` is `phase1` (matches boss-graph thresholds: 50% / 25%)
+- Achievement badges — 8 conditions derived client-side only, not persisted to K8s
+- `maxHeroHP` — read from `status.maxHeroHP` (from hero-graph); fallback is wrong (uses current HP, not class default)
 
 ---
 
@@ -29,14 +58,14 @@ A turn-based dungeon RPG where the entire game state lives in Kubernetes, orches
 
 | Path | Purpose |
 |---|---|
-| `manifests/rgds/` | All 9 RGD YAML files (the game engine) |
+| `manifests/rgds/` | All 9 RGD YAML files (kro resource graph) |
 | `manifests/rbac/rbac.yaml` | ServiceAccounts, ClusterRoles, Bindings |
-| `backend/internal/handlers/handlers.go` | REST handlers (routes items→Action CR, combat→Attack CR) |
+| `backend/internal/handlers/handlers.go` | **The game engine**: combat math, item effects, loot, room transitions, leaderboard |
 | `backend/internal/k8s/watchers.go` | GVR definitions (DungeonGVR, AttackGVR, ActionGVR) |
 | `frontend/src/App.tsx` | Main React app (~1000 lines) |
 | `frontend/src/Sprite.tsx` | Sprite components (hurt=6→1→6, dead=6 with 0.35 opacity) |
 | `tests/` | All test suites + helpers |
-| `images/job-runner/` | Minimal Docker image (bash + kubectl + jq) used by Attack/Action Jobs |
+| `images/job-runner/` | Minimal Docker image (bash + kubectl + jq) — kept for infra compatibility |
 | `infra/` | Terraform (EKS, kro, Argo CD, ECR, CloudWatch, OIDC) |
 | `Docs/runbook.md` | Operations runbook (kubectl debug commands, CloudWatch queries) |
 
@@ -44,7 +73,7 @@ A turn-based dungeon RPG where the entire game state lives in Kubernetes, orches
 
 ## Dungeon CR Spec Fields
 
-`monsters`, `difficulty`, `heroClass`, `heroHP`, `heroMana`, `monsterHP` ([]int), `bossHP`, `modifier`, `tauntActive`, `backstabCooldown`, `inventory` (CSV), `weaponBonus`, `weaponUses`, `armorBonus`, `shieldBonus`, `poisonTurns`, `burnTurns`, `stunTurns`, `treasureOpened`, `currentRoom`, `doorUnlocked`, `room2MonsterHP`, `room2BossHP`, `lastHeroAction`, `lastEnemyAction`, `lastLootDrop`
+`monsters`, `difficulty`, `heroClass`, `heroHP`, `heroMana`, `monsterHP` ([]int), `bossHP`, `modifier`, `tauntActive`, `backstabCooldown`, `inventory` (CSV), `weaponBonus`, `weaponUses`, `armorBonus`, `shieldBonus`, `helmetBonus`, `pantsBonus`, `bootsBonus`, `ringBonus`, `amuletBonus`, `poisonTurns`, `burnTurns`, `stunTurns`, `treasureOpened`, `currentRoom`, `doorUnlocked`, `room2MonsterHP`, `room2BossHP`, `lastHeroAction`, `lastEnemyAction`, `lastLootDrop`
 
 ---
 
@@ -183,7 +212,7 @@ Next tasks may include the open feature requests:
 
 ## Key Lessons — Avoid These Regressions
 
-- `lastLootDrop` must be cleared by ALL non-combat patches (action-graph handles this)
+- `lastLootDrop` must be cleared by ALL non-combat patches (backend `processAction` clears it on every action patch)
 - `gameOver` and `bossState` must derive from `spec` fields, NOT `status` (status is stale after room transitions)
 - `allMonstersDead` must be declared BEFORE `bossState` in JS (TDZ crash risk)
 - Boss target matching must use `-boss$` suffix regex, not just the string "boss" (dungeon names can contain "boss")
@@ -192,6 +221,8 @@ Next tasks may include the open feature requests:
 - Item actions early-return in frontend — no fallthrough to combat/loot code
 - `prevInventoryRef` was removed — loot detection uses `lastLootDrop` field from server
 - Avoid `${}` in RGD YAML — kro parses it as CEL; use `$()` for bash variable expansion
+- `readyWhen` expressions in RGDs must use `${}` wrapper AND the resource's own ID (not `self`) — kro EKS Managed Capability enforces both
+- When adding new fields to the Dungeon CR spec in `dungeon-graph.yaml`, always `kubectl delete rgd dungeon-graph` after merge so kro regenerates the CRD schema — Argo CD sync alone does NOT update the CRD field list
 
 ---
 
