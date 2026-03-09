@@ -547,7 +547,8 @@ func (p *celParser) evalFieldAccess(chain string) (celValue, error) {
 
 	// spec.X or just X
 	if parts[0] == "spec" && len(parts) >= 2 {
-		return p.resolveSpecField(parts[1])
+		v, _ := p.resolveSpecField(parts[1])
+		return v, nil
 	}
 	if parts[0] == "metadata" && len(parts) >= 2 {
 		switch parts[1] {
@@ -564,7 +565,8 @@ func (p *celParser) evalFieldAccess(chain string) (celValue, error) {
 	}
 
 	// Direct field access (just the field name, or a chain we don't recognize)
-	return p.resolveSpecField(parts[0])
+	v, _ := p.resolveSpecField(parts[0])
+	return v, nil
 }
 
 // resolveSpecField looks up a field in the spec map.
