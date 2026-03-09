@@ -228,17 +228,17 @@ async function run() {
     await glossary.waitFor({ timeout: TIMEOUT }).catch(() => {});
     (await glossary.count() > 0) ? ok('kro Glossary visible in kro tab') : fail('kro Glossary not found');
 
-    // Total concept count should be 21
+    // Total concept count should be 23
     const headerText = await page.locator('.kro-glossary-header').textContent();
-    headerText.includes('/ 21') ? ok('Glossary shows 21 total concepts') : fail(`Glossary concept count incorrect: "${headerText}"`);
+    headerText.includes('/ 23') ? ok('Glossary shows 23 total concepts') : fail(`Glossary concept count incorrect: "${headerText}"`);
 
     // ── Concept count badge ───────────────────────────────────────────────────
     console.log('\n  [kro tab badge]');
     await switchToTab(page, 'kro'); // ensure we're on kro tab; re-read badge in tabs row
     const kroTabBtn = page.locator('button.kro-tab');
     const badgeText = await kroTabBtn.textContent();
-    // Format: "kro (N/21)" — check it ends with /21)
-    /\/21\)/.test(badgeText) ? ok(`kro tab badge shows /21: "${badgeText.trim()}"`) : fail(`kro tab badge does not show /21: "${badgeText.trim()}"`);
+    // Format: "kro (N/23)" — check it ends with /23)
+    /\/23\)/.test(badgeText) ? ok(`kro tab badge shows /23: "${badgeText.trim()}"`) : fail(`kro tab badge does not show /23: "${badgeText.trim()}"`);
 
     // ── No critical JS errors ─────────────────────────────────────────────────
     console.log('\n  [Error check]');
