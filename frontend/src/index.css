@@ -861,6 +861,16 @@ body {
   50% { opacity: 1; }
 }
 
+/* Modifier-based arena visual effects */
+@keyframes fortune-glow {
+  0%, 100% { box-shadow: 0 0 30px rgba(93,173,226,0.5) inset; }
+  33% { box-shadow: 0 0 30px rgba(245,197,24,0.5) inset; }
+  66% { box-shadow: 0 0 30px rgba(46,204,113,0.5) inset; }
+}
+.arena-blessing-fortune {
+  animation: fortune-glow 3s ease-in-out infinite;
+}
+
 /* Floating damage in arena */
 .arena-entity .floating-dmg {
   position: absolute;
