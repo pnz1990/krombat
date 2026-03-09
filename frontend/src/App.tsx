@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { DungeonSummary, DungeonCR, listDungeons, getDungeon, createDungeon, submitAttack, deleteDungeon, ApiError } from './api'
+import { DungeonSummary, DungeonCR, listDungeons, getDungeon, createDungeon, submitAttack, deleteDungeon, ApiError, LeaderboardEntry, getLeaderboard } from './api'
 import { useWebSocket, WSEvent } from './useWebSocket'
 
 import { Sprite, getMonsterSprite, getMonsterName, SpriteAction, ItemSprite } from './Sprite'
@@ -112,6 +112,9 @@ export default function App() {
   const [kroConceptModal, setKroConceptModal] = useState<KroConceptId | null>(null)
   const shownInsightsRef = useRef<Set<KroConceptId>>(new Set())
   const [reconciling, setReconciling] = useState(false)
+  const [showLeaderboard, setShowLeaderboard] = useState(false)
+  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([])
+  const [leaderboardLoading, setLeaderboardLoading] = useState(false)
 
   const triggerInsight = useCallback((event: string) => {
     const trigger = getInsightForEvent(event)
@@ -538,6 +541,19 @@ export default function App() {
     } catch (e: any) { setError(e.message); setDeleting(prev => { const s = new Set(prev); s.delete(delName); return s }) }
   }
 
+  const handleOpenLeaderboard = async () => {
+    setShowLeaderboard(true)
+    setLeaderboardLoading(true)
+    try {
+      const entries = await getLeaderboard()
+      setLeaderboard(entries)
+    } catch {
+      setLeaderboard([])
+    } finally {
+      setLeaderboardLoading(false)
+    }
+  }
+
   return (
     <div className="app">
       <header className="header">
@@ -568,7 +584,10 @@ export default function App() {
               </div>
             </div>
           )}
-          <DungeonList dungeons={dungeons} onSelect={handleSelect} onDelete={handleDelete} deleting={deleting} lastDungeon={resumePrompt ?? undefined} />
+          <DungeonList dungeons={dungeons} onSelect={handleSelect} onDelete={handleDelete} deleting={deleting} lastDungeon={resumePrompt ?? undefined} onOpenLeaderboard={handleOpenLeaderboard} />
+          {showLeaderboard && (
+            <LeaderboardPanel entries={leaderboard} loading={leaderboardLoading} onClose={() => setShowLeaderboard(false)} />
+          )}
         </>
       ) : loading ? (
         <div className="loading">Initializing dungeon</div>
@@ -661,14 +680,20 @@ function CreateForm({ onCreate }: { onCreate: (n: string, m: number, d: string, 
   )
 }
 
-function DungeonList({ dungeons, onSelect, onDelete, deleting, lastDungeon }: {
+function DungeonList({ dungeons, onSelect, onDelete, deleting, lastDungeon, onOpenLeaderboard }: {
   dungeons: DungeonSummary[]; onSelect: (ns: string, name: string) => void
   onDelete: (ns: string, name: string) => void; deleting: Set<string>
   lastDungeon?: { ns: string; name: string }
+  onOpenLeaderboard: () => void
 }) {
-  if (!dungeons.length) return <div className="loading">No dungeons yet — create one above</div>
   return (
     <div className="dungeon-list">
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 6 }}>
+        <button className="btn leaderboard-btn" onClick={onOpenLeaderboard} title="View top run leaderboard">
+          Leaderboard
+        </button>
+      </div>
+      {!dungeons.length && <div className="loading">No dungeons yet — create one above</div>}
       {dungeons.map(d => {
         const isLast = lastDungeon && lastDungeon.ns === d.namespace && lastDungeon.name === d.name
         return (
@@ -702,6 +727,74 @@ function DungeonList({ dungeons, onSelect, onDelete, deleting, lastDungeon }: {
         </div>
         )
       })}
+    </div>
+  )
+}
+
+const OUTCOME_ICON: Record<string, string> = {
+  victory: 'VICTORY',
+  defeat: 'DEFEAT',
+  'room1-cleared': 'ROOM 1',
+  'in-progress': '...',
+}
+const OUTCOME_COLOR: Record<string, string> = {
+  victory: '#f5c518',
+  defeat: '#e94560',
+  'room1-cleared': '#00ff41',
+  'in-progress': '#888',
+}
+const CLASS_ICON: Record<string, string> = { warrior: '⚔️', mage: '🔮', rogue: '🗡️' }
+
+function LeaderboardPanel({ entries, loading, onClose }: {
+  entries: LeaderboardEntry[]; loading: boolean; onClose: () => void
+}) {
+  return (
+    <div className="leaderboard-overlay" role="dialog" aria-label="Leaderboard">
+      <div className="leaderboard-panel">
+        <div className="leaderboard-header">
+          <span className="leaderboard-title">Leaderboard — Top Runs</span>
+          <button className="modal-close leaderboard-close" aria-label="Close leaderboard" onClick={onClose}>✕</button>
+        </div>
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: 16, fontSize: '8px', color: 'var(--text-dim)' }}>Loading...</div>
+        ) : entries.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: 16, fontSize: '8px', color: 'var(--text-dim)' }}>
+            No runs recorded yet. Complete a dungeon to appear here!
+          </div>
+        ) : (
+          <table className="leaderboard-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Dungeon</th>
+                <th>Class</th>
+                <th>Difficulty</th>
+                <th>Outcome</th>
+                <th>Turns</th>
+                <th>Room</th>
+              </tr>
+            </thead>
+            <tbody>
+              {entries.map((e, i) => (
+                <tr key={`${e.timestamp}-${e.dungeonName}`} className={`lb-row lb-${e.outcome}`}>
+                  <td className="lb-rank">{i + 1}</td>
+                  <td className="lb-name">{e.dungeonName}</td>
+                  <td>{CLASS_ICON[e.heroClass] ?? e.heroClass}</td>
+                  <td><span className={`tag tag-${e.difficulty}`}>{e.difficulty}</span></td>
+                  <td style={{ color: OUTCOME_COLOR[e.outcome] ?? '#888', fontWeight: 'bold' }}>
+                    {OUTCOME_ICON[e.outcome] ?? e.outcome}
+                  </td>
+                  <td className="lb-turns">{e.totalTurns}</td>
+                  <td>{e.currentRoom ?? 1}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        <div style={{ fontSize: '7px', color: 'var(--text-dim)', marginTop: 8, textAlign: 'center' }}>
+          Sorted by fewest turns. Stored in the <code>krombat-leaderboard</code> ConfigMap in <code>rpg-system</code>.
+        </div>
+      </div>
     </div>
   )
 }

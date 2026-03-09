@@ -34,6 +34,7 @@ func main() {
 	mux.HandleFunc("POST /api/v1/dungeons/{namespace}/{name}/attacks", h.AttackWithRateLimit())
 	mux.HandleFunc("GET /api/v1/dungeons/{namespace}/{name}/resources", h.GetDungeonResource)
 	mux.HandleFunc("POST /api/v1/dungeons/{namespace}/{name}/cel-eval", h.CelEvalHandler)
+	mux.HandleFunc("GET /api/v1/leaderboard", h.GetLeaderboard)
 	mux.HandleFunc("GET /api/v1/events", h.Events)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
 	mux.Handle("GET /metrics", promhttp.Handler())

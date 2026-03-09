@@ -68,6 +68,22 @@ export async function deleteDungeon(ns: string, name: string) {
   if (!r.ok && r.status !== 204) throw new Error(await r.text())
 }
 
+export interface LeaderboardEntry {
+  dungeonName: string
+  heroClass: string
+  difficulty: string
+  outcome: string  // 'victory' | 'defeat' | 'room1-cleared' | 'in-progress'
+  totalTurns: number
+  currentRoom: number
+  timestamp: string
+}
+
+export async function getLeaderboard(): Promise<LeaderboardEntry[]> {
+  const r = await fetch(`${BASE}/leaderboard`)
+  if (!r.ok) return []
+  return r.json()
+}
+
 
 export class ApiError extends Error {
   constructor(public readonly status: number, message: string) {

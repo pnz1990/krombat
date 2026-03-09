@@ -1883,3 +1883,35 @@ body {
   0%, 100% { box-shadow: 0 0 8px rgba(245,197,24,0.3); }
   50% { box-shadow: 0 0 16px rgba(245,197,24,0.6); }
 }
+
+/* ── Leaderboard ─────────────────────────────────────────────────────────── */
+.leaderboard-btn {
+  font-size: 7px; padding: 3px 10px; background: rgba(245,197,24,0.08);
+  border: 1px solid var(--gold); color: var(--gold); cursor: pointer;
+  font-family: 'Press Start 2P', monospace;
+}
+.leaderboard-btn:hover { background: rgba(245,197,24,0.18); }
+.leaderboard-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 900;
+  display: flex; align-items: center; justify-content: center; padding: 16px;
+}
+.leaderboard-panel {
+  background: #0a0e1a; border: 2px solid var(--gold);
+  border-radius: 4px; padding: 16px; width: 100%; max-width: 640px;
+  max-height: 80vh; overflow-y: auto;
+  font-family: 'Press Start 2P', monospace;
+}
+.leaderboard-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.leaderboard-title { font-size: 9px; color: var(--gold); }
+.leaderboard-close { background: none; border: none; color: #888; font-size: 14px; cursor: pointer; font-family: inherit; }
+.leaderboard-close:hover { color: #fff; }
+.leaderboard-table { width: 100%; border-collapse: collapse; font-size: 7px; }
+.leaderboard-table th { color: var(--text-dim); border-bottom: 1px solid #333; padding: 4px 6px; text-align: left; }
+.leaderboard-table td { padding: 4px 6px; border-bottom: 1px solid #1a1a2e; }
+.lb-row:hover td { background: rgba(255,255,255,0.03); }
+.lb-rank { color: var(--gold); font-weight: bold; }
+.lb-name { color: #ccc; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lb-turns { color: #00ff41; font-weight: bold; }
+.lb-row.lb-victory td:first-child { border-left: 2px solid var(--gold); }
+.lb-row.lb-defeat td:first-child { border-left: 2px solid #e94560; }
+.lb-row.lb-room1-cleared td:first-child { border-left: 2px solid #00ff41; }

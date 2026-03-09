@@ -58,3 +58,29 @@ subjects:
   - kind: ServiceAccount
     name: rpg-backend-sa
     namespace: rpg-system
+---
+# Role: rpg-system namespace — allows backend to read/write the leaderboard ConfigMap.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: rpg-backend-leaderboard
+  namespace: rpg-system
+rules:
+  - apiGroups: [""]
+    resources: [configmaps]
+    resourceNames: [krombat-leaderboard]
+    verbs: [get, create, update, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: rpg-backend-leaderboard
+  namespace: rpg-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: rpg-backend-leaderboard
+subjects:
+  - kind: ServiceAccount
+    name: rpg-backend-sa
+    namespace: rpg-system
