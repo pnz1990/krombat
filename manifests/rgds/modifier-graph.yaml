@@ -21,7 +21,7 @@ spec:
   resources:
     - id: modifierState
       readyWhen:
-        - "self.data.modifierType != ''"
+        - "${self.data.modifierType != ''}"
       template:
         apiVersion: v1
         kind: ConfigMap
