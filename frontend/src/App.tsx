@@ -1193,7 +1193,7 @@ function HelpModal({ onClose, onCheat }: { onClose: () => void; onCheat: () => v
     )},
     { title: 'Dungeon Modifiers', content: (
       <>
-        <p>Each dungeon spawns with a random modifier (80% chance).</p>
+        <p>Each dungeon spawns with a random modifier (90% chance).</p>
         <table className="help-table">
           <thead><tr><th>Modifier</th><th>Type</th><th>Effect</th></tr></thead>
           <tbody>
@@ -1207,19 +1207,25 @@ function HelpModal({ onClose, onCheat }: { onClose: () => void; onCheat: () => v
         </table>
       </>
     )},
-    { title: 'Loot & Items', content: (
+    { title: 'Loot & Equipment', content: (
       <>
-        <p>Monsters drop items on death. Boss always drops rare/epic loot. Click items in backpack to use or equip.</p>
+        <p>Monsters drop items on death. Boss always drops rare/epic loot. Click items in backpack to use or equip. Inventory cap: 8 items.</p>
         <table className="help-table">
           <thead><tr><th>Item</th><th>Common</th><th>Rare</th><th>Epic</th></tr></thead>
           <tbody>
-            <tr><td><PixelIcon name="sword" size={10} /> Weapon</td><td>+5 dmg (3 uses)</td><td>+10 dmg</td><td>+20 dmg</td></tr>
+            <tr><td><PixelIcon name="sword" size={10} /> Weapon</td><td>+5 dmg (3 uses)</td><td>+10 dmg (3 uses)</td><td>+20 dmg (3 uses)</td></tr>
             <tr><td><PixelIcon name="shield" size={10} /> Armor</td><td>+10% def</td><td>+20% def</td><td>+30% def</td></tr>
+            <tr><td><PixelIcon name="shield" size={10} /> Shield</td><td>10% block</td><td>15% block</td><td>25% block</td></tr>
+            <tr><td>🪖 Helmet</td><td>+5% crit</td><td>+10% crit</td><td>+15% crit</td></tr>
+            <tr><td>👖 Pants</td><td>+5% dodge</td><td>+10% dodge</td><td>+15% dodge</td></tr>
+            <tr><td>👢 Boots</td><td>20% resist</td><td>40% resist</td><td>60% resist</td></tr>
+            <tr><td>💍 Ring</td><td>+5 HP/round</td><td>+8 HP/round</td><td>+12 HP/round</td></tr>
+            <tr><td>📿 Amulet</td><td>+10% dmg</td><td>+20% dmg</td><td>+30% dmg</td></tr>
             <tr><td><PixelIcon name="heart" size={10} /> HP Potion</td><td>+20 HP</td><td>+40 HP</td><td>Full heal</td></tr>
-            <tr><td><PixelIcon name="mana" size={10} /> Mana Potion</td><td>+2 mana</td><td>+3 mana</td><td>+8 mana</td></tr>
+            <tr><td><PixelIcon name="mana" size={10} /> Mana Potion</td><td>+2 mana</td><td>+3 mana</td><td>+8 mana (Mage only)</td></tr>
           </tbody>
         </table>
-        <p>Drop chance: Easy 60%, Normal 45%, Hard 35%</p>
+        <p>Drop chance: Easy ≈61%, Normal ≈44%, Hard ≈36%</p>
       </>
     )},
     { title: 'Status Effects', content: (
@@ -1228,22 +1234,36 @@ function HelpModal({ onClose, onCheat }: { onClose: () => void; onCheat: () => v
         <table className="help-table">
           <thead><tr><th>Effect</th><th>Source</th><th>Duration</th><th>Damage</th></tr></thead>
           <tbody>
-            <tr><td><PixelIcon name="poison" size={10} /> Poison</td><td>Monsters (20%)</td><td>3 turns</td><td>-5 HP/turn</td></tr>
-            <tr><td><PixelIcon name="fire" size={10} /> Burn</td><td>Boss (25%)</td><td>2 turns</td><td>-8 HP/turn</td></tr>
-            <tr><td><PixelIcon name="lightning" size={10} /> Stun</td><td>Boss (15%)</td><td>1 turn</td><td>Skip attack</td></tr>
+            <tr><td><PixelIcon name="poison" size={10} /> Poison</td><td>Monsters (20%), Bat-boss (30%)</td><td>3 turns</td><td>-5 HP/turn</td></tr>
+            <tr><td><PixelIcon name="fire" size={10} /> Burn</td><td>Dragon boss (25%)</td><td>2 turns</td><td>-8 HP/turn</td></tr>
+            <tr><td><PixelIcon name="lightning" size={10} /> Stun</td><td>Boss (15%), Archers (20%)</td><td>1 turn</td><td>Skip attack</td></tr>
           </tbody>
         </table>
-        <p>Effects don't stack — new application is blocked while active.</p>
+        <p>Effects don't stack — new application is blocked while active. Boots provide status resistance.</p>
+      </>
+    )},
+    { title: 'Boss Phases & Room 2', content: (
+      <>
+        <p>The boss has three phases based on remaining HP. Higher phases deal more counter-attack damage.</p>
+        <table className="help-table">
+          <thead><tr><th>Phase</th><th>HP Range</th><th>Counter Mult</th><th>Special Chance</th></tr></thead>
+          <tbody>
+            <tr><td>Normal</td><td>&gt;50%</td><td>1.0x</td><td>20%</td></tr>
+            <tr><td style={{color:'#e67e22'}}>ENRAGED</td><td>26–50%</td><td>1.5x</td><td>40%</td></tr>
+            <tr><td style={{color:'#e74c3c'}}>BERSERK</td><td>1–25%</td><td>2.0x</td><td>60%</td></tr>
+          </tbody>
+        </table>
+        <p><b>Room 2:</b> After defeating the Room 1 boss, treasure opens and the door unlocks automatically. Click the door to enter Room 2 with trolls, ghouls, and a Bat-boss (stronger than Room 1). Mage mana is fully restored on entry. Defeating the Room 2 boss wins the dungeon.</p>
       </>
     )},
     { title: 'Tips & Strategy', content: (
       <>
         <p><b>General:</b> Kill monsters first to reduce counter-attack damage before engaging the boss.</p>
         <p><b>Warrior:</b> Best for beginners. High HP lets you survive many hits. Use Taunt before big boss attacks.</p>
-        <p><b>Mage:</b> Glass cannon. Rush the boss with 1.3x damage. Heal when low. Mana regens on monster kills.</p>
+        <p><b>Mage:</b> Glass cannon. Rush the boss with 1.3x damage. Heal when low. Mana regens on monster kills and is restored when entering Room 2.</p>
         <p><b>Rogue:</b> High risk/reward. Dodge procs can save you. Save Backstab (3x) for the boss.</p>
-        <p><b>Items:</b> Equip weapons before attacking the boss. Use potions freely — they don't cost a turn.</p>
-        <p><b>Modifiers:</b> Blessing of Fortune (20% crit) is the strongest. Curse of Fury makes boss fights brutal.</p>
+        <p><b>Items:</b> Equip weapons before attacking the boss. Use potions freely — they don't cost a turn. Boots resist status effects; pants stack dodge with Rogue's passive.</p>
+        <p><b>Modifiers:</b> Blessing of Fortune (20% crit) is the strongest. Curse of Fury makes boss fights brutal — especially in BERSERK phase.</p>
       </>
     )},
   ]
