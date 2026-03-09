@@ -456,6 +456,10 @@ grep -q "'modifier-cm'" frontend/src/KroGraph.tsx && pass "KroGraph kindMap incl
 grep -q "helmetBonus\|pantsBonus\|bootsBonus" frontend/src/KroGraph.tsx && pass "KroGraph RGD diff viewer tracks all item bonus fields" || fail "KroGraph missing helmet/pants/boots in diff viewer"
 grep -q "modifiercm\|combatcm" frontend/src/api.ts && pass "api.ts VALID_RESOURCE_KINDS includes modifiercm/combatcm" || fail "api.ts missing modifiercm or combatcm kinds"
 
+# --- Dead code guardrails ---
+echo "=== Dead code guardrails"
+grep -q "^function EntityCard\b" frontend/src/App.tsx && fail "EntityCard dead code not removed from App.tsx" || pass "EntityCard dead code removed from App.tsx"
+
 # --- Summary ---
 
 echo ""
