@@ -2048,44 +2048,5 @@ function rollDice(count: number, sides: number): number[] {
   return Array.from({ length: count }, () => Math.floor(Math.random() * sides) + 1)
 }
 
-function diceLabel(d: { count: number; sides: number; mod: number }) {
-  return `${d.count}d${d.sides}+${d.mod}`
-}
-
-function EntityCard({ name, entity, state, hp, maxHP, diceFormula, onAttack, disabled, spriteType, spriteAction, tooltip, floatingDmg, heroClass, backstabCooldown }: {
-  name: string; entity: string; state: string; hp: number; maxHP: number
-  diceFormula: string; onAttack: (target: string, damage: number) => void; disabled?: boolean
-  spriteType: string; spriteAction: SpriteAction; tooltip?: string; floatingDmg?: string | null
-  heroClass?: string; backstabCooldown?: number
-}) {
-  const pct = maxHP > 0 ? Math.min((hp / maxHP) * 100, 100) : 0
-  const hpClass = pct > 60 ? 'high' : pct > 30 ? 'mid' : 'low'
-  const canAttack = !disabled && ((entity === 'monster' && state === 'alive') || (entity === 'boss' && state === 'ready'))
-  const base = parseDice(diceFormula)
-  const d = entity === 'boss' ? { count: base.count + 1, sides: base.sides + 2, mod: base.mod + 2 } : base
-
-  return (
-    <Tooltip text={tooltip || ''}>
-    <div className={`entity-card ${state}`} style={{ position: 'relative' }}>
-      {floatingDmg && <div className="floating-dmg" style={{ color: '#e94560' }}>{floatingDmg}</div>}
-      <Sprite spriteType={spriteType} action={spriteAction} size={64} flip={entity !== 'boss' && entity !== 'monster' ? false : true} />
-      <div className="entity-name">{name.split('-').slice(-2).join('-')}</div>
-      <div className={`entity-state ${state}`}>{state}</div>
-      <div className="hp-bar-container">
-        <div className="hp-bar-bg"><div className={`hp-bar-fill ${hpClass}`} style={{ width: `${pct}%` }} /></div>
-        <div className="hp-text">HP: {hp} / {maxHP}</div>
-      </div>
-      {canAttack && (
-        <div className="attack-controls">
-          <button className="btn btn-primary" style={{ fontSize: '7px', padding: '4px 8px' }}
-            onClick={() => onAttack(name, 0)}>🎲 {diceLabel(d)}</button>
-          {heroClass === 'rogue' && (backstabCooldown ?? 0) === 0 && (
-            <button className="btn btn-ability" style={{ fontSize: '7px', padding: '4px 8px' }}
-              onClick={() => onAttack(name + '-backstab', 0)}>Backstab</button>
-          )}
-        </div>
-      )}
-    </div>
-    </Tooltip>
-  )
-}
+// EntityCard was removed: the arena renders monsters/boss inline in DungeonView
+// for precise layout control. No duplicate logic — each component is rendered once.
