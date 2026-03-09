@@ -1860,3 +1860,26 @@ body {
   border-color: #c39bd3;
   color: #c39bd3;
 }
+
+/* Achievement badges */
+.achievement-badges { margin: 10px 0 4px; }
+.achievement-badges-label { font-family: 'Press Start 2P', monospace; font-size: 6px; color: #888; margin-bottom: 6px; }
+.achievement-badges-row { display: flex; flex-wrap: wrap; gap: 5px; justify-content: center; }
+.achievement-badge {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  background: #0a0e1a; border: 1px solid #222; border-radius: 4px;
+  padding: 5px 8px; opacity: 0.3; min-width: 56px;
+  font-family: 'Press Start 2P', monospace;
+}
+.achievement-badge.earned {
+  border-color: var(--gold); opacity: 1;
+  box-shadow: 0 0 8px rgba(245,197,24,0.3);
+  animation: achievement-pulse 2s ease-in-out infinite;
+}
+.achievement-icon { font-size: 16px; }
+.achievement-name { font-size: 5px; color: #ccc; text-align: center; }
+.achievement-badge.earned .achievement-name { color: var(--gold); }
+@keyframes achievement-pulse {
+  0%, 100% { box-shadow: 0 0 8px rgba(245,197,24,0.3); }
+  50% { box-shadow: 0 0 16px rgba(245,197,24,0.6); }
+}
