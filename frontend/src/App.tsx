@@ -636,9 +636,6 @@ export default function App() {
             </div>
           )}
           <DungeonList dungeons={dungeons} onSelect={handleSelect} onDelete={handleDelete} deleting={deleting} lastDungeon={resumePrompt ?? undefined} />
-          {showLeaderboard && (
-            <LeaderboardPanel entries={leaderboard} loading={leaderboardLoading} onClose={() => setShowLeaderboard(false)} />
-          )}
         </>
       ) : loading ? (
         <div className="loading">Initializing dungeon</div>
@@ -684,6 +681,11 @@ export default function App() {
           onDismiss={() => setInsightQueue(q => q.slice(1))}
           onViewConcept={setKroConceptModal}
         />
+      )}
+
+      {/* Leaderboard — rendered globally so it works from any screen */}
+      {showLeaderboard && (
+        <LeaderboardPanel entries={leaderboard} loading={leaderboardLoading} onClose={() => setShowLeaderboard(false)} />
       )}
 
       {/* kro Concept Modal */}
