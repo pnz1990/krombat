@@ -1922,3 +1922,21 @@ body {
   color: #00ff41 !important;
   font-weight: bold;
 }
+
+/* ── Dungeon Mini-Map ─────────────────────────────────────────────────────── */
+.dungeon-minimap {
+  display: flex; align-items: center; justify-content: center;
+  gap: 4px; padding: 4px 0 8px; font-family: 'Press Start 2P', monospace;
+  font-size: 7px;
+}
+.minimap-room {
+  display: flex; align-items: center; gap: 3px;
+  border: 1px solid #333; border-radius: 3px;
+  padding: 3px 8px; min-width: 40px; text-align: center;
+  justify-content: center;
+  transition: border-color 0.3s, color 0.3s;
+}
+.minimap-connector {
+  font-size: 8px; color: #555; padding: 0 2px; transition: color 0.3s;
+}
+.minimap-icon { font-size: 9px; margin-left: 2px; }

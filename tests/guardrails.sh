@@ -67,6 +67,22 @@ echo "$BACKEND_RULES" | grep -q 'apiGroups: \[batch\]' \
   && fail "Backend ClusterRole has batch API group access (jobs)" \
   || pass "Backend ClusterRole has no batch API group access"
 
+# Leaderboard Role must exist and be scoped to configmaps only
+LEADERBOARD_ROLE=$(grep -A 10 'name: rpg-backend-leaderboard' "$RBAC_FILE" | head -10 || true)
+echo "$LEADERBOARD_ROLE" | grep -q 'configmaps' \
+  && pass "rpg-backend-leaderboard Role scoped to configmaps" \
+  || fail "rpg-backend-leaderboard Role missing or not scoped to configmaps"
+
+# Leaderboard Role must only allow krombat-leaderboard (resourceNames guard)
+echo "$LEADERBOARD_ROLE" | grep -q 'krombat-leaderboard' \
+  && pass "rpg-backend-leaderboard Role restricted to krombat-leaderboard by resourceNames" \
+  || fail "rpg-backend-leaderboard Role missing resourceNames guard — too broad"
+
+# Leaderboard Role must NOT grant secrets access
+echo "$LEADERBOARD_ROLE" | grep -q 'secrets' \
+  && fail "rpg-backend-leaderboard Role grants secrets access (should not)" \
+  || pass "rpg-backend-leaderboard Role does not grant secrets access"
+
 # --- Live cluster guardrails ---
 
 echo ""
@@ -380,6 +396,39 @@ if (unionCount !== conceptsMatches || conceptsMatches !== orderCount) {
 }
 console.log('OK: all concept counts match (' + unionCount + ')');
 " && pass "KroTeach concept counts in sync (union == KRO_CONCEPTS == CONCEPT_ORDER)" || fail "KroTeach concept counts out of sync — add/remove concept in all 3 places"
+
+# --- Enemy variety guardrails ---
+echo "=== Enemy variety guardrails"
+grep -q "monsterTypes" backend/internal/handlers/handlers.go && pass "Backend assigns monsterTypes to dungeon spec" || fail "Backend missing monsterTypes assignment"
+grep -q '"archer"\|"shaman"' backend/internal/handlers/handlers.go && pass "Backend defines archer and shaman monster types" || fail "Backend missing archer/shaman type strings"
+grep -q "getMonsterName" frontend/src/Sprite.tsx && pass "Sprite.tsx exports getMonsterName function" || fail "getMonsterName missing from Sprite.tsx"
+grep -q "getMonsterName" frontend/src/App.tsx && pass "App.tsx uses getMonsterName for display labels" || fail "App.tsx not using getMonsterName"
+grep -q "Archer.*STUNNED\|STUNNED.*Archer\|archer.*stun\|stun.*archer" backend/internal/handlers/handlers.go && pass "Backend implements Archer stun mechanic" || fail "Archer stun mechanic missing from backend"
+grep -q "Shaman.*heal\|shaman.*heal" backend/internal/handlers/handlers.go && pass "Backend implements Shaman heal mechanic" || fail "Shaman heal mechanic missing from backend"
+
+# --- New Game+ guardrails ---
+echo "=== New Game+ guardrails"
+grep -q "runCount" backend/internal/handlers/handlers.go && pass "Backend handles runCount in CreateDungeon" || fail "Backend missing runCount handling"
+grep -q "runCount.*20\|20.*runCount" backend/internal/handlers/handlers.go && pass "Backend clamps runCount to max 20 (overflow guard)" || fail "Backend missing runCount overflow guard"
+grep -q "1\.25\|125\|scale.*125\|125.*scale" backend/internal/handlers/handlers.go && pass "Backend applies 1.25x HP scaling per NG+ run" || fail "Backend missing 1.25x NG+ HP scaling"
+grep -q "createNewGamePlus" frontend/src/api.ts && pass "Frontend api.ts exports createNewGamePlus" || fail "createNewGamePlus missing from api.ts"
+grep -q "onNewGamePlus\|handleNewGamePlus" frontend/src/App.tsx && pass "App.tsx wires New Game+ handler" || fail "App.tsx missing New Game+ handler"
+grep -q "ng-plus-badge" frontend/src/App.tsx && pass "App.tsx renders NG+ badge on dungeon tiles" || fail "App.tsx missing NG+ badge"
+
+# --- Leaderboard guardrails ---
+echo "=== Leaderboard guardrails"
+grep -q "recordLeaderboard\|krombat-leaderboard" backend/internal/handlers/handlers.go && pass "Backend implements leaderboard recording" || fail "Backend missing leaderboard recording"
+grep -q "GetLeaderboard" backend/internal/handlers/handlers.go && pass "Backend implements GetLeaderboard handler" || fail "GetLeaderboard handler missing"
+grep -q "GetLeaderboard" backend/cmd/main.go && pass "GetLeaderboard handler registered in main.go" || fail "GetLeaderboard not registered in routes"
+grep -q "leaderboard-btn\|LeaderboardPanel" frontend/src/App.tsx && pass "Frontend renders leaderboard UI" || fail "Frontend leaderboard UI missing"
+grep -q "getLeaderboard" frontend/src/api.ts && pass "Frontend api.ts exports getLeaderboard function" || fail "getLeaderboard missing from api.ts"
+# Max entries guard
+grep -q "leaderboardMaxEntries\|100" backend/internal/handlers/handlers.go && pass "Leaderboard has max-entries cap to prevent unbounded ConfigMap growth" || fail "Leaderboard missing max-entries cap"
+
+# --- Mini-map guardrails ---
+echo "=== Mini-map guardrails"
+grep -q "DungeonMiniMap\|dungeon-minimap" frontend/src/App.tsx && pass "App.tsx renders DungeonMiniMap component" || fail "DungeonMiniMap missing from App.tsx"
+grep -q "dungeon-minimap" frontend/src/index.css && pass "Mini-map CSS class defined in index.css" || fail "Mini-map CSS missing from index.css"
 
 # --- Summary ---
 
