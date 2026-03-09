@@ -68,7 +68,7 @@ export async function createDungeon(name: string, monsters: number, difficulty: 
 export interface NewGamePlusOptions {
   runCount: number
   weaponBonus?: number; weaponUses?: number; armorBonus?: number; shieldBonus?: number
-  helmetBonus?: number; pantsBonus?: number; ringBonus?: number; amuletBonus?: number
+  helmetBonus?: number; pantsBonus?: number; bootsBonus?: number; ringBonus?: number; amuletBonus?: number
 }
 
 export async function createNewGamePlus(

@@ -127,6 +127,7 @@ type CreateDungeonReq struct {
 	ShieldBonus int64 `json:"shieldBonus"`
 	HelmetBonus int64 `json:"helmetBonus"`
 	PantsBonus  int64 `json:"pantsBonus"`
+	BootsBonus  int64 `json:"bootsBonus"`
 	RingBonus   int64 `json:"ringBonus"`
 	AmuletBonus int64 `json:"amuletBonus"`
 }
@@ -263,6 +264,9 @@ func (h *Handler) CreateDungeon(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.PantsBonus > 0 {
 		dungeonSpec["pantsBonus"] = req.PantsBonus
+	}
+	if req.BootsBonus > 0 {
+		dungeonSpec["bootsBonus"] = req.BootsBonus
 	}
 	if req.RingBonus > 0 {
 		dungeonSpec["ringBonus"] = req.RingBonus
@@ -1355,16 +1359,28 @@ func (h *Handler) processAction(ctx context.Context, ns, name, action string, cl
 			patchSpec["lastHeroAction"] = fmt.Sprintf("Used %s! HP: %d -> %d", item, heroHP, newHP)
 			patchSpec["lastEnemyAction"] = "Item used"
 		case "manapotion-common":
+			if heroClass != "mage" {
+				writeError(w, "mana potions can only be used by Mage", http.StatusBadRequest)
+				return fmt.Errorf("mana potion non-mage")
+			}
 			newMana := min64(heroMana+2, classMaxMana(heroClass))
 			patchSpec["heroMana"] = newMana
 			patchSpec["lastHeroAction"] = fmt.Sprintf("Used %s! Mana: %d -> %d", item, heroMana, newMana)
 			patchSpec["lastEnemyAction"] = "Item used"
 		case "manapotion-rare":
+			if heroClass != "mage" {
+				writeError(w, "mana potions can only be used by Mage", http.StatusBadRequest)
+				return fmt.Errorf("mana potion non-mage")
+			}
 			newMana := min64(heroMana+3, classMaxMana(heroClass))
 			patchSpec["heroMana"] = newMana
 			patchSpec["lastHeroAction"] = fmt.Sprintf("Used %s! Mana: %d -> %d", item, heroMana, newMana)
 			patchSpec["lastEnemyAction"] = "Item used"
 		case "manapotion-epic":
+			if heroClass != "mage" {
+				writeError(w, "mana potions can only be used by Mage", http.StatusBadRequest)
+				return fmt.Errorf("mana potion non-mage")
+			}
 			newMana := min64(heroMana+8, classMaxMana(heroClass))
 			patchSpec["heroMana"] = newMana
 			patchSpec["lastHeroAction"] = fmt.Sprintf("Used %s! Mana: %d -> %d", item, heroMana, newMana)
