@@ -788,6 +788,12 @@ function computeRGDDiff(prev: DungeonCR | null | undefined, curr: DungeonCR): Di
   check('weaponBonus', 'spec.weaponBonus')
   check('weaponUses', 'spec.weaponUses')
   check('armorBonus', 'spec.armorBonus')
+  check('shieldBonus', 'spec.shieldBonus')
+  check('helmetBonus', 'spec.helmetBonus')
+  check('pantsBonus', 'spec.pantsBonus')
+  check('bootsBonus', 'spec.bootsBonus')
+  check('ringBonus', 'spec.ringBonus')
+  check('amuletBonus', 'spec.amuletBonus')
   check('currentRoom', 'spec.currentRoom')
   check('treasureOpened', 'spec.treasureOpened')
   check('doorUnlocked', 'spec.doorUnlocked')
@@ -819,6 +825,9 @@ function computeRGDDiff(prev: DungeonCR | null | undefined, curr: DungeonCR): Di
       else if (d.field === 'status.victory' || d.field === 'status.defeat') d.conceptLink = 'status-aggregation'
       else if (d.field === 'spec.treasureOpened') d.conceptLink = 'secret-output'
       else if (d.field === 'spec.currentRoom') d.conceptLink = 'spec-mutation'
+      else if (['spec.weaponBonus','spec.weaponUses','spec.armorBonus','spec.shieldBonus',
+                'spec.helmetBonus','spec.pantsBonus','spec.bootsBonus','spec.ringBonus','spec.amuletBonus'].includes(d.field))
+        d.conceptLink = 'spec-mutation'
     }
   }
 
@@ -835,21 +844,24 @@ export function KroGraphPanel({ cr, prevCr, reconciling, onViewConcept }: KroGra
   const [inspectorLoading, setInspectorLoading] = useState(false)
 
   const handleNodeSelect = useCallback(async (nodeId: string, nodeKind: string) => {
-    // Static kind map for non-indexed nodes
+    // Static kind map: keys are node IDs from buildGraph, values are ResourceKind
     const kindMap: Record<string, ResourceKind> = {
       'dungeon': 'dungeon',
       'hero': 'hero',
-      'hero-state': 'herostate',
+      'hero-cm': 'herostate',          // Hero ConfigMap (hero-graph output)
       'boss': 'boss',
-      'boss-state': 'bossstate',
+      'boss-cm': 'bossstate',          // Boss ConfigMap (boss-graph output)
       'namespace': 'namespace',
-      'game-config': 'gameconfig',
+      'gameconfig-cm': 'gameconfig',   // GameConfig ConfigMap
       'treasure': 'treasure',
       'treasure-cm': 'treasurecm',
       'treasure-secret': 'treasuresecret',
       'modifier': 'modifier',
-      'modifier-state': 'modifier',  // same CR
-      'combat-result': 'combatresult',
+      'modifier-cm': 'modifiercm',     // Modifier state ConfigMap
+      'combat-cm': 'combatcm',         // Combat result ConfigMap
+      'combat-result': 'combatresult', // backward-compat alias
+      'action-cm': 'actioncm',         // Action state ConfigMap
+      // attack-cr / action-cr are Jobs — no persistent resource to fetch, skip
     }
 
     // Extract index from monster-N / monster-cm-N / loot-mN / loot-secret-mN node IDs
