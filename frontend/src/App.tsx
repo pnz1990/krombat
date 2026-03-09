@@ -115,6 +115,7 @@ export default function App() {
   const [showLeaderboard, setShowLeaderboard] = useState(false)
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([])
   const [leaderboardLoading, setLeaderboardLoading] = useState(false)
+  const [showHamburger, setShowHamburger] = useState(false)
 
   const triggerInsight = useCallback((event: string) => {
     const trigger = getInsightForEvent(event)
@@ -614,6 +615,16 @@ export default function App() {
       {!selected ? (
         <>
           {showOnboarding && <KroOnboardingOverlay onDismiss={() => setShowOnboarding(false)} />}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 4 }}>
+            <div style={{ position: 'relative' }}>
+              <button className="hamburger-btn" aria-label="Menu" onClick={() => setShowHamburger(v => !v)}>☰</button>
+              {showHamburger && (
+                <div className="hamburger-menu" onMouseLeave={() => setShowHamburger(false)}>
+                  <button className="hamburger-item" onClick={() => { setShowHamburger(false); handleOpenLeaderboard() }}>Leaderboard</button>
+                </div>
+              )}
+            </div>
+          </div>
           <CreateForm onCreate={handleCreate} />
           {resumePrompt && (
             <div className="card" style={{ borderColor: '#f5c518', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '8px 12px' }}>
@@ -624,7 +635,7 @@ export default function App() {
               </div>
             </div>
           )}
-          <DungeonList dungeons={dungeons} onSelect={handleSelect} onDelete={handleDelete} deleting={deleting} lastDungeon={resumePrompt ?? undefined} onOpenLeaderboard={handleOpenLeaderboard} />
+          <DungeonList dungeons={dungeons} onSelect={handleSelect} onDelete={handleDelete} deleting={deleting} lastDungeon={resumePrompt ?? undefined} />
           {showLeaderboard && (
             <LeaderboardPanel entries={leaderboard} loading={leaderboardLoading} onClose={() => setShowLeaderboard(false)} />
           )}
@@ -662,6 +673,7 @@ export default function App() {
           kroUnlocked={unlocked}
           onViewKroConcept={setKroConceptModal}
           reconciling={reconciling}
+          onOpenLeaderboard={handleOpenLeaderboard}
         />
       ) : null}
 
@@ -721,19 +733,13 @@ function CreateForm({ onCreate }: { onCreate: (n: string, m: number, d: string, 
   )
 }
 
-function DungeonList({ dungeons, onSelect, onDelete, deleting, lastDungeon, onOpenLeaderboard }: {
+function DungeonList({ dungeons, onSelect, onDelete, deleting, lastDungeon }: {
   dungeons: DungeonSummary[]; onSelect: (ns: string, name: string) => void
   onDelete: (ns: string, name: string) => void; deleting: Set<string>
   lastDungeon?: { ns: string; name: string }
-  onOpenLeaderboard: () => void
 }) {
   return (
     <div className="dungeon-list">
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 6 }}>
-        <button className="btn leaderboard-btn" onClick={onOpenLeaderboard} title="View top run leaderboard">
-          Leaderboard
-        </button>
-      </div>
       {!dungeons.length && <div className="loading">No dungeons yet — create one above</div>}
       {dungeons.map(d => {
         const isLast = lastDungeon && lastDungeon.ns === d.namespace && lastDungeon.name === d.name
@@ -899,18 +905,20 @@ function FlyingBat({ startX, startY, endX, endY, dur, onDone }: { startX: number
       style={{ left: `${pos.x}%`, top: `${pos.y}%`, transform: `translate(-50%,-50%) scaleX(${endX > startX ? 1 : -1})` }} />
   )
 }
-function EventLogTabs({ events, k8sLog, kroUnlocked, onViewKroConcept, dungeonNs, dungeonName }: {
+function EventLogTabs({ events, k8sLog, kroUnlocked, onViewKroConcept, dungeonNs, dungeonName, showPlayground, onOpenPlayground, onClosePlayground }: {
   events: WSEvent[]
   k8sLog: { ts: string; cmd: string; res: string; yaml?: string }[]
   kroUnlocked: Set<KroConceptId>
   onViewKroConcept: (id: KroConceptId) => void
   dungeonNs?: string
   dungeonName?: string
+  showPlayground: boolean
+  onOpenPlayground: () => void
+  onClosePlayground: () => void
 }) {
   const [tab, setTab] = useState<'game' | 'k8s' | 'kro'>('game')
   const [yamlModal, setYamlModal] = useState<{ yaml: string; cmd: string } | null>(null)
   const [kroConceptModal, setKroConceptModal] = useState<KroConceptId | null>(null)
-  const [showPlayground, setShowPlayground] = useState(false)
   return (
     <div style={{ marginTop: 16 }}>
       <div className="log-tabs">
@@ -956,8 +964,8 @@ function EventLogTabs({ events, k8sLog, kroUnlocked, onViewKroConcept, dungeonNs
         <KroCelPlayground
           dungeonNs={dungeonNs}
           dungeonName={dungeonName}
-          onLearnConcept={id => { setKroConceptModal(id); setShowPlayground(false) }}
-          onClose={() => setShowPlayground(false)}
+          onLearnConcept={id => { setKroConceptModal(id); onClosePlayground() }}
+          onClose={onClosePlayground}
         />
       )}
 
@@ -984,17 +992,6 @@ function EventLogTabs({ events, k8sLog, kroUnlocked, onViewKroConcept, dungeonNs
         </div>
       ) : (
         <div>
-          {dungeonNs && dungeonName && (
-            <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '4px 0 0' }}>
-              <button
-                className="kro-glossary-playground-btn"
-                onClick={() => setShowPlayground(true)}
-                aria-label="Open CEL Playground"
-              >
-                CEL Playground →
-              </button>
-            </div>
-          )}
           <KroGlossary unlocked={kroUnlocked} onViewConcept={id => setKroConceptModal(id)} />
         </div>
       )}
@@ -1282,7 +1279,7 @@ function getModifierArenaStyle(modifier: string | undefined): React.CSSPropertie
   }
 }
 
-function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sLog, showLoot, onOpenLoot, onCloseLoot, attackPhase, roomLoading, animPhase, attackTarget, showHelp, onToggleHelp, showCheat, onToggleCheat, floatingDmg, bossPhaseFlash, combatModal, onDismissCombat, lootDrop, onDismissLoot, wsConnected, apiError, kroUnlocked, onViewKroConcept, reconciling }: {
+function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sLog, showLoot, onOpenLoot, onCloseLoot, attackPhase, roomLoading, animPhase, attackTarget, showHelp, onToggleHelp, showCheat, onToggleCheat, floatingDmg, bossPhaseFlash, combatModal, onDismissCombat, lootDrop, onDismissLoot, wsConnected, apiError, kroUnlocked, onViewKroConcept, reconciling, onOpenLeaderboard }: {
   cr: DungeonCR; prevCr?: DungeonCR | null; onBack: () => void; onNewGamePlus?: () => void; onAttack: (t: string, d: number) => void; events: WSEvent[]; k8sLog: { ts: string; cmd: string; res: string; yaml?: string }[]
   showLoot: boolean; onOpenLoot: () => void; onCloseLoot: () => void
   attackPhase: string | null; roomLoading: boolean
@@ -1299,6 +1296,7 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
   kroUnlocked: Set<KroConceptId>
   onViewKroConcept: (id: KroConceptId) => void
   reconciling: boolean
+  onOpenLeaderboard: () => void
 }) {
   if (!cr?.metadata?.name) return <div className="loading">Loading dungeon</div>
   const spec = cr.spec || { monsters: 0, difficulty: 'normal', monsterHP: [], bossHP: 0, heroHP: 100 }
@@ -1328,6 +1326,8 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
   const gameOver = isDefeated || (!inRoomTransition && spec.bossHP <= 0 && allMonstersDead)
   const isVictory = gameOver && !isDefeated && (spec.currentRoom || 1) === 2
   const [showCertificate, setShowCertificate] = useState(false)
+  const [showDungeonHamburger, setShowDungeonHamburger] = useState(false)
+  const [showPlayground, setShowPlayground] = useState(false)
   // Auto-show certificate once on room-2 victory
   const certShownRef = useRef(false)
   useEffect(() => {
@@ -1413,6 +1413,15 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
          <h2><PixelIcon name="sword" size={14} /> {dungeonName}{spec.runCount != null && spec.runCount > 0 ? <span className="ng-plus-badge" style={{ fontSize: '6px', marginLeft: 6 }}>⭐NG+{spec.runCount}</span> : null}</h2>
          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
            <button className="help-btn" aria-label="Help" onClick={onToggleHelp}>?</button>
+           <div style={{ position: 'relative' }}>
+             <button className="hamburger-btn" aria-label="Menu" onClick={() => setShowDungeonHamburger(v => !v)}>☰</button>
+             {showDungeonHamburger && (
+               <div className="hamburger-menu" onMouseLeave={() => setShowDungeonHamburger(false)}>
+                 <button className="hamburger-item" onClick={() => { setShowDungeonHamburger(false); onOpenLeaderboard() }}>Leaderboard</button>
+                 <button className="hamburger-item" onClick={() => { setShowDungeonHamburger(false); setShowPlayground(true) }}>CEL Playground</button>
+               </div>
+             )}
+           </div>
            <button className="back-btn" onClick={onBack}>← Back</button>
          </div>
        </div>
@@ -1955,7 +1964,8 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
       <KroGraphPanel cr={cr} prevCr={prevCr} reconciling={reconciling} onViewConcept={onViewKroConcept} />
 
       <EventLogTabs events={events} k8sLog={k8sLog} kroUnlocked={kroUnlocked} onViewKroConcept={onViewKroConcept}
-        dungeonNs={cr.metadata.namespace} dungeonName={cr.metadata.name} />
+        dungeonNs={cr.metadata.namespace} dungeonName={cr.metadata.name}
+        showPlayground={showPlayground} onOpenPlayground={() => setShowPlayground(true)} onClosePlayground={() => setShowPlayground(false)} />
     </div>
   )
 }

@@ -31,10 +31,14 @@ async function switchToTab(page, label) {
 }
 
 async function openPlayground(page) {
-  const pgBtn = page.locator('button.kro-glossary-playground-btn');
-  await pgBtn.waitFor({ timeout: TIMEOUT }).catch(() => {});
-  if (await pgBtn.count() === 0) return false;
-  await pgBtn.click();
+  const hamburgerBtn = page.locator('button.hamburger-btn[aria-label="Menu"]');
+  await hamburgerBtn.waitFor({ timeout: TIMEOUT }).catch(() => {});
+  if (await hamburgerBtn.count() === 0) return false;
+  await hamburgerBtn.click();
+  await page.waitForTimeout(300);
+  const pgItem = page.locator('button.hamburger-item:has-text("CEL Playground")');
+  if (await pgItem.count() === 0) return false;
+  await pgItem.click();
   await page.waitForTimeout(500);
   return (await page.locator('.kro-playground-modal').count()) > 0;
 }
@@ -84,14 +88,11 @@ async function run() {
     loaded ? ok('Dungeon created and game view loaded') : fail('Dungeon view did not load');
     await page.waitForTimeout(2000);
 
-    // ── Open CEL Playground via kro tab ──────────────────────────────────────
-    console.log('\n  [Open CEL Playground]');
-    const tabOk = await switchToTab(page, 'kro');
-    tabOk ? ok('kro tab accessible') : fail('kro tab not found');
-
+    // ── Open CEL Playground via hamburger menu ───────────────────────────────
+    console.log('\n  [Open CEL Playground via hamburger menu]');
     const pgOpened = await openPlayground(page);
     pgOpened
-      ? ok('CEL Playground modal opened')
+      ? ok('CEL Playground modal opened via hamburger menu')
       : fail('CEL Playground modal did not open');
 
     // ── Verify context shows dungeon name ─────────────────────────────────────
