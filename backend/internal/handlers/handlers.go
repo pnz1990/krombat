@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -1757,11 +1758,38 @@ func applyModifierToCounter(modifier string, counter int64) int64 {
 	return counter
 }
 
-// computeMonsterLoot mirrors the CEL logic in monster-graph.yaml.
-// Seed: dungeonName + '-m' + index
+// kroSeededRoll implements the same algorithm as kro's CEL random.seededString(1, seed)
+// followed by indexOf on "abcdefghijklmnopqrstuvwxyz0123456789" (CEL alphabet), modulo n.
+//
+// kro uses SHA-256 of the seed; bytes 0-3 form a uint32 index into
+// "0123456789abcdefghijklmnopqrstuvwxyz" (kro's output alphabet, digits first).
+// The CEL expressions then call indexOf on "abcdefghijklmnopqrstuvwxyz0123456789"
+// (letters first), so we map the output character to the CEL alphabet position.
+//
+// Source: kubernetes-sigs/kro pkg/cel/library/random.go
+func kroSeededRoll(seed string, n int) int {
+	const kroAlpha = "0123456789abcdefghijklmnopqrstuvwxyz" // kro seededString output alphabet
+	const celAlpha = "abcdefghijklmnopqrstuvwxyz0123456789" // CEL indexOf alphabet
+	hash := sha256.Sum256([]byte(seed))
+	idx := uint32(hash[0])<<24 | uint32(hash[1])<<16 | uint32(hash[2])<<8 | uint32(hash[3])
+	idx = idx % uint32(len(kroAlpha))
+	ch := kroAlpha[idx]
+	// find position of ch in celAlpha
+	for i := 0; i < len(celAlpha); i++ {
+		if celAlpha[i] == ch {
+			return i % n
+		}
+	}
+	return 0
+}
+
+// computeMonsterLoot mirrors the CEL logic in monster-graph.yaml exactly.
+// Uses the same SHA-256-based kroSeededRoll so results match kro-created Loot CRs.
+// Seed: dungeonName + '-m' + index + '-drop'/'-rar'/'-typ'
+// Item type list: 8 entries (no ring/amulet — matches CEL's 8-type array)
 func computeMonsterLoot(dungeonName string, idx int, difficulty string) (bool, string) {
 	seed := fmt.Sprintf("%s-m%d", dungeonName, idx)
-	dropRoll := int(seededRoll(seed+"-drop", 36))
+	dropRoll := kroSeededRoll(seed+"-drop", 36)
 	var dropThreshold int
 	switch difficulty {
 	case "easy":
@@ -1774,27 +1802,29 @@ func computeMonsterLoot(dungeonName string, idx int, difficulty string) (bool, s
 	if dropRoll >= dropThreshold {
 		return false, ""
 	}
-	rarRoll := int(seededRoll(seed+"-rar", 36))
+	rarRoll := kroSeededRoll(seed+"-rar", 36)
 	rarity := "common"
 	if rarRoll >= 33 {
 		rarity = "epic"
 	} else if rarRoll >= 22 {
 		rarity = "rare"
 	}
-	typRoll := int(seededRoll(seed+"-typ", 10))
-	types := []string{"weapon", "armor", "hppotion", "manapotion", "shield", "helmet", "pants", "boots", "ring", "amulet"}
+	typRoll := kroSeededRoll(seed+"-typ", 8)
+	types := []string{"weapon", "armor", "hppotion", "manapotion", "shield", "helmet", "pants", "boots"}
 	return true, types[typRoll] + "-" + rarity
 }
 
-// computeBossLoot mirrors the CEL logic in boss-graph.yaml.
+// computeBossLoot mirrors the CEL logic in boss-graph.yaml exactly.
+// Uses the same SHA-256-based kroSeededRoll so results match kro-created Loot CRs.
+// Item type list: 7 entries (no manapotion/ring/amulet — matches CEL's 7-type array)
 func computeBossLoot(dungeonName string) string {
-	rarRoll := int(seededRoll(dungeonName+"-boss-rar", 36))
+	rarRoll := kroSeededRoll(dungeonName+"-boss-rar", 36)
 	rarity := "rare"
 	if rarRoll >= 18 {
 		rarity = "epic"
 	}
-	typRoll := int(seededRoll(dungeonName+"-boss-typ", 9))
-	types := []string{"weapon", "armor", "hppotion", "shield", "helmet", "pants", "boots", "ring", "amulet"}
+	typRoll := kroSeededRoll(dungeonName+"-boss-typ", 7)
+	types := []string{"weapon", "armor", "hppotion", "shield", "helmet", "pants", "boots"}
 	return types[typRoll] + "-" + rarity
 }
 
