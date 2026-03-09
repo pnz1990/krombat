@@ -418,6 +418,19 @@ grep -q "ng-plus-badge" frontend/src/App.tsx && pass "App.tsx renders NG+ badge 
 grep -q "BootsBonus" backend/internal/handlers/handlers.go && pass "Backend CreateDungeonReq includes BootsBonus for NG+ carry-over" || fail "BootsBonus missing from CreateDungeonReq — boots not carried over on NG+"
 grep -q "bootsBonus.*req\.BootsBonus\|req\.BootsBonus.*bootsBonus" backend/internal/handlers/handlers.go && pass "Backend applies BootsBonus to dungeonSpec in CreateDungeon" || fail "BootsBonus not applied to dungeonSpec"
 grep -q "bootsBonus" frontend/src/App.tsx && pass "Frontend handleNewGamePlus sends bootsBonus" || fail "Frontend missing bootsBonus in handleNewGamePlus call"
+grep -q "RingBonus" backend/internal/handlers/handlers.go && pass "Backend CreateDungeonReq includes RingBonus for NG+ carry-over" || fail "RingBonus missing from CreateDungeonReq — ring not carried over on NG+"
+grep -q "ringBonus.*req\.RingBonus\|req\.RingBonus.*ringBonus" backend/internal/handlers/handlers.go && pass "Backend applies RingBonus to dungeonSpec in CreateDungeon" || fail "RingBonus not applied to dungeonSpec"
+grep -q "ringBonus" frontend/src/App.tsx && pass "Frontend handleNewGamePlus sends ringBonus" || fail "Frontend missing ringBonus in handleNewGamePlus call"
+grep -q "AmuletBonus" backend/internal/handlers/handlers.go && pass "Backend CreateDungeonReq includes AmuletBonus for NG+ carry-over" || fail "AmuletBonus missing from CreateDungeonReq — amulet not carried over on NG+"
+grep -q "amuletBonus.*req\.AmuletBonus\|req\.AmuletBonus.*amuletBonus" backend/internal/handlers/handlers.go && pass "Backend applies AmuletBonus to dungeonSpec in CreateDungeon" || fail "AmuletBonus not applied to dungeonSpec"
+grep -q "amuletBonus" frontend/src/App.tsx && pass "Frontend handleNewGamePlus sends amuletBonus" || fail "Frontend missing amuletBonus in handleNewGamePlus call"
+
+# --- Boss loot invariants ---
+echo "=== Boss loot invariants"
+grep -q "computeBossLoot" backend/internal/handlers/handlers.go && pass "computeBossLoot function exists in handlers.go" || fail "computeBossLoot function missing"
+! grep -A10 'func computeBossLoot' backend/internal/handlers/handlers.go | grep -q 'manapotion' && pass "computeBossLoot excludes manapotion (bosses do not drop mana pots)" || fail "computeBossLoot includes manapotion — unintentional"
+# classMaxHP must cover all 3 valid hero classes — ensure no fallthrough for known classes
+grep -q '"warrior"' backend/internal/handlers/handlers.go && grep -q '"mage"' backend/internal/handlers/handlers.go && grep -q '"rogue"' backend/internal/handlers/handlers.go && pass "classMaxHP covers all 3 hero classes (warrior/mage/rogue)" || fail "classMaxHP missing a hero class branch"
 
 # --- Mana potion class guard ---
 echo "=== Mana potion class guard"

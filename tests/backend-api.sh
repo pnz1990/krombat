@@ -424,6 +424,28 @@ assert bb == 20, f'bootsBonus should be 20, got {bb}'
 print('bootsBonus=20 OK')
 " 2>/dev/null && pass "bootsBonus=20 carries over in NG+ dungeon spec" || fail "bootsBonus not found in NG+ dungeon spec"
 kubectl delete dungeon "$BOOTS_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
+
+# --- Test 26: NG+ ring/amulet carry-over ---
+log "Test 26: NG+ ring/amulet carry-over"
+RING_DUNGEON="api-test-ring-$(date +%s)"
+RR=$(curl -s -w "\n%{http_code}" -X POST "$BASE/api/v1/dungeons" \
+  -H "Content-Type: application/json" \
+  -d "{\"name\":\"$RING_DUNGEON\",\"monsters\":1,\"difficulty\":\"easy\",\"heroClass\":\"warrior\",\"runCount\":1,\"ringBonus\":5,\"amuletBonus\":10}")
+RR_CODE=$(echo "$RR" | tail -1)
+[ "$RR_CODE" = "201" ] && pass "POST /dungeons with ringBonus=5 amuletBonus=10 -> 201" || fail "NG+ ring/amulet dungeon creation -> $RR_CODE"
+sleep 15
+RING_SPEC=$(curl -s "$BASE/api/v1/dungeons/default/$RING_DUNGEON")
+echo "$RING_SPEC" | python3 -c "
+import json,sys
+spec=json.load(sys.stdin).get('spec',{})
+rb=spec.get('ringBonus')
+ab=spec.get('amuletBonus')
+assert rb == 5, f'ringBonus should be 5, got {rb}'
+assert ab == 10, f'amuletBonus should be 10, got {ab}'
+print(f'ringBonus={rb} amuletBonus={ab} OK')
+" 2>/dev/null && pass "ringBonus=5 and amuletBonus=10 carry over in NG+ dungeon spec" || fail "ringBonus/amuletBonus not found in NG+ dungeon spec"
+kubectl delete dungeon "$RING_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
+
 echo ""
 echo "========================================"
 echo "  Backend Tests: $PASS passed, $FAIL failed"
