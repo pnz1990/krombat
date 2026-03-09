@@ -182,19 +182,37 @@ func (h *Handler) CreateDungeon(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Assign monster types for Room 1: goblin(0), skeleton(1), archer(2+even), shaman(3+odd)
+	// Archers (index % 2 == 0, index >= 2): 20% chance to stun instead of poison
+	// Shamans (index % 2 == 1, index >= 3): 30% chance to heal another monster on counter
+	monsterTypes := make([]interface{}, req.Monsters)
+	for i := range monsterTypes {
+		switch {
+		case i == 0:
+			monsterTypes[i] = "goblin"
+		case i == 1:
+			monsterTypes[i] = "skeleton"
+		case i%2 == 0:
+			monsterTypes[i] = "archer"
+		default:
+			monsterTypes[i] = "shaman"
+		}
+	}
+
 	dungeon := &unstructured.Unstructured{Object: map[string]interface{}{
 		"apiVersion": "game.k8s.example/v1alpha1",
 		"kind":       "Dungeon",
 		"metadata":   map[string]interface{}{"name": req.Name},
 		"spec": map[string]interface{}{
-			"monsters":   req.Monsters,
-			"difficulty": req.Difficulty,
-			"monsterHP":  monsterHP,
-			"bossHP":     hp.boss,
-			"heroHP":     heroHP,
-			"heroClass":  heroClass,
-			"heroMana":   heroMana,
-			"modifier":   modifier,
+			"monsters":     req.Monsters,
+			"difficulty":   req.Difficulty,
+			"monsterHP":    monsterHP,
+			"bossHP":       hp.boss,
+			"heroHP":       heroHP,
+			"heroClass":    heroClass,
+			"heroMana":     heroMana,
+			"modifier":     modifier,
+			"monsterTypes": monsterTypes,
 		},
 	}}
 
@@ -408,6 +426,7 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 	currentRoom := getInt(spec, "currentRoom")
 	bossHP := getInt(spec, "bossHP")
 	monsterHPRaw, _ := spec["monsterHP"].([]interface{})
+	monsterTypesRaw, _ := spec["monsterTypes"].([]interface{})
 
 	// Guard: reject if dungeon is over
 	allMonstersDead := true
@@ -923,6 +942,68 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 			}
 		}
 
+		// Archer special: any alive archer (index % 2 == 0, index >= 2) has 20% stun chance
+		// Only triggers if hero wasn't already poisoned this round and stun not already active
+		if aliveCount > 0 && stunTurns == 0 {
+			for i, v := range monsterHPRaw {
+				hp := sliceInt(v)
+				mtype := ""
+				if i < len(monsterTypesRaw) {
+					mtype, _ = monsterTypesRaw[i].(string)
+				}
+				if hp > 0 && mtype == "archer" {
+					if seededRoll(attackUID+fmt.Sprintf("-archer%d-stun", i), 100) < 20 {
+						resistRoll := seededRoll(attackUID+"-boots-resist-archer", 100)
+						if bootsBonus > 0 && resistRoll < bootsBonus {
+							effectNote += fmt.Sprintf(" [RESISTED archer stun! boots +%d%% resist]", bootsBonus)
+						} else {
+							stunTurns = 1
+							effectNote += " Archer fires! STUNNED! (1 turn)"
+						}
+						break
+					}
+				}
+			}
+		}
+
+		// Shaman special: any alive shaman (index % 2 == 1, index >= 3) has 30% chance to
+		// heal the first alive non-shaman monster for 10 HP (not exceeding max creation HP)
+		if aliveCount > 0 {
+			for i, v := range monsterHPRaw {
+				hp := sliceInt(v)
+				mtype := ""
+				if i < len(monsterTypesRaw) {
+					mtype, _ = monsterTypesRaw[i].(string)
+				}
+				if hp > 0 && mtype == "shaman" {
+					if seededRoll(attackUID+fmt.Sprintf("-shaman%d-heal", i), 100) < 30 {
+						// Find the first alive non-shaman monster to heal
+						for j, vj := range newMonsterHP {
+							hpj := sliceInt(vj)
+							mtypej := ""
+							if j < len(monsterTypesRaw) {
+								mtypej, _ = monsterTypesRaw[j].(string)
+							}
+							if hpj > 0 && mtypej != "shaman" {
+								// Heal by 10, but not exceeding original creation HP
+								maxHP := defaultHP[difficulty].monster
+								if modifier == "curse-fortitude" {
+									maxHP = maxHP * 3 / 2
+								}
+								healedHP := min64(hpj+10, maxHP)
+								if healedHP > hpj {
+									newMonsterHP[j] = healedHP
+									effectNote += fmt.Sprintf(" Shaman heals %s-%d for %d HP!", mtypej, j, healedHP-hpj)
+								}
+								break // healed the first eligible monster; done
+							}
+						}
+						break // only one shaman heals per round
+					}
+				}
+			}
+		}
+
 		heroAction := dotNote + fmt.Sprintf("Hero (%s) deals %d damage to %s (HP: %d -> %d)%s%s", heroClass, effectiveDamage, realTarget, oldHP, newHP, classNote, tauntNote)
 		patchSpec["heroHP"] = heroHP
 		patchSpec["monsterHP"] = newMonsterHP
@@ -1205,11 +1286,21 @@ func (h *Handler) processAction(ctx context.Context, ns, name, action string, cl
 		for i := range newMonsterHP {
 			newMonsterHP[i] = r2MonsterHP
 		}
+		// Room 2 monster types: troll(even), ghoul(odd) — no special classes in room 2
+		r2MonsterTypes := make([]interface{}, len(monsterHPRaw))
+		for i := range r2MonsterTypes {
+			if i%2 == 0 {
+				r2MonsterTypes[i] = "troll"
+			} else {
+				r2MonsterTypes[i] = "ghoul"
+			}
+		}
 		patchSpec["currentRoom"] = int64(2)
 		patchSpec["monsterHP"] = newMonsterHP
 		patchSpec["bossHP"] = r2BossHP
 		patchSpec["room2MonsterHP"] = newMonsterHP
 		patchSpec["room2BossHP"] = r2BossHP
+		patchSpec["monsterTypes"] = r2MonsterTypes
 		patchSpec["treasureOpened"] = int64(0)
 		patchSpec["doorUnlocked"] = int64(0)
 		patchSpec["lastHeroAction"] = "Entered Room 2! Stronger enemies await..."

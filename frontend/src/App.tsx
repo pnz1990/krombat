@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { DungeonSummary, DungeonCR, listDungeons, getDungeon, createDungeon, submitAttack, deleteDungeon, ApiError } from './api'
 import { useWebSocket, WSEvent } from './useWebSocket'
 
-import { Sprite, getMonsterSprite, SpriteAction, ItemSprite } from './Sprite'
+import { Sprite, getMonsterSprite, getMonsterName, SpriteAction, ItemSprite } from './Sprite'
 import { PixelIcon } from './PixelIcon'
 import {
   InsightCard, KroConceptModal, KroGlossary,
@@ -1515,7 +1515,8 @@ function DungeonView({ cr, prevCr, onBack, onAttack, events, k8sLog, showLoot, o
               const count = spec.monsterHP.length
               const state = hp > 0 ? 'alive' : 'dead'
               const mName = `${dungeonName}-monster-${idx}`
-              const mSprite = getMonsterSprite(idx, spec.currentRoom || 1)
+              const mSprite = getMonsterSprite(idx, spec.currentRoom || 1, spec.monsterTypes)
+              const mDisplayName = getMonsterName(idx, spec.currentRoom || 1, spec.monsterTypes)
               let mAction: SpriteAction = state === 'dead' ? 'dead' : 'idle'
               const inCombat = combatModal && (combatModal.phase === 'rolling' || combatModal.phase === 'resolved')
               if (inCombat && state === 'alive') mAction = 'attack'
@@ -1534,14 +1535,14 @@ function DungeonView({ cr, prevCr, onBack, onAttack, events, k8sLog, showLoot, o
                   style={{ left: `${cx}%`, top: `${cy}%` }}
                   role={state === 'alive' && !gameOver && !attackPhase ? 'button' : undefined}
                   tabIndex={state === 'alive' && !gameOver && !attackPhase ? 0 : undefined}
-                  aria-label={`${mSprite} · HP: ${hp}/${maxMonsterHP}${state === 'dead' ? ' (dead)' : ''}`}
+                  aria-label={`${mDisplayName} · HP: ${hp}/${maxMonsterHP}${state === 'dead' ? ' (dead)' : ''}`}
                   onKeyDown={state === 'alive' && !gameOver && !attackPhase ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onAttack(mName, 0) } } : undefined}>
                   {floatingDmg?.target === mName && <div className="floating-dmg" style={{ color: '#e94560' }}>{floatingDmg.amount}</div>}
                   <Sprite spriteType={mSprite} action={mAction} size={72} flip={!facingRight} />
                   <div className="arena-shadow" />
                   <div className="arena-hover-ui">
                     <div className="arena-hp-bar"><div className={`arena-hp-fill ${hp > maxMonsterHP * 0.6 ? 'high' : hp > maxMonsterHP * 0.3 ? 'mid' : 'low'}`} style={{ width: `${Math.min((hp / maxMonsterHP) * 100, 100)}%` }} /></div>
-                    <div className="arena-name">{mSprite} · {hp}/{maxMonsterHP}</div>
+                    <div className="arena-name">{mDisplayName} · {hp}/{maxMonsterHP}</div>
                     {state === 'alive' && !gameOver && !attackPhase && (
                       <div className="arena-actions">
                         <button className="btn btn-primary arena-atk-btn" onClick={() => onAttack(mName, 0)}>🎲 {status?.diceFormula || '2d12+6'}</button>
