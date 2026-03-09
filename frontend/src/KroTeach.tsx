@@ -8,7 +8,7 @@
  *  - KRO_STATUS_TIPS  : per-field tooltip copy for the status bar
  */
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -33,6 +33,7 @@ export type KroConceptId =
   | 'resourceGroup-api'
   | 'cel-has-macro'
   | 'ownerReferences'
+  | 'cel-playground'
 
 export interface KroConcept {
   id: KroConceptId
@@ -532,6 +533,33 @@ patch := map[string]interface{}{
 // manifests/rgds/dungeon-graph.yaml reacts automatically`,
     learnMore: 'backend/internal/handlers/handlers.go and dungeon-graph.yaml',
   },
+
+  'cel-playground': {
+    id: 'cel-playground',
+    title: 'CEL Playground — Live Expression Sandbox',
+    tagline: 'Type any CEL expression and evaluate it against your live dungeon spec.',
+    body: `The CEL Playground lets you type CEL expressions — the same language kro uses inside RGDs — and evaluate them live against your dungeon's real Kubernetes spec.
+
+This is how you become fluent in CEL: not by reading docs, but by experimenting. Try:
+- \`schema.spec.heroHP > 100\`
+- \`schema.spec.difficulty == "hard" ? "big dice" : "small dice"\`
+- \`schema.spec.bossHP * 2\`
+- \`schema.spec.heroClass == "mage" && schema.spec.heroMana > 0\`
+
+Every expression kro evaluates during reconcile is one of these patterns. The dungeon-graph RGD has 40+ CEL expressions. Now you can write your own.`,
+    snippet: `# In kro RGDs, expressions appear inside \${...} blocks:
+status:
+  bossState: >-
+    \${schema.spec.bossHP > 0
+      ? (schema.spec.livingMonsters == 0 ? 'ready' : 'pending')
+      : 'defeated'}
+
+# In the Playground you can type the inner expression directly:
+schema.spec.bossHP > 0
+  ? (schema.spec.livingMonsters == 0 ? "ready" : "pending")
+  : "defeated"`,
+    learnMore: 'manifests/rgds/dungeon-graph.yaml — any CEL expression in the status block',
+  },
 }
 
 // ─── Insight trigger mapping ──────────────────────────────────────────────────
@@ -667,7 +695,7 @@ const CONCEPT_ORDER: KroConceptId[] = [
   'forEach', 'includeWhen', 'readyWhen', 'status-aggregation',
   'seeded-random', 'secret-output', 'empty-rgd', 'spec-mutation',
   'externalRef', 'status-conditions', 'reconcile-loop',
-  'resourceGroup-api', 'cel-has-macro', 'ownerReferences',
+  'resourceGroup-api', 'cel-has-macro', 'ownerReferences', 'cel-playground',
 ]
 
 interface KroGlossaryProps {
@@ -1218,6 +1246,175 @@ export function KroOnboardingOverlay({ onDismiss }: { onDismiss: () => void }) {
           )}
         </div>
         <button className="kro-onboard-skip" onClick={handleDismiss}>Skip intro</button>
+      </div>
+    </div>
+  )
+}
+
+// ─── CEL Playground ──────────────────────────────────────────────────────────
+
+const CEL_EXAMPLES = [
+  { label: 'Hero HP check', expr: 'schema.spec.heroHP > 100' },
+  { label: 'Difficulty branch', expr: 'schema.spec.difficulty == "hard" ? "big dice" : "small dice"' },
+  { label: 'Mage mana', expr: 'schema.spec.heroClass == "mage" && schema.spec.heroMana > 0' },
+  { label: 'Boss state ternary', expr: 'schema.spec.bossHP > 0 ? (schema.spec.monsters == 0 ? "ready" : "pending") : "defeated"' },
+  { label: 'Damage × 1.3 (mage)', expr: 'schema.spec.heroClass == "mage" ? schema.spec.heroHP * 13 / 10 : schema.spec.heroHP' },
+  { label: 'Optional field', expr: 'self.spec.?modifier.orValue("none")' },
+  { label: 'String concat', expr: 'string(schema.spec.heroHP) + " / " + string(schema.spec.monsters)' },
+  { label: 'Room 2 check', expr: 'schema.spec.currentRoom == 2' },
+]
+
+export interface KroCelPlaygroundProps {
+  dungeonNs: string
+  dungeonName: string
+  onLearnConcept: (id: KroConceptId) => void
+  onClose: () => void
+}
+
+export function KroCelPlayground({ dungeonNs, dungeonName, onLearnConcept, onClose }: KroCelPlaygroundProps) {
+  const [expr, setExpr] = useState('schema.spec.heroHP > 100')
+  const [result, setResult] = useState<string | null>(null)
+  const [evalError, setEvalError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [history, setHistory] = useState<{ expr: string; result: string; isErr: boolean }[]>([])
+  const inputRef = useRef<HTMLTextAreaElement>(null)
+
+  const runEval = async (expression?: string) => {
+    const e = (expression ?? expr).trim()
+    if (!e) return
+    setLoading(true)
+    setResult(null)
+    setEvalError(null)
+    try {
+      const r = await fetch(`/api/v1/dungeons/${dungeonNs}/${dungeonName}/cel-eval`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ expr: e }),
+      })
+      const data = await r.json()
+      if (data.error) {
+        setEvalError(data.error)
+        setHistory(h => [{ expr: e, result: data.error, isErr: true }, ...h].slice(0, 20))
+      } else {
+        setResult(data.result)
+        setHistory(h => [{ expr: e, result: data.result, isErr: false }, ...h].slice(0, 20))
+      }
+    } catch (err) {
+      setEvalError('Network error — is the backend reachable?')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleExample = (e: string) => {
+    setExpr(e)
+    setResult(null)
+    setEvalError(null)
+    inputRef.current?.focus()
+  }
+
+  const handleKeyDown = (ev: React.KeyboardEvent) => {
+    if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) {
+      ev.preventDefault()
+      runEval()
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal kro-playground-modal" onClick={e => e.stopPropagation()}
+        role="dialog" aria-modal="true" aria-label="CEL Playground">
+        {/* Header */}
+        <div className="kro-playground-header">
+          <span className="kro-insight-badge">kro</span>
+          <span className="kro-playground-title">CEL Playground</span>
+          <span className="kro-playground-subtitle">Evaluate expressions against live dungeon spec</span>
+          <button className="modal-close" onClick={onClose} aria-label="Close playground">✕</button>
+        </div>
+
+        {/* Bindings context */}
+        <div className="kro-playground-context">
+          <span className="kro-playground-context-label">dungeon:</span>
+          <span className="kro-playground-context-value">{dungeonNs}/{dungeonName}</span>
+          <span className="kro-playground-context-hint"> — spec fields are live from Kubernetes</span>
+        </div>
+
+        <div className="kro-playground-body">
+          {/* Left: editor + examples */}
+          <div className="kro-playground-left">
+            <div className="kro-playground-editor-label">Expression <span className="kro-playground-hint">Ctrl+Enter to run</span></div>
+            <textarea
+              ref={inputRef}
+              className="kro-playground-input"
+              value={expr}
+              onChange={e => setExpr(e.target.value)}
+              onKeyDown={handleKeyDown}
+              rows={4}
+              spellCheck={false}
+              aria-label="CEL expression input"
+              placeholder="schema.spec.heroHP > 100"
+            />
+            <button
+              className="btn btn-primary kro-playground-run"
+              onClick={() => runEval()}
+              disabled={loading || !expr.trim()}
+              aria-label="Evaluate expression"
+            >
+              {loading ? 'Evaluating...' : '▶ Run'}
+            </button>
+
+            {/* Result */}
+            {(result !== null || evalError !== null) && (
+              <div className={`kro-playground-result ${evalError ? 'kro-playground-result-err' : 'kro-playground-result-ok'}`}
+                aria-label="evaluation result">
+                <span className="kro-playground-result-label">{evalError ? 'error' : 'result'}</span>
+                <span className="kro-playground-result-val">{evalError ?? result}</span>
+              </div>
+            )}
+
+            {/* Examples */}
+            <div className="kro-playground-examples-label">Examples</div>
+            <div className="kro-playground-examples">
+              {CEL_EXAMPLES.map(ex => (
+                <button key={ex.label} className="kro-playground-example-btn"
+                  onClick={() => handleExample(ex.expr)}
+                  title={ex.expr}>
+                  {ex.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Right: history */}
+          <div className="kro-playground-right">
+            <div className="kro-playground-history-label">History</div>
+            {history.length === 0 && (
+              <div className="kro-playground-history-empty">Run an expression to see results here</div>
+            )}
+            <div className="kro-playground-history">
+              {history.map((h, i) => (
+                <div key={i} className={`kro-playground-history-item${h.isErr ? ' kro-playground-history-err' : ''}`}
+                  onClick={() => { setExpr(h.expr); setResult(null); setEvalError(null) }}
+                  title="Click to restore" role="button" tabIndex={0}
+                  onKeyDown={e => e.key === 'Enter' && setExpr(h.expr)}>
+                  <div className="kro-playground-history-expr">{h.expr}</div>
+                  <div className="kro-playground-history-result">{h.result}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="kro-playground-footer">
+          <button className="k8s-annotation-learn" onClick={() => onLearnConcept('cel-playground')}>
+            Learn: CEL Playground concept →
+          </button>
+          <div style={{ flex: 1 }} />
+          <div className="kro-playground-supported">
+            Supported: field access · arithmetic · comparisons · ternary · string() · int() · size()
+          </div>
+        </div>
       </div>
     </div>
   )

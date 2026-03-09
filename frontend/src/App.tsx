@@ -8,7 +8,7 @@ import { PixelIcon } from './PixelIcon'
 import {
   InsightCard, KroConceptModal, KroGlossary,
   useKroGlossary, getInsightForEvent, kroAnnotate,
-  KRO_STATUS_TIPS, CelTrace, KroExpertCertificate, KroOnboardingOverlay, KRO_CONCEPTS, type CelTraceData,
+  KRO_STATUS_TIPS, CelTrace, KroExpertCertificate, KroOnboardingOverlay, KRO_CONCEPTS, KroCelPlayground, type CelTraceData,
   type InsightTrigger, type KroConceptId,
 } from './KroTeach'
 import { KroGraphPanel } from './KroGraph'
@@ -721,15 +721,18 @@ function FlyingBat({ startX, startY, endX, endY, dur, onDone }: { startX: number
       style={{ left: `${pos.x}%`, top: `${pos.y}%`, transform: `translate(-50%,-50%) scaleX(${endX > startX ? 1 : -1})` }} />
   )
 }
-function EventLogTabs({ events, k8sLog, kroUnlocked, onViewKroConcept }: {
+function EventLogTabs({ events, k8sLog, kroUnlocked, onViewKroConcept, dungeonNs, dungeonName }: {
   events: WSEvent[]
   k8sLog: { ts: string; cmd: string; res: string; yaml?: string }[]
   kroUnlocked: Set<KroConceptId>
   onViewKroConcept: (id: KroConceptId) => void
+  dungeonNs?: string
+  dungeonName?: string
 }) {
   const [tab, setTab] = useState<'game' | 'k8s' | 'kro'>('game')
   const [yamlModal, setYamlModal] = useState<{ yaml: string; cmd: string } | null>(null)
   const [kroConceptModal, setKroConceptModal] = useState<KroConceptId | null>(null)
+  const [showPlayground, setShowPlayground] = useState(false)
   return (
     <div style={{ marginTop: 16 }}>
       <div className="log-tabs">
@@ -770,6 +773,16 @@ function EventLogTabs({ events, k8sLog, kroUnlocked, onViewKroConcept }: {
         <KroConceptModal conceptId={kroConceptModal} onClose={() => setKroConceptModal(null)} />
       )}
 
+      {/* CEL Playground modal */}
+      {showPlayground && dungeonNs && dungeonName && (
+        <KroCelPlayground
+          dungeonNs={dungeonNs}
+          dungeonName={dungeonName}
+          onLearnConcept={id => { setKroConceptModal(id); setShowPlayground(false) }}
+          onClose={() => setShowPlayground(false)}
+        />
+      )}
+
       {tab === 'game' ? (
         <div className="event-log" aria-live="polite" aria-atomic="false" aria-label="Game event log">
           {events.length === 0 && <div className="event-entry">Waiting for events...</div>}
@@ -792,7 +805,20 @@ function EventLogTabs({ events, k8sLog, kroUnlocked, onViewKroConcept }: {
           ))}
         </div>
       ) : (
-        <KroGlossary unlocked={kroUnlocked} onViewConcept={id => setKroConceptModal(id)} />
+        <div>
+          {dungeonNs && dungeonName && (
+            <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '4px 0 0' }}>
+              <button
+                className="kro-glossary-playground-btn"
+                onClick={() => setShowPlayground(true)}
+                aria-label="Open CEL Playground"
+              >
+                CEL Playground →
+              </button>
+            </div>
+          )}
+          <KroGlossary unlocked={kroUnlocked} onViewConcept={id => setKroConceptModal(id)} />
+        </div>
       )}
     </div>
   )
@@ -1659,7 +1685,8 @@ function DungeonView({ cr, prevCr, onBack, onAttack, events, k8sLog, showLoot, o
 
       <KroGraphPanel cr={cr} prevCr={prevCr} reconciling={reconciling} onViewConcept={onViewKroConcept} />
 
-      <EventLogTabs events={events} k8sLog={k8sLog} kroUnlocked={kroUnlocked} onViewKroConcept={onViewKroConcept} />
+      <EventLogTabs events={events} k8sLog={k8sLog} kroUnlocked={kroUnlocked} onViewKroConcept={onViewKroConcept}
+        dungeonNs={cr.metadata.namespace} dungeonName={cr.metadata.name} />
     </div>
   )
 }
