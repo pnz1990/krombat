@@ -21,6 +21,47 @@ const ICO = {
   heart: '♥', gem: '♦', sword: '/', armor: '□', potion: '○',
 } as const
 
+// ─── Achievement System ───────────────────────────────────────────────────────
+
+function computeAchievements(spec: any, maxHeroHP: number) {
+  const turns = spec.attackSeq ?? 0
+  const heroHP = spec.heroHP ?? 0
+  const heroClass = spec.heroClass ?? 'warrior'
+  const difficulty = spec.difficulty ?? 'normal'
+  const weaponBonus = spec.weaponBonus ?? 0
+  const equippedCount = [spec.weaponBonus, spec.armorBonus, spec.shieldBonus, spec.helmetBonus, spec.pantsBonus, spec.bootsBonus, spec.ringBonus, spec.amuletBonus].filter(v => (v ?? 0) > 0).length
+
+  return [
+    { id: 'speedrun', name: 'Speedrunner', icon: '⚡', earned: turns <= 30, desc: `Won in ${turns} turns (≤30 needed)` },
+    { id: 'deathless', name: 'Untouchable', icon: '🛡', earned: heroHP >= Math.floor(maxHeroHP * 0.8), desc: `Finished with ${heroHP}/${maxHeroHP} HP (80% needed)` },
+    { id: 'pacifist', name: 'Potionist', icon: '🧪', earned: weaponBonus === 0, desc: 'Won without equipping a weapon' },
+    { id: 'warrior-win', name: 'War Chief', icon: '⚔', earned: heroClass === 'warrior', desc: 'Won as Warrior' },
+    { id: 'mage-win', name: 'Archmage', icon: '✨', earned: heroClass === 'mage', desc: 'Won as Mage' },
+    { id: 'rogue-win', name: 'Shadow', icon: '🗡', earned: heroClass === 'rogue', desc: 'Won as Rogue' },
+    { id: 'hard-win', name: 'Nightmare', icon: '💀', earned: difficulty === 'hard', desc: 'Won on Hard difficulty' },
+    { id: 'collector', name: 'Hoarder', icon: '🎒', earned: equippedCount >= 5, desc: `Won with ${equippedCount}/5 items equipped` },
+  ]
+}
+
+function AchievementBadges({ achievements }: { achievements: ReturnType<typeof computeAchievements> }) {
+  const earned = achievements.filter(a => a.earned)
+  if (earned.length === 0) return null
+  return (
+    <div className="achievement-badges" aria-label="achievements">
+      <div className="achievement-badges-label">Achievements</div>
+      <div className="achievement-badges-row">
+        {achievements.map(a => (
+          <div key={a.id} className={`achievement-badge${a.earned ? ' earned' : ''}`} title={a.desc}
+            aria-label={`achievement: ${a.name}${a.earned ? ' earned' : ''}`}>
+            <span className="achievement-icon">{a.icon}</span>
+            <span className="achievement-name">{a.name}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function Tooltip({ text, children }: { text: string; children: React.ReactNode }) {
   const [show, setShow] = useState(false)
   return (
@@ -1266,6 +1307,7 @@ function DungeonView({ cr, prevCr, onBack, onAttack, events, k8sLog, showLoot, o
             {spec.ringBonus ? <span>💍 Ring +{spec.ringBonus}/turn</span> : null}
             {spec.amuletBonus ? <span>📿 Amulet +{spec.amuletBonus}%dmg</span> : null}
           </div>
+          <AchievementBadges achievements={computeAchievements(spec, spec.heroClass === 'mage' ? 120 : spec.heroClass === 'rogue' ? 150 : 200)} />
           <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 8 }}>
             <button className="btn btn-gold" style={{ fontSize: 7 }} onClick={() => setShowCertificate(true)}>
               View kro Certificate →
