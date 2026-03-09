@@ -87,8 +87,39 @@ export function Sprite({ spriteType, action, size = 64, flip = false }: SpritePr
   )
 }
 
-// Assign a deterministic monster sprite based on index
-export function getMonsterSprite(index: number, room: number = 1): string {
+// Assign a deterministic monster sprite based on index and optional type array.
+// Archer maps to 'goblin' sprite (ranged variant), Shaman maps to 'skeleton' sprite (magic variant).
+// Falls back to index-based assignment for old dungeons without monsterTypes.
+export function getMonsterSprite(index: number, room: number = 1, monsterTypes?: string[]): string {
+  const mtype = monsterTypes?.[index]
+  if (mtype) {
+    switch (mtype) {
+      case 'goblin': return 'goblin'
+      case 'skeleton': return 'skeleton'
+      case 'archer': return 'goblin'   // same sprite, different behavior
+      case 'shaman': return 'skeleton' // same sprite, different behavior
+      case 'troll': return 'troll'
+      case 'ghoul': return 'ghoul'
+      default: break
+    }
+  }
+  if (room === 2) return index % 2 === 0 ? 'troll' : 'ghoul'
+  return index % 2 === 0 ? 'goblin' : 'skeleton'
+}
+
+// Get the display name for a monster (shown in arena label)
+export function getMonsterName(index: number, room: number = 1, monsterTypes?: string[]): string {
+  const mtype = monsterTypes?.[index]
+  if (mtype) {
+    switch (mtype) {
+      case 'goblin': return 'Goblin'
+      case 'skeleton': return 'Skeleton'
+      case 'archer': return 'Archer'
+      case 'shaman': return 'Shaman'
+      case 'troll': return 'Troll'
+      case 'ghoul': return 'Ghoul'
+    }
+  }
   if (room === 2) return index % 2 === 0 ? 'troll' : 'ghoul'
   return index % 2 === 0 ? 'goblin' : 'skeleton'
 }

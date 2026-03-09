@@ -30,6 +30,7 @@ export interface DungeonCR {
     poisonTurns?: number; burnTurns?: number; stunTurns?: number
     treasureOpened?: number
     currentRoom?: number; doorUnlocked?: number; room2BossHP?: number; room2MonsterHP?: number[]
+    monsterTypes?: string[]
     lastHeroAction?: string; lastEnemyAction?: string; lastCombatLog?: string; lastLootDrop?: string
     attackSeq?: number; actionSeq?: number
   }
