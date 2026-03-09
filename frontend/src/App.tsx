@@ -1060,10 +1060,72 @@ function CheatModal({ onClose, onAction }: { onClose: () => void; onAction: (tar
           </div>
         ))}
         <button className="btn btn-gold" style={{ marginTop: 8 }} onClick={onClose}>Close</button>
+       </div>
+    </div>
+  )
+}
+
+// ── DungeonMiniMap ────────────────────────────────────────────────────────────
+// Shows a compact 2-room progress strip: Room 1 → Room 2
+// Room states: 'current' (gold) | 'cleared' (green) | 'locked' (gray) | 'active-boss' (red pulse)
+function DungeonMiniMap({ spec }: { spec: any }) {
+  const currentRoom = spec.currentRoom || 1
+  const bossHP = spec.bossHP ?? 1
+  const room2BossHP = spec.room2BossHP ?? 1
+  const monsterHP: number[] = spec.monsterHP || []
+  const room2MonsterHP: number[] = spec.room2MonsterHP || []
+  const treasureOpened = spec.treasureOpened ?? 0
+  const doorUnlocked = spec.doorUnlocked ?? 0
+  const allDead1 = monsterHP.length > 0 && monsterHP.every((h: number) => h <= 0)
+  const allDead2 = room2MonsterHP.length > 0 && room2MonsterHP.every((h: number) => h <= 0)
+  const heroHP = spec.heroHP ?? 1
+
+  // Room 1 state
+  let r1State: 'current' | 'cleared' | 'boss-active' = 'current'
+  if (currentRoom === 1 && allDead1 && bossHP <= 0 && heroHP > 0) r1State = 'cleared'
+  else if (currentRoom === 1 && allDead1 && bossHP > 0) r1State = 'boss-active'
+
+  // Room 2 state
+  let r2State: 'locked' | 'current' | 'cleared' | 'boss-active' = 'locked'
+  if (currentRoom === 2) {
+    if (allDead2 && room2BossHP <= 0 && heroHP > 0) r2State = 'cleared'
+    else if (allDead2 && room2BossHP > 0) r2State = 'boss-active'
+    else r2State = 'current'
+  } else if (doorUnlocked > 0) {
+    r2State = 'current'
+  }
+
+  const stateColor = (s: string) => {
+    if (s === 'cleared') return '#00ff41'
+    if (s === 'current') return '#f5c518'
+    if (s === 'boss-active') return '#e94560'
+    return '#333'
+  }
+  const stateLabel = (s: string, n: number) => {
+    if (s === 'cleared') return `R${n} ✓`
+    if (s === 'boss-active') return `R${n} ⚔`
+    if (s === 'locked') return `R${n} 🔒`
+    return `R${n}`
+  }
+
+  return (
+    <div className="dungeon-minimap" aria-label="Dungeon progress map">
+      <div className="minimap-room" style={{ borderColor: stateColor(r1State), color: stateColor(r1State) }}>
+        {stateLabel(r1State, 1)}
+        {r1State === 'cleared' && treasureOpened === 0 && (
+          <span className="minimap-icon" title="Treasure available">💎</span>
+        )}
+      </div>
+      <div className="minimap-connector" style={{ background: r2State !== 'locked' ? '#f5c518' : '#333' }}>
+        {r2State !== 'locked' ? '→' : '⋯'}
+      </div>
+      <div className="minimap-room" style={{ borderColor: stateColor(r2State), color: stateColor(r2State) }}>
+        {stateLabel(r2State, 2)}
       </div>
     </div>
   )
 }
+
 function HelpModal({ onClose, onCheat }: { onClose: () => void; onCheat: () => void }) {
   const [page, setPage] = useState(0)
   const bufRef = useRef('')
@@ -1331,13 +1393,16 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
 
   return (
     <div>
-      <div className="dungeon-header">
-        <h2><PixelIcon name="sword" size={14} /> {dungeonName}</h2>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <button className="help-btn" aria-label="Help" onClick={onToggleHelp}>?</button>
-          <button className="back-btn" onClick={onBack}>← Back</button>
-        </div>
-      </div>
+       <div className="dungeon-header">
+         <h2><PixelIcon name="sword" size={14} /> {dungeonName}{spec.runCount != null && spec.runCount > 0 ? <span className="ng-plus-badge" style={{ fontSize: '6px', marginLeft: 6 }}>⭐NG+{spec.runCount}</span> : null}</h2>
+         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+           <button className="help-btn" aria-label="Help" onClick={onToggleHelp}>?</button>
+           <button className="back-btn" onClick={onBack}>← Back</button>
+         </div>
+       </div>
+
+       {/* ── Mini-map ─────────────────────────────────────────────────── */}
+       <DungeonMiniMap spec={spec} />
 
       {showHelp && <HelpModal onClose={onToggleHelp} onCheat={onToggleCheat} />}
 
