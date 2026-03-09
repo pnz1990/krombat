@@ -197,9 +197,13 @@ export default function App() {
               if (d.spec.modifier && d.spec.modifier !== 'none') triggerInsight('modifier-present')
               // Teach resource chaining once status is populated (Hero CR → dungeon status)
               if (d.status?.maxHeroHP) triggerInsight('resource-chaining')
-              // Teach status.conditions when kro reports an error/not-ready condition
+              // Teach status.conditions when kro reports a genuine (non-transient) error condition
               const conditions = (d.status?.conditions as any[]) || []
-              if (conditions.some((c: any) => c.type === 'Error' || (c.type === 'Ready' && c.status === 'False'))) {
+              const TRANSIENT = ['cluster mutated', 'reconciliation failed', 'NotReady', 'not ready']
+              if (conditions.some((c: any) =>
+                (c.type === 'Error' || (c.type === 'Ready' && c.status === 'False')) &&
+                c.message && !TRANSIENT.some(t => c.message.includes(t))
+              )) {
                 triggerInsight('status-conditions')
               }
             }
@@ -1365,11 +1369,12 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
     const raw = errCond?.message ?? falseCond?.message ?? null
     if (!raw) return null
 
-    // Map known transient kro messages to plain English
-    if (raw.includes('cluster mutated') || raw.includes('reconciliation failed'))
-      return 'Game engine is syncing — actions may be delayed a few seconds.'
-    if (raw.includes('NotReady') || raw.includes('not ready'))
-      return 'Dungeon is still loading, please wait…'
+    // Suppress known-transient kro reconcile messages — these fire on every
+    // reconcile cycle and are not actionable. Only surface genuinely unexpected
+    // condition messages that the user could act on.
+    if (raw.includes('cluster mutated') || raw.includes('reconciliation failed') ||
+        raw.includes('NotReady') || raw.includes('not ready'))
+      return null
     return raw
   })()
 
