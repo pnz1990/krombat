@@ -735,8 +735,10 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 
 	// Stun
 	isStunned := false
+	wasStunnedThisTurn := false // guard: don't reapply stun the same turn it was consumed
 	if stunTurns > 0 {
 		isStunned = true
+		wasStunnedThisTurn = true
 		stunTurns--
 		dotNote += "STUNNED! "
 	}
@@ -993,7 +995,7 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 			resisted := bootsBonus > 0 && resistRoll < bootsBonus
 			if currentRoom == 2 {
 				// Bat-boss: poison 30%, stun 15%
-				if effectRoll < 15 && stunTurns == 0 {
+				if effectRoll < 15 && stunTurns == 0 && !wasStunnedThisTurn {
 					if resisted {
 						effectNote = fmt.Sprintf(" [RESISTED stun! boots +%d%% resist]", bootsBonus)
 					} else {
@@ -1010,7 +1012,7 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 				}
 			} else {
 				// Dragon: stun 15%, burn 25%
-				if effectRoll < 15 && stunTurns == 0 {
+				if effectRoll < 15 && stunTurns == 0 && !wasStunnedThisTurn {
 					if resisted {
 						effectNote = fmt.Sprintf(" [RESISTED stun! boots +%d%% resist]", bootsBonus)
 					} else {
@@ -1181,7 +1183,7 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 
 		// Archer special: any alive archer (index % 2 == 0, index >= 2) has 20% stun chance
 		// Only triggers if hero wasn't already poisoned this round and stun not already active
-		if aliveCount > 0 && stunTurns == 0 {
+		if aliveCount > 0 && stunTurns == 0 && !wasStunnedThisTurn {
 			for i, v := range monsterHPRaw {
 				hp := sliceInt(v)
 				mtype := ""
