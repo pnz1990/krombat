@@ -389,7 +389,7 @@ resources:
 - \`type: Ready\` — the resource graph is fully reconciled and all readyWhen checks passed
 - \`type: Error\` — kro hit a problem (CEL evaluation error, missing dependency, webhook timeout)
 
-You just saw a kro condition in the engine warning banner. This is the same mechanism Kubernetes uses for Pods (\`PodReady\`, \`ContainersReady\`) and Deployments (\`Available\`, \`Progressing\`). kro follows the same contract.`,
+This is the same mechanism Kubernetes uses for Pods (\`PodReady\`, \`ContainersReady\`) and Deployments (\`Available\`, \`Progressing\`). kro follows the same contract. You can inspect your dungeon's conditions directly: \`kubectl get dungeon <name> -o yaml\`.`,
     snippet: `# kubectl get dungeon <name> -o yaml
 status:
   conditions:
