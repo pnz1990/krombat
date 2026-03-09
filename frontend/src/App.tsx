@@ -616,10 +616,10 @@ export default function App() {
         <>
           {showOnboarding && <KroOnboardingOverlay onDismiss={() => setShowOnboarding(false)} />}
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 4 }}>
-            <div style={{ position: 'relative' }}>
+            <div style={{ position: 'relative' }} onMouseLeave={() => setShowHamburger(false)}>
               <button className="hamburger-btn" aria-label="Menu" onClick={() => setShowHamburger(v => !v)}>☰</button>
               {showHamburger && (
-                <div className="hamburger-menu" onMouseLeave={() => setShowHamburger(false)}>
+                <div className="hamburger-menu">
                   <button className="hamburger-item" onClick={() => { setShowHamburger(false); handleOpenLeaderboard() }}>Leaderboard</button>
                 </div>
               )}
@@ -1415,15 +1415,15 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
          <h2><PixelIcon name="sword" size={14} /> {dungeonName}{spec.runCount != null && spec.runCount > 0 ? <span className="ng-plus-badge" style={{ fontSize: '6px', marginLeft: 6 }}>⭐NG+{spec.runCount}</span> : null}</h2>
          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
            <button className="help-btn" aria-label="Help" onClick={onToggleHelp}>?</button>
-           <div style={{ position: 'relative' }}>
-             <button className="hamburger-btn" aria-label="Menu" onClick={() => setShowDungeonHamburger(v => !v)}>☰</button>
-             {showDungeonHamburger && (
-               <div className="hamburger-menu" onMouseLeave={() => setShowDungeonHamburger(false)}>
-                 <button className="hamburger-item" onClick={() => { setShowDungeonHamburger(false); onOpenLeaderboard() }}>Leaderboard</button>
-                 <button className="hamburger-item" onClick={() => { setShowDungeonHamburger(false); setShowPlayground(true) }}>CEL Playground</button>
-               </div>
-             )}
-           </div>
+            <div style={{ position: 'relative' }} onMouseLeave={() => setShowDungeonHamburger(false)}>
+              <button className="hamburger-btn" aria-label="Menu" onClick={() => setShowDungeonHamburger(v => !v)}>☰</button>
+              {showDungeonHamburger && (
+                <div className="hamburger-menu">
+                  <button className="hamburger-item" onClick={() => { setShowDungeonHamburger(false); onOpenLeaderboard() }}>Leaderboard</button>
+                  <button className="hamburger-item" onClick={() => { setShowDungeonHamburger(false); setShowPlayground(true) }}>CEL Playground</button>
+                </div>
+              )}
+            </div>
            <button className="back-btn" onClick={onBack}>← Back</button>
          </div>
        </div>
