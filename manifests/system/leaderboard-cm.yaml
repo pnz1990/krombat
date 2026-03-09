@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: krombat-leaderboard
+  namespace: rpg-system
+  labels:
+    app: krombat
+    component: leaderboard
+data: {}

@@ -12,6 +12,19 @@ function ok(msg)   { console.log(`  ✅ ${msg}`); passed++; }
 function fail(msg) { console.log(`  ❌ ${msg}`); failed++; }
 function warn(msg) { console.log(`  ⚠️  ${msg}`); warnings++; }
 
+async function openLeaderboardViaHamburger(page) {
+  const hamBtn = page.locator('button.hamburger-btn[aria-label="Menu"]');
+  await hamBtn.waitFor({ timeout: TIMEOUT }).catch(() => {});
+  if (await hamBtn.count() === 0) return false;
+  await hamBtn.click();
+  await page.waitForTimeout(300);
+  const lbItem = page.locator('button.hamburger-item:has-text("Leaderboard")');
+  if (await lbItem.count() === 0) return false;
+  await lbItem.click();
+  await page.waitForTimeout(1000);
+  return (await page.locator('.leaderboard-panel').count()) > 0;
+}
+
 async function run() {
   console.log('Journey 20: Leaderboard\n');
   const browser = await chromium.launch({ headless: true });
@@ -24,6 +37,13 @@ async function run() {
   try {
     await page.goto(BASE_URL, { timeout: TIMEOUT });
     await page.waitForSelector('input[placeholder="my-dungeon"]', { timeout: TIMEOUT });
+
+    // Dismiss onboarding overlay if present — it intercepts pointer events in fresh browser sessions
+    const skipBtn = page.locator('button.kro-onboard-skip');
+    if (await skipBtn.count() > 0) {
+      await skipBtn.click();
+      await page.waitForTimeout(400);
+    }
 
     // ── Leaderboard accessible via hamburger menu on home screen ──────────────
     console.log('\n  [Leaderboard via hamburger menu]');
@@ -81,29 +101,24 @@ async function run() {
       await page.waitForTimeout(2000);
     }
 
+    // Accept the browser confirm() dialog that appears on deletion
+    page.once('dialog', d => d.accept());
+
     // Delete the dungeon (this triggers leaderboard recording in the backend)
     const deleted = await deleteDungeon(page, dName);
-    deleted ? ok(`Dungeon "${dName}" deleted`) : warn(`Could not delete dungeon "${dName}" via UI`);
-    await page.waitForTimeout(3000); // Give backend time to record
+    deleted ? ok(`Dungeon "${dName}" deleted`) : fail(`Could not delete dungeon "${dName}" via UI`);
+    await page.waitForTimeout(4000); // Give backend time to record
 
-    // ── Open leaderboard again and check for the entry ────────────────────────
+    // ── Open leaderboard again via hamburger and check for the entry ──────────
     console.log('\n  [Leaderboard shows deleted dungeon entry]');
-    const lbBtn2 = page.locator('button.leaderboard-btn');
-    await lbBtn2.waitFor({ timeout: TIMEOUT }).catch(() => {});
-    if (await lbBtn2.count() > 0) {
-      await lbBtn2.click();
-      await page.waitForTimeout(2000);
-    }
+    const panelOpened = await openLeaderboardViaHamburger(page);
+    panelOpened ? ok('Leaderboard panel opened via hamburger after deletion') : fail('Leaderboard panel not found after deletion');
 
     const panel2 = page.locator('.leaderboard-panel');
-    await panel2.waitFor({ timeout: TIMEOUT }).catch(() => {});
-    (await panel2.count() > 0) ? ok('Leaderboard panel opened after deletion') : fail('Leaderboard panel not found after deletion');
-
     const panelText = await panel2.textContent().catch(() => '');
 
-    // Either shows our dungeon OR shows "no runs yet" (first-time or RBAC issue)
     if (panelText.includes(dName)) {
-      ok(`Leaderboard contains entry for "${dName}"`)
+      ok(`Leaderboard contains entry for "${dName}"`);
 
       // Check table columns present
       const table = page.locator('.leaderboard-table');
@@ -121,10 +136,8 @@ async function run() {
         rowText.includes('warrior') || rowText.includes('⚔') ? ok('Hero class shown in leaderboard row') : warn('Hero class not in row text');
         rowText.includes('easy') ? ok('Difficulty shown in leaderboard row') : warn('Difficulty not in row text');
       }
-    } else if (panelText.includes('No runs') || panelText.includes('no runs')) {
-      warn(`Leaderboard shows "no runs" — may be RBAC issue or empty ConfigMap (first run). Entry for "${dName}" not found.`);
     } else {
-      warn(`Leaderboard panel text does not contain "${dName}" — may be loading or RBAC issue`);
+      fail(`Leaderboard does not contain entry for "${dName}" — leaderboard write path is broken`);
     }
 
     // ── ConfigMap footer note visible ────────────────────────────────────────
@@ -151,6 +164,7 @@ async function run() {
     console.error(err);
   } finally {
     // Cleanup: try to delete test dungeon if it still exists
+    page.once('dialog', d => d.accept());
     await deleteDungeon(page, dName).catch(() => {});
     await browser.close();
     console.log(`\n  Passed: ${passed}  Failed: ${failed}  Warnings: ${warnings}`);
