@@ -459,6 +459,7 @@ func (h *Handler) recordLeaderboard(spec map[string]interface{}, dungeonName str
 	existing, err := cmClient.Get(ctx, leaderboardCMName, metav1.GetOptions{})
 	if err != nil {
 		// Create new ConfigMap
+		keyTs := time.Now().UTC().Format("20060102-150405")
 		newCM := &unstructured.Unstructured{Object: map[string]interface{}{
 			"apiVersion": "v1",
 			"kind":       "ConfigMap",
@@ -467,7 +468,7 @@ func (h *Handler) recordLeaderboard(spec map[string]interface{}, dungeonName str
 				"namespace": leaderboardNamespace,
 			},
 			"data": map[string]interface{}{
-				entry.Timestamp + "-" + dungeonName: string(entryJSON),
+				keyTs + "-" + dungeonName: string(entryJSON),
 			},
 		}}
 		if _, createErr := cmClient.Create(ctx, newCM, metav1.CreateOptions{}); createErr != nil {
@@ -494,7 +495,10 @@ func (h *Handler) recordLeaderboard(spec map[string]interface{}, dungeonName str
 		delete(data, oldest)
 	}
 
-	key := entry.Timestamp + "-" + dungeonName
+	// ConfigMap keys must match [-._a-zA-Z0-9]+; RFC3339 timestamps contain colons.
+	// Use a compact sortable format instead: "20060102-150405-<name>".
+	keyTs := time.Now().UTC().Format("20060102-150405")
+	key := keyTs + "-" + dungeonName
 	data[key] = string(entryJSON)
 
 	patch := map[string]interface{}{
