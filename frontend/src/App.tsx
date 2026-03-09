@@ -1343,9 +1343,7 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
     }
     return 'phase1'
   })()
-  // During room 2 transition, bossHP=0 is stale from room 1 — not a real victory
-  const inRoomTransition = (spec.currentRoom || 1) === 2 && spec.bossHP <= 0 && allMonstersDead && (spec.room2BossHP || 0) > 0 && (spec.room2MonsterHP?.length ?? 0) > 0
-  const gameOver = isDefeated || (!inRoomTransition && spec.bossHP <= 0 && allMonstersDead)
+  const gameOver = isDefeated || (spec.bossHP <= 0 && allMonstersDead)
   const isVictory = gameOver && !isDefeated && (spec.currentRoom || 1) === 2
   const [showCertificate, setShowCertificate] = useState(false)
   const [showDungeonHamburger, setShowDungeonHamburger] = useState(false)
