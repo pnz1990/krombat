@@ -364,7 +364,66 @@ print('monsterTypes:', mt)
   || fail "monsterTypes field missing or incorrect in dungeon spec"
 kubectl delete dungeon "$MT_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
 
-# --- Summary ---
+# --- Test 22: mana potion rejected for non-Mage hero ---
+log "Test 22: mana potion rejected for warrior"
+MANA_DUNGEON="api-test-mana-$(date +%s)"
+curl -s -X POST "$BASE/api/v1/dungeons" \
+  -H "Content-Type: application/json" \
+  -d "{\"name\":\"$MANA_DUNGEON\",\"monsters\":1,\"difficulty\":\"easy\",\"heroClass\":\"warrior\"}" -o /dev/null
+sleep 15
+# Inject a manapotion-common into the warrior's inventory via kubectl patch
+kubectl patch dungeon "$MANA_DUNGEON" --type merge -p '{"spec":{"inventory":"manapotion-common"}}' 2>/dev/null || true
+sleep 3
+MP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeons/default/$MANA_DUNGEON/action" \
+  -H "Content-Type: application/json" \
+  -d '{"target":"use-manapotion-common"}')
+[ "$MP_CODE" = "400" ] && pass "Mana potion rejected for warrior -> 400" || fail "Mana potion warrior -> $MP_CODE (expected 400)"
+kubectl delete dungeon "$MANA_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
+
+# --- Test 23: open-treasure rejected before boss is defeated ---
+log "Test 23: open-treasure rejected when boss alive"
+TR_DUNGEON="api-test-treasure-$(date +%s)"
+curl -s -X POST "$BASE/api/v1/dungeons" \
+  -H "Content-Type: application/json" \
+  -d "{\"name\":\"$TR_DUNGEON\",\"monsters\":1,\"difficulty\":\"easy\",\"heroClass\":\"warrior\"}" -o /dev/null
+sleep 15
+TR_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeons/default/$TR_DUNGEON/action" \
+  -H "Content-Type: application/json" \
+  -d '{"target":"open-treasure"}')
+[ "$TR_CODE" = "400" ] && pass "open-treasure rejected when boss alive -> 400" || fail "open-treasure -> $TR_CODE (expected 400)"
+kubectl delete dungeon "$TR_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
+
+# --- Test 24: unlock-door rejected before treasure opened ---
+log "Test 24: unlock-door rejected before treasure opened"
+DOOR_DUNGEON="api-test-door-$(date +%s)"
+curl -s -X POST "$BASE/api/v1/dungeons" \
+  -H "Content-Type: application/json" \
+  -d "{\"name\":\"$DOOR_DUNGEON\",\"monsters\":1,\"difficulty\":\"easy\",\"heroClass\":\"warrior\"}" -o /dev/null
+sleep 15
+DOOR_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeons/default/$DOOR_DUNGEON/action" \
+  -H "Content-Type: application/json" \
+  -d '{"target":"unlock-door"}')
+[ "$DOOR_CODE" = "400" ] && pass "unlock-door rejected before treasure opened -> 400" || fail "unlock-door -> $DOOR_CODE (expected 400)"
+kubectl delete dungeon "$DOOR_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
+
+# --- Test 25: NG+ boots carry-over ---
+log "Test 25: NG+ boots carry-over"
+BOOTS_DUNGEON="api-test-boots-$(date +%s)"
+BR=$(curl -s -w "\n%{http_code}" -X POST "$BASE/api/v1/dungeons" \
+  -H "Content-Type: application/json" \
+  -d "{\"name\":\"$BOOTS_DUNGEON\",\"monsters\":1,\"difficulty\":\"easy\",\"heroClass\":\"warrior\",\"runCount\":1,\"bootsBonus\":20}")
+BR_CODE=$(echo "$BR" | tail -1)
+[ "$BR_CODE" = "201" ] && pass "POST /dungeons with bootsBonus=20 -> 201" || fail "NG+ boots dungeon creation -> $BR_CODE"
+sleep 15
+BOOTS_SPEC=$(curl -s "$BASE/api/v1/dungeons/default/$BOOTS_DUNGEON")
+echo "$BOOTS_SPEC" | python3 -c "
+import json,sys
+spec=json.load(sys.stdin).get('spec',{})
+bb=spec.get('bootsBonus')
+assert bb == 20, f'bootsBonus should be 20, got {bb}'
+print('bootsBonus=20 OK')
+" 2>/dev/null && pass "bootsBonus=20 carries over in NG+ dungeon spec" || fail "bootsBonus not found in NG+ dungeon spec"
+kubectl delete dungeon "$BOOTS_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
 echo ""
 echo "========================================"
 echo "  Backend Tests: $PASS passed, $FAIL failed"

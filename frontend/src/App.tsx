@@ -572,6 +572,7 @@ export default function App() {
         shieldBonus: spec.shieldBonus,
         helmetBonus: spec.helmetBonus,
         pantsBonus: spec.pantsBonus,
+        bootsBonus: spec.bootsBonus,
         ringBonus: spec.ringBonus,
         amuletBonus: spec.amuletBonus,
       }, ns)

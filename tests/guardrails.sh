@@ -414,6 +414,14 @@ grep -q "1\.25\|125\|scale.*125\|125.*scale" backend/internal/handlers/handlers.
 grep -q "createNewGamePlus" frontend/src/api.ts && pass "Frontend api.ts exports createNewGamePlus" || fail "createNewGamePlus missing from api.ts"
 grep -q "onNewGamePlus\|handleNewGamePlus" frontend/src/App.tsx && pass "App.tsx wires New Game+ handler" || fail "App.tsx missing New Game+ handler"
 grep -q "ng-plus-badge" frontend/src/App.tsx && pass "App.tsx renders NG+ badge on dungeon tiles" || fail "App.tsx missing NG+ badge"
+# NG+ carry-over completeness: all 8 gear fields must be present in CreateDungeonReq and carry-over block
+grep -q "BootsBonus" backend/internal/handlers/handlers.go && pass "Backend CreateDungeonReq includes BootsBonus for NG+ carry-over" || fail "BootsBonus missing from CreateDungeonReq — boots not carried over on NG+"
+grep -q "bootsBonus.*req\.BootsBonus\|req\.BootsBonus.*bootsBonus" backend/internal/handlers/handlers.go && pass "Backend applies BootsBonus to dungeonSpec in CreateDungeon" || fail "BootsBonus not applied to dungeonSpec"
+grep -q "bootsBonus" frontend/src/App.tsx && pass "Frontend handleNewGamePlus sends bootsBonus" || fail "Frontend missing bootsBonus in handleNewGamePlus call"
+
+# --- Mana potion class guard ---
+echo "=== Mana potion class guard"
+grep -q 'manapotion.*mage\|heroClass.*mage.*mana\|mana.*heroClass.*mage' backend/internal/handlers/handlers.go && pass "Backend rejects mana potions for non-Mage heroes" || fail "Backend missing mana potion class guard"
 
 # --- Leaderboard guardrails ---
 echo "=== Leaderboard guardrails"
