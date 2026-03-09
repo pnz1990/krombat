@@ -1944,31 +1944,31 @@ body {
 /* Hamburger menu */
 .hamburger-btn {
   font-family: 'Press Start 2P', monospace;
-  font-size: 12px;
-  width: 28px; height: 28px;
+  font-size: 13px;
+  width: 32px; height: 32px;
   background: var(--bg-card);
-  color: var(--text-dim);
-  border: 1px solid #444;
+  color: var(--gold);
+  border: 2px solid var(--gold);
   cursor: pointer;
   display: flex; align-items: center; justify-content: center;
 }
-.hamburger-btn:hover { color: var(--text); border-color: #666; }
+.hamburger-btn:hover { background: var(--gold); color: #000; }
 .hamburger-menu {
   position: absolute;
   top: 100%;
   right: 0;
-  margin-top: 2px;
+  margin-top: 3px;
   background: var(--bg-card);
-  border: 1px solid #444;
+  border: 2px solid var(--gold);
   z-index: 500;
-  min-width: 120px;
+  min-width: 160px;
   display: flex;
   flex-direction: column;
 }
 .hamburger-item {
   font-family: 'Press Start 2P', monospace;
-  font-size: 7px;
-  padding: 7px 10px;
+  font-size: 8px;
+  padding: 10px 14px;
   background: none;
   border: none;
   border-bottom: 1px solid #2a2a2a;
