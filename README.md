@@ -1,8 +1,8 @@
 <div align="center">
   <img src="assets/logo.png" alt="Kubernetes RPG - KROMBAT" width="400">
-  
+
   # Kubernetes RPG
-  
+
   *An 8-bit dungeon crawler powered by kro*
 </div>
 
@@ -15,32 +15,31 @@ An interactive, turn-based dungeon game where the entire game state is orchestra
 Kubernetes RPG demonstrates how [kro](https://kro.run) transforms Kubernetes into a general-purpose orchestration engine. Using kro's ResourceGraphDefinitions, we model RPG game mechanics entirely as declarative resource graphs:
 
 | Game Entity | Kubernetes Resource |
-|-------------|-------------------|
-| Dungeon     | Custom Resource (parent RGD, orchestrates child CRs) |
-| Hero        | Custom Resource → ConfigMap (via hero-graph RGD) |
-| Monster     | Custom Resource → ConfigMap (via monster-graph RGD) |
-| Boss        | Custom Resource → ConfigMap (via boss-graph RGD) |
-| Attack      | Custom Resource → Job (via attack-graph RGD) |
-| Treasure    | Custom Resource → Secret (via treasure-graph RGD) |
-| Loot        | Custom Resource → Secret (via loot-graph RGD) |
-| Modifier    | Custom Resource → ConfigMap (via modifier-graph RGD) |
-| Action      | Custom Resource → Job (via action-graph RGD) |
+|---|---|
+| Dungeon | Custom Resource (parent RGD, orchestrates all child CRs) |
+| Hero | Custom Resource → ConfigMap (hero-graph RGD) |
+| Monster | Custom Resource → ConfigMap + conditional Loot CR (monster-graph RGD) |
+| Boss | Custom Resource → ConfigMap + conditional Loot CR (boss-graph RGD) |
+| Attack | Custom Resource — CRD-only stub (attack-graph RGD) |
+| Action | Custom Resource — CRD-only stub (action-graph RGD) |
+| Treasure | Custom Resource → ConfigMap + conditional Secret (treasure-graph RGD) |
+| Loot | Custom Resource → Secret with item data (loot-graph RGD) |
+| Modifier | Custom Resource → ConfigMap (modifier-graph RGD) |
 
 Each dungeon instance gets its own Namespace for isolation and clean teardown.
 
 ## How It Works
 
-1. **Create a Dungeon** — specify monster count, difficulty (easy/normal/hard), and hero class (warrior/mage/rogue)
-2. **kro reconciles** — creates a namespace, hero ConfigMap, monster ConfigMaps, a pending boss, a treasure Secret, and a modifier ConfigMap (curse or blessing)
-3. **Attack monsters** — submit Attack CRs; kro's attack-graph RGD spawns a Job that patches the Dungeon CR's `monsterHP` array. Monsters may drop loot and inflict status effects
-4. **Use items** — submit Action CRs; kro's action-graph RGD spawns a Job for equipping weapons/armor/shields, using potions, opening treasure, and unlocking doors
-4. **Use abilities** — Mage heals, Warrior taunts, Rogue backstabs — all via the same Attack CR pipeline
-5. **Boss unlocks** — when all monster HP=0, kro transitions the boss to `state=ready`
-6. **Defeat the boss** — attack the boss to reduce `bossHP` to 0
-7. **Enter Room 2** — treasure auto-opens, door auto-unlocks, click door to enter a harder room with trolls/ghouls and a bat-boss
-8. **Final victory** — defeat the Room 2 boss to conquer the dungeon
+1. **Create a Dungeon** — specify a name, monster count (1–10), difficulty (easy/normal/hard), and hero class (warrior/mage/rogue)
+2. **kro reconciles** — dungeon-graph creates a Namespace, Hero CR, Monster CRs (one per monster, via forEach), Boss CR, Treasure CR, Modifier CR, and two computed ConfigMaps (`combatResult`, `actionResult`) — all from CEL expressions, no imperative code
+3. **Attack monsters** — the frontend submits a POST to the backend; the backend runs full combat math in Go (FNV-1a seeded dice, class abilities, modifiers, status effects), patches the Dungeon CR spec, and upserts an Attack CR — which kro reconciles into a `combatResult` ConfigMap the frontend reads for the dice roll display
+4. **Use items** — same pattern via Action CR; the backend runs item/equip/room logic and upserts an Action CR
+5. **Boss unlocks** — when all monster HP = 0, kro's CEL in `boss-graph` transitions `bossState` to `ready`; the Dungeon CR status aggregates this via `dungeon-graph` CEL
+6. **Defeat the boss** — boss has three phases driven by HP thresholds in `boss-graph` CEL (Phase 1 → Phase 2 ENRAGED → Phase 3 BERSERK), each with higher counter damage and special attack chance
+7. **Enter Room 2** — after the boss falls, treasure auto-opens, door auto-unlocks; clicking the door triggers `enter-room-2`, which resets to a harder set of monsters (trolls/ghouls) and a bat-boss
+8. **Final victory** — defeat the Room 2 boss to conquer the dungeon; the run is recorded to the leaderboard
 
-The backend and frontend only interact with kro-generated CRs (Dungeon and Attack). All game logic — HP calculations, class abilities, loot drops, status effects, modifiers — lives in kro's CEL expressions and Attack Job scripts. **kro is the game engine.**
+**kro is the game engine.** All entity state transitions, derived fields, conditional resource creation, and readiness gating are pure CEL inside RGD YAML — no sidecar controllers.
 
 ## Architecture
 
@@ -61,65 +60,84 @@ The backend and frontend only interact with kro-generated CRs (Dungeon and Attac
                                            └──────────┘
 ```
 
-- **Frontend** — 8-bit D&D-inspired React SPA with pixel art styling. Nginx reverse-proxies `/api/` to the backend. All game state derived from the Dungeon CR
-- **Backend** — Stateless Go service. Only touches Dungeon, Attack, and Action CRs — never reads Pods, Secrets, or Jobs. Routes item actions to Action CR, combat to Attack CR. Includes rate limiting (1 attack/s per dungeon) and Prometheus metrics on `/metrics`
-- **Kubernetes + kro** — Sole source of truth. Nine RGDs orchestrate the game via CR chaining: `dungeon-graph` (parent) spawns child CRs managed by `hero-graph`, `monster-graph`, `boss-graph`, `treasure-graph`, `modifier-graph`, `loot-graph` (items as Secrets), `attack-graph` (combat), and `action-graph` (items, equipment, treasure, doors). kro runs as an [EKS Managed Capability](https://docs.aws.amazon.com/eks/latest/userguide/kro.html)
-- **Argo CD** — Runs as an [EKS Managed Capability](https://docs.aws.amazon.com/eks/latest/userguide/argocd.html). Continuously syncs all cluster manifests from this Git repo. GitHub webhook for ~6s sync latency
-- **Observability** — CloudWatch Container Insights for cluster/pod metrics, CloudWatch Logs for centralized log aggregation (JSON structured logs from backend, attack Job logs, kro controller logs), CloudWatch dashboard and alarms for operational monitoring
+- **Frontend** — 8-bit pixel art React SPA. All game state read from Dungeon CR `spec` (not `status`, which can be stale after room transitions). Nginx reverse-proxies `/api/` to the backend. Includes a kro teaching layer: InsightCards, KroGlossary, CelTrace, live resource graph (KroGraph), Inspector panel, and an in-browser CEL Playground.
+- **Backend** — Stateless Go service. Only touches Dungeon, Attack, and Action CRs — never reads Pods, Secrets, or Jobs directly. Routes non-combat actions to Action CR, combat to Attack CR. Runs all game math in Go. Includes rate limiting (300 ms/dungeon), Prometheus metrics on `/metrics`, and a CEL eval endpoint.
+- **Kubernetes + kro** — Sole source of truth. Nine RGDs orchestrate the game via CR chaining. kro runs as an [EKS Managed Capability](https://docs.aws.amazon.com/eks/latest/userguide/kro.html).
+- **Argo CD** — Runs as an [EKS Managed Capability](https://docs.aws.amazon.com/eks/latest/userguide/argocd.html). Continuously syncs all cluster manifests from this repo. GitHub webhook provides ~6 s sync latency.
+- **Observability** — CloudWatch Container Insights, structured JSON logs from the backend, CloudWatch dashboard and alarms. Prometheus metrics scraped from `/metrics`.
 
-## Key Demonstrations
+## The Nine RGDs
 
-- **Nine-RGD orchestration** — `dungeon-graph` manages game state, `attack-graph` handles combat, `action-graph` handles items/equipment, seven child RGDs handle entities
-- **RGD composition via CR chaining** — Parent RGD spawns child CRs (Hero, Monster, Boss, Treasure, Modifier), each reconciled by its own RGD into native K8s resources
-- **Dynamic resource generation** — Monster count driven by CEL expressions
-- **Cross-resource state derivation** — Boss readiness depends on aggregated monster HP values via CEL; Dungeon status reads Modifier CR status
-- **Drift correction** — Delete a monster ConfigMap and kro recreates it with correct state from Dungeon CR
-- **Optimistic concurrency** — Attack Jobs use resourceVersion preconditions for safe concurrent Dungeon CR mutation
-- **CRs as the only interface** — Backend never touches native K8s objects; kro is the abstraction layer
-- **Complex game logic in bash + CEL** — Hero abilities, loot drops, status effects, modifiers all computed in Attack Job scripts
+All nine ResourceGraphDefinitions live in `manifests/rgds/`:
+
+| RGD | File | What it creates |
+|---|---|---|
+| `dungeon-graph` | `dungeon-graph.yaml` | Namespace, Hero CR, Monster CRs (forEach), Boss CR, Treasure CR, Modifier CR, `gameConfig` CM, `combatResult` CM, `actionResult` CM |
+| `hero-graph` | `hero-graph.yaml` | `heroState` ConfigMap (entityState, maxHP, damageModifier, defense, dodgeChance) |
+| `monster-graph` | `monster-graph.yaml` | `monsterState` ConfigMap; conditional Loot CR on kill (includeWhen: HP=0) |
+| `boss-graph` | `boss-graph.yaml` | `bossState` ConfigMap with multi-phase derivation; conditional Loot CR on kill |
+| `treasure-graph` | `treasure-graph.yaml` | `treasureState` ConfigMap; conditional dungeon-key Secret when opened |
+| `modifier-graph` | `modifier-graph.yaml` | `modifierState` ConfigMap (curse/blessing effects via CEL) |
+| `loot-graph` | `loot-graph.yaml` | Loot Secret (itemType, rarity, stat, description — all CEL-derived) |
+| `attack-graph` | `attack-graph.yaml` | CRD-only stub (`resources: []`); defines the Attack CRD |
+| `action-graph` | `action-graph.yaml` | CRD-only stub (`resources: []`); defines the Action CRD |
+
+### Key kro patterns demonstrated
+
+- **RGD composition via CR chaining** — `dungeon-graph` spawns child CRs; each child is reconciled by its own RGD
+- **forEach dynamic fan-out** — Monster CRs created from the `monsterHP` array spec field
+- **includeWhen conditional resources** — Loot CRs only created when HP = 0; treasure Secret only when opened = 1; Modifier CR only when modifier ≠ "none"
+- **readyWhen readiness gates** — Modifier CR gates its readyWhen on `modifierType != ""`
+- **CEL state machines** — Boss phase (normal → ENRAGED → BERSERK → defeated) computed entirely in CEL from HP thresholds
+- **Deterministic randomness** — `random.seededString()` in `monster-graph` pre-rolls loot type/rarity at monster spawn; no imperative code
+- **Status aggregation** — `dungeon-graph` aggregates child CR statuses (livingMonsters, bossState, bossPhase, bossDamageMultiplier) via CEL `.filter()` and `.size()`
+- **CRD factory pattern** — `attack-graph` and `action-graph` are empty RGDs used purely to register CRDs; all logic lives in the Go backend
+- **externalRef** — Action/Attack CRs are watched as external refs to trigger dungeon reconciliation
 
 ## Project Structure
 
 ```
 ├── backend/                 # Go backend service
-│   ├── cmd/                 # Entrypoint
-│   ├── internal/            # Handlers, K8s client, WebSocket hub
-│   └── Dockerfile           # Multi-stage build (distroless)
+│   ├── cmd/                 # Entrypoint (main.go)
+│   └── internal/
+│       ├── handlers/        # All REST handlers + game math + leaderboard
+│       └── k8s/             # Dynamic client, watchers, GVR definitions
 ├── frontend/                # React SPA
-│   ├── src/                 # App, Sprite, API client, WebSocket hook, CSS
+│   ├── src/
+│   │   ├── App.tsx          # Main app (~2000 lines)
+│   │   ├── KroTeach.tsx     # kro teaching layer (23 concepts, InsightCards, CelTrace, CEL Playground)
+│   │   ├── KroGraph.tsx     # Live SVG resource graph DAG
+│   │   ├── Sprite.tsx       # Pixel art sprite components
+│   │   └── api.ts           # Typed REST client
 │   ├── public/sprites/      # Pixel art sprite sheets (heroes, monsters, items, icons)
-│   ├── nginx.conf           # Reverse proxy to backend
-│   └── Dockerfile           # Node build + nginx runtime
+│   └── nginx.conf           # Reverse-proxies /api/ to backend
 ├── manifests/               # Argo CD syncs this directory
-│   ├── apps/                # Argo CD Application
+│   ├── apps/                # Argo CD Application manifest
 │   ├── rbac/                # ServiceAccounts, Roles, Bindings
 │   ├── rgds/                # 9 kro ResourceGraphDefinitions
-│   └── system/              # Backend/frontend deployments, dungeon reaper
-├── images/                  # Custom container images
-│   └── job-runner/          # Minimal kubectl+jq+bash for Attack/Action Jobs
-├── infra/                   # Terraform (EKS, capabilities, ECR, CI)
-├── tests/                   # Integration test suites
-│   ├── run.sh               # Game engine tests (32 tests)
-│   ├── backend-api.sh       # Backend API tests (17 tests)
-│   ├── guardrails.sh        # Architecture guardrails (28 tests)
-│   ├── e2e/smoke-test.js    # Playwright UI tests (59 smoke tests)
-│   └── e2e/journeys/       # Gameplay journey tests (88 tests across 4 journeys)
-├── assets/                  # Source sprite sheets (generated via AI)
-├── scripts/                 # Utility scripts
-│   └── watch-dungeon.sh     # tmux dashboard for watching game state
-├── docs/                    # Design documents and runbook
-└── .github/workflows/       # CI pipelines
+│   └── system/              # Deployments, CronJob, DaemonSet, ConfigMaps
+├── images/job-runner/       # Minimal image (bash + kubectl + jq) for node warming
+├── infra/                   # Terraform (EKS Auto Mode, kro, Argo CD, ECR, CloudWatch, OIDC)
+├── tests/
+│   ├── run.sh               # Integration test runner (4 sub-suites)
+│   ├── guardrails.sh        # Architecture guardrails (~34 assertions)
+│   ├── backend-api.sh       # REST API tests (30 tests)
+│   └── e2e/
+│       ├── smoke-test.js    # Playwright smoke tests (76 assertions)
+│       └── journeys/        # 32 gameplay journey tests
+├── scripts/
+│   ├── ui-test.sh           # Deploy-and-test script (push → sync → smoke test)
+│   └── watch-dungeon.sh     # tmux dashboard for watching game state live
+└── .github/workflows/       # CI: build images, push to ECR, rollout restart
 ```
 
 ## Prerequisites
 
 - Amazon EKS cluster with the [kro](https://docs.aws.amazon.com/eks/latest/userguide/kro.html) and [Argo CD](https://docs.aws.amazon.com/eks/latest/userguide/argocd.html) managed capabilities enabled
 - `kubectl` configured for the target cluster
-- See [infra/SETUP.md](infra/SETUP.md) for full provisioning guide
+- See `infra/` for Terraform provisioning (EKS Auto Mode cluster, ECR repos, IAM roles, CloudWatch)
 
 ## Running the Game
-
-The backend and frontend run in the `rpg-system` namespace, deployed via Argo CD from the `manifests/` directory.
 
 ### Access the UI
 
@@ -127,9 +145,9 @@ The backend and frontend run in the `rpg-system` namespace, deployed via Argo CD
 kubectl port-forward svc/rpg-frontend -n rpg-system 3000:3000
 ```
 
-Open http://localhost:3000 — create a dungeon, attack monsters, defeat the boss.
+Open http://localhost:3000 — create a dungeon, fight monsters, defeat the boss.
 
-### Access the Backend API directly
+### Access the backend API directly
 
 ```bash
 kubectl port-forward svc/rpg-backend -n rpg-system 8080:8080
@@ -144,25 +162,32 @@ curl -X POST http://localhost:8080/api/v1/dungeons \
 # List dungeons
 curl http://localhost:8080/api/v1/dungeons
 
-# Get dungeon state
+# Get dungeon state (full Dungeon CR)
 curl http://localhost:8080/api/v1/dungeons/default/my-dungeon
 
 # Attack a monster
 curl -X POST http://localhost:8080/api/v1/dungeons/default/my-dungeon/attacks \
   -H "Content-Type: application/json" \
-  -d '{"target":"my-dungeon-monster-0","damage":50}'
+  -d '{"target":"my-dungeon-monster-0","damage":0}'
+
+# Evaluate a CEL expression against live dungeon spec
+curl -X POST http://localhost:8080/api/v1/dungeons/default/my-dungeon/cel-eval \
+  -H "Content-Type: application/json" \
+  -d '{"expr":"schema.spec.heroHP > 0"}'
+
+# View leaderboard (top 20 runs by fewest turns)
+curl http://localhost:8080/api/v1/leaderboard
 ```
 
-### Watch game state (tmux dashboard)
+### Watch game state live (tmux dashboard)
 
 ```bash
 ./scripts/watch-dungeon.sh my-dungeon
 ```
 
-### Play via kubectl only (no UI needed)
+### Play via kubectl only (no UI)
 
 ```bash
-# Create a dungeon
 cat <<EOF | kubectl apply -f -
 apiVersion: game.k8s.example/v1alpha1
 kind: Dungeon
@@ -177,96 +202,275 @@ spec:
   heroClass: warrior
 EOF
 
-# Wait for kro (~10s), then check state
-kubectl get dungeon my-dungeon -o jsonpath='{.status}'
+# Wait for kro to reconcile (~5-10s), then inspect state
+kubectl get dungeon my-dungeon -o jsonpath='{.status}' | jq
 
-# Attack a monster
+# Attack a monster by upserting an Attack CR
 cat <<EOF | kubectl apply -f -
 apiVersion: game.k8s.example/v1alpha1
 kind: Attack
 metadata:
-  name: attack-1
+  name: my-dungeon-latest-attack
 spec:
   dungeonName: my-dungeon
   dungeonNamespace: default
   target: my-dungeon-monster-0
-  damage: 50
+  damage: 0
+  seq: 1
 EOF
 
-# Clean up
+# Clean up (writes leaderboard entry)
 kubectl delete dungeon my-dungeon
 ```
 
-## How to Play
-
-### Creating a Dungeon
-Choose a name, number of monsters (1-10), difficulty, and hero class. The game creates a dungeon with monsters, a boss, and your hero.
-
-### Combat
-Click a monster or boss to attack. Damage is rolled using dice (shown in the UI). After your attack, all alive enemies counter-attack automatically. Kill all monsters to unlock the boss, then defeat the boss to win.
-
-### Difficulty Levels
-| Difficulty | Monster HP | Boss HP | Monster Counter | Boss Counter | Dice |
-|------------|-----------|---------|-----------------|--------------|------|
-| Easy       | 30        | 200     | 1 per monster   | 3            | 1d20+2 (3-22) |
-| Normal     | 50        | 400     | 2 per monster   | 5           | 2d12+4 (6-28) |
-| Hard       | 80        | 800     | 3 per monster   | 8           | 3d20+5 (8-65) |
+## Game Mechanics
 
 ### Hero Classes
-| Class | HP | Damage | Special |
-|-------|-----|--------|---------|
-| ⚔️ Warrior | 200 | 1.0x | 25% damage reduction on all counter-attacks |
-| 🔮 Mage | 120 | 1.3x all | 8 mana (1 per attack, regen +1 per attack) |
-| 🗡️ Rogue | 150 | 1.1x | 25% chance to dodge counter-attacks |
 
-### Tips
-- **Warrior**: Best for beginners. High HP lets you survive many counter-attacks
-- **Mage**: Glass cannon. Rush the boss with 1.5x damage before mana runs out
-- **Rogue**: High risk/reward. Dodge procs can save you, but bad luck kills you
-- Kill monsters first to reduce incoming counter-attack damage before engaging the boss
+| Class | HP | Damage | Defense | Special |
+|---|---|---|---|---|
+| ⚔️ Warrior | 200 | 1.0× | 25% reduction on all counters | Taunt: 60% counter reduction for 1 round |
+| 🔮 Mage | 120 | 1.3× (0.5× out of mana) | — | Heal: +40 HP, costs 2 mana; 8 mana max, +1 regen per kill |
+| 🗡️ Rogue | 150 | 1.1× | 25% dodge chance | Backstab: 3× damage, 3-turn cooldown |
 
-### Hero Abilities
-Each class has a unique active ability:
+### Difficulty
 
-| Class | Ability | Cost | Effect |
-|-------|---------|------|--------|
-| ⚔️ Warrior | 🛡️ Taunt | 1 turn (no damage) | 60% damage reduction for 1 round (50% taunt + 20% passive) |
-| 🔮 Mage | 💚 Heal | 2 mana | Restore 40 HP (capped at 120). Mana regens +1 per attack |
-| 🗡️ Rogue | 🗡️ Backstab | 3-turn cooldown | 3x damage multiplier. Cooldown decrements each turn |
+| Difficulty | Monster HP | Boss HP | Monster counter | Boss counter | Dice |
+|---|---|---|---|---|---|
+| Easy | 30 | 200 | 1 per monster | 3 | 1d20+3 (4–23) |
+| Normal | 50 | 400 | 2 per monster | 5 | 2d12+6 (8–30) |
+| Hard | 80 | 800 | 3 per monster | 8 | 3d20+8 (11–68) |
+
+### Multi-Phase Boss
+
+Boss behavior scales with HP thresholds (derived in `boss-graph` CEL, read by the backend):
+
+| Phase | HP Range | Counter Multiplier | Special Attack Chance | Visual |
+|---|---|---|---|---|
+| Phase 1 | >50% | 1.0× | 20% | Normal |
+| Phase 2 ENRAGED | 26–50% | 1.5× | 40% | Orange glow |
+| Phase 3 BERSERK | 1–25% | 2.0× | 60% | Red pulse |
+
+### Enemy Types
+
+**Room 1:** goblin, skeleton, archer (index ≥ 2, even — 20% stun), shaman (index ≥ 3, odd — 30% chance to heal first ally) + **Dragon boss** (25% burn, 15% stun)
+
+**Room 2:** troll (even index), ghoul (odd index) + **Bat-boss** (30% poison, 15% stun)
 
 ### Dungeon Modifiers
-Each dungeon may spawn with a random modifier (30% curse, 30% blessing, 40% none):
+
+Each dungeon has a random modifier (40% curse, 40% blessing, 20% none), applied at creation:
 
 | Modifier | Type | Effect |
-|----------|------|--------|
-| Curse of Fortitude | 🔴 Curse | Monsters +50% HP |
-| Curse of Fury | 🔴 Curse | Boss counter-attack 2x damage |
-| Curse of Darkness | 🔴 Curse | Hero damage -25% |
-| Blessing of Strength | 🟢 Blessing | Hero damage +50% |
-| Blessing of Resilience | 🟢 Blessing | Counter-attack damage halved |
-| Blessing of Fortune | 🟢 Blessing | 20% chance to crit (2x damage) |
-
-### Loot System
-Monsters drop items on death. Boss always drops rare/epic loot. Each drop creates a Loot CR → Secret via the loot-graph RGD.
-
-| Item | Effect | Common | Rare | Epic |
-|------|--------|--------|------|------|
-| 🗡️ Weapon | +damage for 3 attacks | +5 | +10 | +20 |
-| 🛡️ Armor | +defense (reduce counter dmg) | 10% | 20% | 30% |
-| 🛡️ Shield | Block chance (negate counter) | 10% | 15% | 25% |
-| ❤️ HP Potion | Instant heal | 20 HP | 40 HP | Full |
-| 💎 Mana Potion | Restore mana (Mage) | 2 | 3 | 5 |
-
-Drop chance: Easy 60%, Normal 45%, Hard 35%. Click items in backpack to use/equip. Items don't cost a turn.
+|---|---|---|
+| Curse of Fortitude | Curse | Monsters +50% HP |
+| Curse of Fury | Curse | Boss counter 2× |
+| Curse of Darkness | Curse | Hero damage −25% |
+| Blessing of Strength | Blessing | Hero damage +50% |
+| Blessing of Resilience | Blessing | All counter damage ÷2 |
+| Blessing of Fortune | Blessing | 20% chance to deal 2× damage (crit) |
 
 ### Status Effects
-Enemies can inflict status effects during counter-attacks:
 
-| Effect | Source | Duration | Per-Turn |
-|--------|--------|----------|----------|
-| 🟢 Poison | Monsters (20%) | 3 turns | -5 HP |
-| 🔴 Burn | Boss (25%) | 2 turns | -8 HP |
-| 🟡 Stun | Boss (15%) | 1 turn | Skip hero attack |
+| Effect | Source | Duration | Per-turn damage |
+|---|---|---|---|
+| 🟢 Poison | Monsters (20%), Bat-boss (30%) | 3 turns | −5 HP |
+| 🔴 Burn | Dragon boss (25%) | 2 turns | −8 HP |
+| 🟡 Stun | Dragon/Bat-boss (15%), Archers (20%) | 1 turn | Skip hero attack |
+
+### Equipment Slots
+
+The hero has 8 equipment slots, all stored as fields on the Dungeon CR spec:
+
+| Slot | Field | Common | Rare | Epic | Effect |
+|---|---|---|---|---|---|
+| 🗡️ Weapon | `weaponBonus` | +5 | +10 | +20 | Flat damage bonus for 3 attacks |
+| 🛡️ Armor | `armorBonus` | 10% | 20% | 30% | Reduce counter-attack damage |
+| 🛡️ Shield | `shieldBonus` | 10% | 15% | 25% | Chance to block counter entirely |
+| 🪖 Helmet | `helmetBonus` | 5% | 10% | 15% | Crit chance (2× damage) |
+| 👖 Pants | `pantsBonus` | 5% | 10% | 15% | Additional dodge chance |
+| 👢 Boots | `bootsBonus` | 20% | 40% | 60% | Chance to resist status effects |
+| 💍 Ring | `ringBonus` | +5 | +8 | +12 | HP regen per round |
+| 📿 Amulet | `amuletBonus` | 10% | 20% | 30% | Percentage damage boost |
+
+### Consumables
+
+| Item | Common | Rare | Epic |
+|---|---|---|---|
+| ❤️ HP Potion | +20 HP | +40 HP | Full heal |
+| 💎 Mana Potion | +2 mana | +3 mana | +5 mana (Mage only) |
+
+### Loot System
+
+Items are pre-rolled at monster spawn via `random.seededString()` in `monster-graph` — a Loot CR is conditionally included (`includeWhen: hp == 0`) so it appears only on kill. Boss always drops loot (rare or epic). Inventory cap: 8 items.
+
+Drop chance: Easy ≈61%, Normal ≈44%, Hard ≈36%.
+
+### New Game+
+
+After defeating a dungeon, start a New Game+ run. Each run (up to 20) scales difficulty:
+- Monster HP: ×1.25 per run
+- Boss HP: ×1.25 per run
+- Hero HP: ×1.10 per run
+- All equipped gear carries over between runs
+
+### Leaderboard
+
+When a dungeon is deleted via the UI, the run is recorded to the `krombat-leaderboard` ConfigMap in `rpg-system`. The leaderboard stores up to 100 entries and shows the top 20 sorted by fewest turns. Persistent in etcd across pod restarts.
+
+Outcomes: `victory` (both rooms cleared), `room1-cleared`, `defeat`, `in-progress` (abandoned).
+
+## Backend API Reference
+
+All endpoints are prefixed with `/api/v1/`.
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/dungeons` | Create a dungeon (name, monsters 1–10, difficulty, heroClass) |
+| `GET` | `/dungeons` | List all dungeons (summaries) |
+| `GET` | `/dungeons/{ns}/{name}` | Get full Dungeon CR |
+| `DELETE` | `/dungeons/{ns}/{name}` | Delete dungeon + record leaderboard entry |
+| `POST` | `/dungeons/{ns}/{name}/attacks` | Submit attack or item action (rate limited: 300 ms/dungeon) |
+| `GET` | `/dungeons/{ns}/{name}/resources` | Fetch child resource for kro Inspector (kind query param) |
+| `POST` | `/dungeons/{ns}/{name}/cel-eval` | Evaluate a CEL expression against live dungeon spec |
+| `GET` | `/leaderboard` | Top 20 runs by fewest turns |
+| `GET` | `/events` | WebSocket — real-time Dungeon CR updates |
+| `GET` | `/healthz` | Health check |
+| `GET` | `/metrics` | Prometheus metrics |
+
+### Prometheus metrics
+
+`k8s_rpg_dungeons_created_total`, `k8s_rpg_attacks_submitted_total`, `k8s_rpg_active_dungeons`, `k8s_rpg_monsters_alive`, `k8s_rpg_monsters_dead`, `k8s_rpg_bosses_pending`, `k8s_rpg_bosses_ready`, `k8s_rpg_bosses_defeated`, `k8s_rpg_victories`, `k8s_rpg_defeats`
+
+## kro Teaching Layer
+
+The game teaches kro concepts interactively as you play. 23 concepts are woven into the UI:
+
+| # | Concept ID | Triggered by |
+|---|---|---|
+| 1 | `rgd` | Creating first dungeon |
+| 2 | `spec-schema` | Dungeon created (spec field inspection) |
+| 3 | `schema-validation` | Schema validation event |
+| 4 | `resource-chaining` | Viewing child resources |
+| 5 | `cel-basics` | First attack |
+| 6 | `cel-ternary` | Boss becoming ready |
+| 7 | `forEach` | Viewing monster CRs |
+| 8 | `includeWhen` | First monster kill (Loot CR appears) |
+| 9 | `readyWhen` | Modifier CR with readyWhen gate |
+| 10 | `status-aggregation` | All monsters dead |
+| 11 | `seeded-random` | Loot drop (pre-rolled seed) |
+| 12 | `secret-output` | Treasure opened (Secret created) |
+| 13 | `empty-rgd` | Attack CR upserted (CRD-only RGD) |
+| 14 | `spec-mutation` | Entering Room 2 |
+| 15 | `externalRef` | externalRef watch pattern |
+| 16 | `status-conditions` | kro status.conditions |
+| 17 | `reconcile-loop` | Second attack (reconcile cycle) |
+| 18 | `resourceGroup-api` | Second dungeon created |
+| 19 | `cel-has-macro` | Boots equipped (optional field access) |
+| 20 | `ownerReferences` | Dungeon deleted (GC chain) |
+| 21 | `cel-playground` | Auto-unlocked at 10 concepts |
+| 22 | `cel-filter` | Boss killed (CEL collection macros) |
+| 23 | `cel-string-ops` | Loot description (CEL type coercion) |
+
+**UI components:**
+- **InsightCards** — contextual slide-in cards auto-dismissed after 12 s
+- **KroGlossary** — searchable glossary in the kro tab (N/23 unlocked)
+- **CelTrace** — "What kro computed" collapsible panel after each combat turn
+- **KroGraph** — live SVG DAG of all child resources with node Inspector
+- **CEL Playground** — in-browser sandbox: type any CEL expression, run it against the live dungeon spec via `/cel-eval` (accessible via ☰ menu in dungeon view)
+- **kro Expert Certificate** — shown when all 23 concepts are unlocked
+- **Onboarding overlay** — interactive intro on first visit
+
+## Infrastructure
+
+Provisioned by Terraform in `infra/`:
+
+| Component | Details |
+|---|---|
+| Cluster | EKS Auto Mode `krombat`, Kubernetes 1.34, `us-west-2` |
+| Node pools | `general-purpose` + `system` (Auto Mode managed) |
+| kro | EKS Managed Capability |
+| Argo CD | EKS Managed Capability, IAM Identity Center SSO |
+| ECR | `krombat/backend` + `krombat/frontend` (last 10 images retained) |
+| CloudWatch | Container Insights, 4 log groups, dashboard, 3 alarms |
+| CI IAM | GitHub Actions OIDC role with EKS cluster admin + ECR push |
+
+### System components (`manifests/system/`)
+
+| Manifest | Purpose |
+|---|---|
+| `backend.yaml` | `rpg-backend` Deployment + Service |
+| `frontend.yaml` | `rpg-frontend` Deployment + Service (nginx) |
+| `dungeon-reaper.yaml` | CronJob every 10 min — deletes dungeons older than 4 h (skips dungeons with active Attacks/Actions) |
+| `image-cache.yaml` | DaemonSet — pre-pulls job-runner image on every node (eliminates cold-start delay) |
+| `node-warmer.yaml` | Keeps a node warm for game workloads |
+| `leaderboard-cm.yaml` | Empty `krombat-leaderboard` ConfigMap (seed for leaderboard storage) |
+| `backend-pdb.yaml` | PodDisruptionBudget for the backend |
+
+## CI/CD
+
+`.github/workflows/build-images.yml` — triggers on every push to `main` and on PRs:
+
+1. Build backend Docker image (multi-stage, distroless)
+2. Build frontend Docker image (Node build + nginx)
+3. Trivy vulnerability scan (CRITICAL/HIGH, SARIF uploaded to GitHub Security)
+4. On merge to `main`: push both images to ECR with `$SHA` + `latest` tags
+5. On merge to `main`: `kubectl rollout restart deployment/rpg-backend deployment/rpg-frontend -n rpg-system`
+
+Argo CD automatically syncs manifest changes from `main` within ~6 s via GitHub webhook.
+
+## Testing
+
+```bash
+# All suites
+tests/run-all.sh
+
+# Individual suites
+tests/run.sh            # Integration: core lifecycle, abilities, features, infra
+tests/guardrails.sh     # Architecture guardrails (~34 assertions)
+tests/backend-api.sh    # REST API (30 tests)
+BASE_URL=http://localhost:3000 node tests/e2e/smoke-test.js   # UI smoke (76 assertions)
+
+# Run a specific journey
+BASE_URL=http://localhost:3000 node tests/e2e/journeys/20-leaderboard.js
+```
+
+### Journey tests (32 total)
+
+| # | Journey | Focus |
+|---|---|---|
+| 01 | Warrior Easy | Full UI playthrough |
+| 02 | Mage Normal | Abilities & mana |
+| 03 | Rogue Hard | Dodge & Backstab |
+| 04 | Items & Equipment | Equip/use flow |
+| 05 | Status Effects | Poison, Burn, Stun |
+| 06 | Dungeon Modifiers | All 6 modifier types |
+| 07 | Dungeon Management | Create/list/delete |
+| 08 | Edge Cases | Error states, validation |
+| 09 | K8s Log Tab | Structured log display |
+| 10 | Animations | Sprite hurt/dead frames, phase glow |
+| 11 | Room 2 Full Victory | Both rooms end-to-end |
+| 12 | kro Teaching Layer | InsightCards, glossary, CelTrace, graph |
+| 13 | Defeat & Mana | Defeat screen, Mage mana restore |
+| 14 | kro Inspector | Inspector panel for all node types |
+| 15 | ownerReferences & Glossary | ownerRef concept, glossary search |
+| 16 | Ring & Amulet Loot | Ring regen + amulet damage boost |
+| 17 | CEL Playground | Modal, examples, Ctrl+Enter, live eval |
+| 18 | Achievements | All 8 achievement badges |
+| 19 | Enemy Variety | Goblin/skeleton/archer/shaman/troll/ghoul |
+| 20 | Leaderboard | Full create→delete→leaderboard round-trip |
+| 21 | New Game+ | Scaling, gear carry-over, NG+ badge |
+| 22 | Dungeon Mini-Map | Mini-map room display |
+| 23 | Taunt & Boss Phases | Warrior Taunt + ENRAGED/BERSERK |
+| 24 | Potions & Helmet/Pants | Inventory cap (8), helmet crit, pants dodge |
+| 25 | Mage Room 2 | Mana restore on room entry + HP scaling |
+| 26 | kro Certificate | Expert certificate at 23/23 concepts |
+| 27 | P0 Regressions | lastLootDrop clear, boss-name suffix, stale attack |
+| 28 | Resume & Validation | Resume prompt, name validation, room1-cleared |
+| 29 | Ring + Amulet Combat | Passive bonuses verified in live combat |
+| 30 | Room 2 Boss Phases | Bat-boss ENRAGED/BERSERK |
+| 31 | Inspector: combat-cm | KroGraph Inspector deep-dive |
+| 32 | CEL Playground Live Eval | Round-trip through CelEvalHandler |
 
 ## License
 
