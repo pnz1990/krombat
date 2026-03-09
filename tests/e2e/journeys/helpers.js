@@ -2,6 +2,12 @@
 // NO kubectl, NO direct API calls — everything through the browser UI
 
 async function createDungeonUI(page, name, { monsters = 2, difficulty = 'easy', heroClass = 'warrior' } = {}) {
+  // Dismiss onboarding overlay if present — it intercepts pointer events for new browser sessions
+  const skipBtn = page.locator('button.kro-onboard-skip');
+  if (await skipBtn.count() > 0) {
+    await skipBtn.click();
+    await page.waitForTimeout(400);
+  }
   await page.fill('input[placeholder="my-dungeon"]', name);
   await page.selectOption('select >> nth=0', difficulty);
   await page.selectOption('select >> nth=1', heroClass);
