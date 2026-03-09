@@ -367,12 +367,13 @@ func (h *Handler) DeleteDungeon(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Read dungeon spec before deletion to capture run stats for the leaderboard.
+	// Read dungeon spec and status before deletion to capture run stats for the leaderboard.
 	ctx := context.Background()
 	if dungeon, err := h.client.Dynamic.Resource(k8s.DungeonGVR).Namespace(ns).Get(ctx, name, metav1.GetOptions{}); err == nil {
 		spec, _ := dungeon.Object["spec"].(map[string]interface{})
+		kroStatus, _ := dungeon.Object["status"].(map[string]interface{})
 		if spec != nil {
-			go h.recordLeaderboard(spec, name)
+			go h.recordLeaderboard(spec, kroStatus, name)
 		}
 	}
 
@@ -407,31 +408,64 @@ var leaderboardGVR = schema.GroupVersionResource{Group: "", Version: "v1", Resou
 
 // recordLeaderboard writes a run completion entry to the krombat-leaderboard ConfigMap.
 // Called asynchronously before dungeon deletion. Silently skips on any error.
-func (h *Handler) recordLeaderboard(spec map[string]interface{}, dungeonName string) {
+// kroStatus is the kro-derived dungeon status (may be nil if kro hasn't reconciled yet).
+func (h *Handler) recordLeaderboard(spec map[string]interface{}, kroStatus map[string]interface{}, dungeonName string) {
 	heroClass, _ := spec["heroClass"].(string)
 	difficulty, _ := spec["difficulty"].(string)
-	heroHP := getInt(spec, "heroHP")
-	bossHP := getInt(spec, "bossHP")
 	currentRoom := getInt(spec, "currentRoom")
 	attackSeq := getInt(spec, "attackSeq")
 	actionSeq := getInt(spec, "actionSeq")
 
+	// Use kro-derived victory/defeat status where available — it is the authoritative
+	// source computed by dungeon-graph CEL from boss and hero entity states.
+	// Fall back to spec-based derivation only if kro status is absent.
 	outcome := "in-progress"
-	if heroHP <= 0 {
-		outcome = "defeat"
-	} else {
-		monsterHPRaw, _ := spec["monsterHP"].([]interface{})
-		allDead := true
-		for _, v := range monsterHPRaw {
-			if sliceInt(v) > 0 {
-				allDead = false
-				break
+	if kroStatus != nil {
+		isVictory, _ := kroStatus["victory"].(bool)
+		isDefeat, _ := kroStatus["defeat"].(bool)
+		if isVictory {
+			outcome = "victory"
+		} else if isDefeat {
+			outcome = "defeat"
+		} else {
+			// kro says neither victory nor defeat — check for room1-cleared
+			// (boss dead, all monsters dead, still in room 1)
+			heroHP := getInt(spec, "heroHP")
+			bossHP := getInt(spec, "bossHP")
+			if heroHP > 0 {
+				monsterHPRaw, _ := spec["monsterHP"].([]interface{})
+				allDead := true
+				for _, v := range monsterHPRaw {
+					if sliceInt(v) > 0 {
+						allDead = false
+						break
+					}
+				}
+				if bossHP <= 0 && allDead {
+					outcome = "room1-cleared"
+				}
 			}
 		}
-		if bossHP <= 0 && allDead && currentRoom >= 2 {
-			outcome = "victory"
-		} else if bossHP <= 0 && allDead {
-			outcome = "room1-cleared"
+	} else {
+		// kro status unavailable — derive from spec fields directly
+		heroHP := getInt(spec, "heroHP")
+		bossHP := getInt(spec, "bossHP")
+		if heroHP <= 0 {
+			outcome = "defeat"
+		} else {
+			monsterHPRaw, _ := spec["monsterHP"].([]interface{})
+			allDead := true
+			for _, v := range monsterHPRaw {
+				if sliceInt(v) > 0 {
+					allDead = false
+					break
+				}
+			}
+			if bossHP <= 0 && allDead && currentRoom >= 2 {
+				outcome = "victory"
+			} else if bossHP <= 0 && allDead {
+				outcome = "room1-cleared"
+			}
 		}
 	}
 
