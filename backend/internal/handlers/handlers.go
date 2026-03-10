@@ -760,8 +760,6 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 	// advancement are now handled by kro specPatch nodes (tickDoT, advanceTaunt,
 	// tickCooldown) in dungeon-graph.yaml. The backend reads the current kro-managed
 	// values for validation/counter-attack logic but does not mutate them here.
-	dotNote := "" // kept for combat log compatibility; kro ticks happen async via websocket
-	tauntNote := ""
 	isStunned := stunTurns > 0
 	wasStunnedThisTurn := isStunned // guard: don't reapply stun the same turn it was consumed
 
@@ -1056,7 +1054,7 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 			}
 		}
 
-		heroAction := dotNote + fmt.Sprintf("Hero (%s) deals %d damage to %s (HP: %d -> %d)%s%s", heroClass, effectiveDamage, realTarget, bossHP, newBossHP, classNote, tauntNote)
+		heroAction := fmt.Sprintf("Hero (%s) deals %d damage to %s (HP: %d -> %d)%s", heroClass, effectiveDamage, realTarget, bossHP, newBossHP, classNote)
 		patchSpec["heroHP"] = heroHP
 		patchSpec["lastHeroAction"] = heroAction
 		patchSpec["lastEnemyAction"] = enemyAction + effectNote
@@ -1256,7 +1254,7 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 			}
 		}
 
-		heroAction := dotNote + fmt.Sprintf("Hero (%s) deals %d damage to %s (HP: %d -> %d)%s%s", heroClass, effectiveDamage, realTarget, oldHP, newHP, classNote, tauntNote)
+		heroAction := fmt.Sprintf("Hero (%s) deals %d damage to %s (HP: %d -> %d)%s", heroClass, effectiveDamage, realTarget, oldHP, newHP, classNote)
 		patchSpec["heroHP"] = heroHP
 		patchSpec["monsterHP"] = newMonsterHP
 		patchSpec["lastHeroAction"] = heroAction
