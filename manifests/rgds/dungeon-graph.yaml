@@ -44,6 +44,9 @@ spec:
       lastLootDrop: string | default=""
       attackSeq: integer | default=0
       actionSeq: integer | default=0
+      dotProcessedSeq: integer | default=0
+      tauntProcessedSeq: integer | default=0
+      cooldownProcessedSeq: integer | default=0
     status:
       livingMonsters: "${size(monsterCRs.filter(m, m.status.?entityState.orValue('alive') == 'alive'))}"
       bossState: "${bossCR.status.?entityState.orValue('pending')}"
@@ -162,4 +165,39 @@ spec:
           diceFormula: "${schema.spec.difficulty == 'easy' ? '1d20+3' : schema.spec.difficulty == 'hard' ? '3d20+8' : '2d12+6'}"
           monsterCounter: "${schema.spec.difficulty == 'easy' ? '1' : schema.spec.difficulty == 'hard' ? '3' : '2'}"
           bossCounter: "${schema.spec.difficulty == 'easy' ? '3' : schema.spec.difficulty == 'hard' ? '8' : '5'}"
+
+    # --- DoT tick: decrement poison/burn/stun and apply HP damage, once per attack turn ---
+    # Gate: attackSeq has advanced past dotProcessedSeq AND at least one DoT is active.
+    # includeWhen becomes false once dotProcessedSeq catches up, preventing runaway loops.
+    - id: tickDoT
+      type: specPatch
+      includeWhen:
+        - "${schema.spec.attackSeq > schema.spec.dotProcessedSeq && (schema.spec.poisonTurns > 0 || schema.spec.burnTurns > 0 || schema.spec.stunTurns > 0)}"
+      patch:
+        heroHP: "${schema.spec.heroHP - (schema.spec.poisonTurns > 0 ? 5 : 0) - (schema.spec.burnTurns > 0 ? 8 : 0) < 0 ? 0 : schema.spec.heroHP - (schema.spec.poisonTurns > 0 ? 5 : 0) - (schema.spec.burnTurns > 0 ? 8 : 0)}"
+        poisonTurns: "${schema.spec.poisonTurns > 0 ? schema.spec.poisonTurns - 1 : 0}"
+        burnTurns: "${schema.spec.burnTurns > 0 ? schema.spec.burnTurns - 1 : 0}"
+        stunTurns: "${schema.spec.stunTurns > 0 ? schema.spec.stunTurns - 1 : 0}"
+        dotProcessedSeq: "${schema.spec.attackSeq}"
+
+    # --- Taunt advancement: 1→2 (protecting) → 0 (expired), once per attack turn ---
+    # Gate: attackSeq has advanced past tauntProcessedSeq AND taunt is active (> 0).
+    - id: advanceTaunt
+      type: specPatch
+      includeWhen:
+        - "${schema.spec.attackSeq > schema.spec.tauntProcessedSeq && schema.spec.tauntActive > 0}"
+      patch:
+        tauntActive: "${schema.spec.tauntActive == 1 ? 2 : 0}"
+        tauntProcessedSeq: "${schema.spec.attackSeq}"
+
+    # --- Backstab cooldown tick: decrement once per attack or action turn ---
+    # Gate: sum of both seqs has advanced past cooldownProcessedSeq AND cooldown > 0.
+    # Using the sum of attackSeq + actionSeq means it fires on any turn type.
+    - id: tickCooldown
+      type: specPatch
+      includeWhen:
+        - "${schema.spec.attackSeq + schema.spec.actionSeq > schema.spec.cooldownProcessedSeq && schema.spec.backstabCooldown > 0}"
+      patch:
+        backstabCooldown: "${schema.spec.backstabCooldown - 1}"
+        cooldownProcessedSeq: "${schema.spec.attackSeq + schema.spec.actionSeq}"
 
