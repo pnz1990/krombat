@@ -138,9 +138,10 @@ curl -s -o /dev/null -X POST "$BASE/api/v1/dungeons/default/$ROGUE_DUNGEON/attac
   -d "{\"target\":\"${ROGUE_DUNGEON}-monster-0-backstab\",\"damage\":20}"
 sleep 3
 # Immediately try backstab again — should be rejected with 400 (cooldown active)
+# Pass seq=-1 to bypass the stale-seq guard so the cooldown check fires
 CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeons/default/$ROGUE_DUNGEON/attacks" \
   -H "Content-Type: application/json" \
-  -d "{\"target\":\"${ROGUE_DUNGEON}-monster-0-backstab\",\"damage\":20}")
+  -d "{\"target\":\"${ROGUE_DUNGEON}-monster-0-backstab\",\"damage\":20,\"seq\":-1}")
 [ "$CODE" = "400" ] && pass "Backstab-on-cooldown rejected -> 400" || fail "Backstab-on-cooldown -> $CODE (expected 400)"
 kubectl delete dungeon "$ROGUE_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
 
@@ -155,9 +156,10 @@ sleep 15
 kubectl patch dungeon "$MAGE_DUNGEON" -n default --type=merge -p '{"spec":{"heroMana":0}}' &>/dev/null || true
 sleep 3
 # Attempt heal with 0 mana — should be 400
+# Target is "hero" (mage-heal is handled via target="hero" in processCombat)
 CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeons/default/$MAGE_DUNGEON/attacks" \
   -H "Content-Type: application/json" \
-  -d "{\"target\":\"mage-heal\",\"damage\":0}")
+  -d "{\"target\":\"hero\",\"damage\":0,\"seq\":-1}")
 [ "$CODE" = "400" ] && pass "Mage heal with 0 mana rejected -> 400" || fail "Mage heal no-mana -> $CODE (expected 400)"
 kubectl delete dungeon "$MAGE_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
 
@@ -374,9 +376,9 @@ sleep 15
 # Inject a manapotion-common into the warrior's inventory via kubectl patch
 kubectl patch dungeon "$MANA_DUNGEON" --type merge -p '{"spec":{"inventory":"manapotion-common"}}' 2>/dev/null || true
 sleep 3
-MP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeons/default/$MANA_DUNGEON/action" \
+MP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeons/default/$MANA_DUNGEON/attacks" \
   -H "Content-Type: application/json" \
-  -d '{"target":"use-manapotion-common"}')
+  -d '{"target":"use-manapotion-common","damage":0}')
 [ "$MP_CODE" = "400" ] && pass "Mana potion rejected for warrior -> 400" || fail "Mana potion warrior -> $MP_CODE (expected 400)"
 kubectl delete dungeon "$MANA_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
 
@@ -387,9 +389,9 @@ curl -s -X POST "$BASE/api/v1/dungeons" \
   -H "Content-Type: application/json" \
   -d "{\"name\":\"$TR_DUNGEON\",\"monsters\":1,\"difficulty\":\"easy\",\"heroClass\":\"warrior\"}" -o /dev/null
 sleep 15
-TR_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeons/default/$TR_DUNGEON/action" \
+TR_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeons/default/$TR_DUNGEON/attacks" \
   -H "Content-Type: application/json" \
-  -d '{"target":"open-treasure"}')
+  -d '{"target":"open-treasure","damage":0}')
 [ "$TR_CODE" = "400" ] && pass "open-treasure rejected when boss alive -> 400" || fail "open-treasure -> $TR_CODE (expected 400)"
 kubectl delete dungeon "$TR_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
 

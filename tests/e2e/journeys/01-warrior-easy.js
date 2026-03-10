@@ -137,11 +137,11 @@ async function run() {
       await doorEntity.click({ force: true });
       for (let i = 0; i < 45; i++) {
         body = await getBodyText(page);
-        if (body.includes('Room 2')) break;
+        if (body.includes('Room 2') || body.includes('Room: 2')) break;
         await page.waitForTimeout(2000);
       }
       body = await getBodyText(page);
-      body.includes('Room 2') ? ok('Room 2 loaded') : fail('Room 2 did not load');
+      (body.includes('Room 2') || body.includes('Room: 2')) ? ok('Room 2 loaded') : fail('Room 2 did not load');
 
       // Wait for monsters to appear
       for (let i = 0; i < 15; i++) {
