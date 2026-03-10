@@ -12,9 +12,6 @@ spec:
       dungeonNamespace: string | default="default"
       action: string | required=true
       actionSeq: integer | default=0
-    status:
-      state: "ready"
-
   # No resources — this RGD exists only to define the Action CRD.
   # Action logic is computed by dungeon-graph CEL reading the Action CR
   # via externalRef. The backend Go controller applies the result to

@@ -14,9 +14,6 @@ spec:
       damage: integer | default=0
       seq: integer | default=0
       targetRoom: integer | default=0
-    status:
-      state: "ready"
-
   # No resources — this RGD exists only to define the Attack CRD.
   # Combat logic is computed by dungeon-graph CEL reading the Attack CR
   # via externalRef. The backend Go controller applies the result to

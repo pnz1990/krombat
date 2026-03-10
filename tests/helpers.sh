@@ -61,7 +61,7 @@ submit_attack() {
   prev_seq=$(kubectl get dungeon "$dname" -o jsonpath='{.spec.attackSeq}' 2>/dev/null || echo "0")
   curl -s -X POST "${BACKEND_URL}/api/v1/dungeons/default/${dname}/attacks" \
     -H "Content-Type: application/json" \
-    -d "{\"target\":\"${target}\",\"damage\":${damage}}" -o /dev/null
+    -d "{\"target\":\"${target}\",\"damage\":${damage},\"seq\":${prev_seq}}" -o /dev/null
   # Wait for attackSeq to increment (backend is synchronous — should be fast)
   wait_for "${dname} attackSeq > ${prev_seq}" \
     "[ \$(kubectl get dungeon ${dname} -o jsonpath='{.spec.attackSeq}' 2>/dev/null || echo 0) -gt ${prev_seq} ]" 30
@@ -71,11 +71,12 @@ submit_attack() {
 # Usage: submit_action <dungeon-name> <action>
 submit_action() {
   local dname="$1" action="$2"
-  local prev_action
+  local prev_action prev_seq
   prev_action=$(kubectl get dungeon "$dname" -o jsonpath='{.spec.lastHeroAction}' 2>/dev/null || echo "")
+  prev_seq=$(kubectl get dungeon "$dname" -o jsonpath='{.spec.actionSeq}' 2>/dev/null || echo "0")
   curl -s -X POST "${BACKEND_URL}/api/v1/dungeons/default/${dname}/attacks" \
     -H "Content-Type: application/json" \
-    -d "{\"target\":\"${action}\",\"damage\":0}" -o /dev/null
+    -d "{\"target\":\"${action}\",\"damage\":0,\"seq\":${prev_seq}}" -o /dev/null
   wait_for "${dname} action changed" \
     "[ \"\$(kubectl get dungeon ${dname} -o jsonpath='{.spec.lastHeroAction}' 2>/dev/null)\" != \"${prev_action}\" ]" 30
 }

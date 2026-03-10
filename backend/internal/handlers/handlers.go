@@ -756,46 +756,14 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 	// Random rolls use the Attack CR's UID as seed (written by API server, truly random).
 	attackUID := string(attackResult.GetUID())
 
-	// Apply DoT at start of turn
-	dotNote := ""
-	if poisonTurns > 0 {
-		heroHP -= 5
-		poisonTurns--
-		dotNote += "Poison -5 HP. "
-	}
-	if burnTurns > 0 {
-		heroHP -= 8
-		burnTurns--
-		dotNote += "Burn -8 HP. "
-	}
-	if heroHP < 0 {
-		heroHP = 0
-	}
-
-	// Stun
-	isStunned := false
-	wasStunnedThisTurn := false // guard: don't reapply stun the same turn it was consumed
-	if stunTurns > 0 {
-		isStunned = true
-		wasStunnedThisTurn = true
-		stunTurns--
-		dotNote += "STUNNED! "
-	}
-
-	// Backstab cooldown
-	if backstabCD > 0 {
-		backstabCD--
-	}
-
-	// Taunt: if active (==1), mark as protecting this turn (==2)
+	// NOTE: DoT ticks (poison/burn/stun), backstab cooldown decrement, and taunt
+	// advancement are now handled by kro specPatch nodes (tickDoT, advanceTaunt,
+	// tickCooldown) in dungeon-graph.yaml. The backend reads the current kro-managed
+	// values for validation/counter-attack logic but does not mutate them here.
+	dotNote := "" // kept for combat log compatibility; kro ticks happen async via websocket
 	tauntNote := ""
-	if tauntActive == 1 {
-		tauntNote = " [Taunt active: -60% counter dmg]"
-		tauntActive = 2
-	} else if tauntActive > 1 {
-		// Taunt protected exactly 1 turn — expire it now
-		tauntActive = 0
-	}
+	isStunned := stunTurns > 0
+	wasStunnedThisTurn := isStunned // guard: don't reapply stun the same turn it was consumed
 
 	// Determine real target (strip -backstab suffix)
 	isBackstab := false
@@ -827,11 +795,10 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 		patch := map[string]interface{}{
 			"spec": map[string]interface{}{
 				"heroHP": newHP, "heroMana": heroMana,
-				"backstabCooldown": backstabCD,
-				"lastHeroAction":   heroAction,
-				"lastEnemyAction":  "No counter-attack during heal",
-				"lastLootDrop":     "",
-				"attackSeq":        newSeq,
+				"lastHeroAction":  heroAction,
+				"lastEnemyAction": "No counter-attack during heal",
+				"lastLootDrop":    "",
+				"attackSeq":       newSeq,
 			},
 		}
 		if err := h.patchDungeon(ctx, ns, name, patch); err != nil {
@@ -943,19 +910,22 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 	}
 
 	// Build patch values
+	// NOTE: poisonTurns, burnTurns, stunTurns, backstabCooldown, tauntActive are
+	// NOT included here — kro specPatch nodes manage these fields asynchronously.
+	// The backend only writes new DoT values when boss/monster inflicts them (below),
+	// and writes backstabCooldown=3 when backstab is triggered (to start the countdown).
 	patchSpec := map[string]interface{}{
-		"poisonTurns":      poisonTurns,
-		"burnTurns":        burnTurns,
-		"stunTurns":        stunTurns,
-		"backstabCooldown": backstabCD,
-		"tauntActive":      tauntActive,
-		"weaponBonus":      weaponBonus,
-		"weaponUses":       weaponUses,
-		"attackSeq":        newSeq,
-		"lastLootDrop":     "",
-		"heroMana":         heroMana,
-		"ringBonus":        ringBonus,
-		"amuletBonus":      amuletBonus,
+		"weaponBonus":  weaponBonus,
+		"weaponUses":   weaponUses,
+		"attackSeq":    newSeq,
+		"lastLootDrop": "",
+		"heroMana":     heroMana,
+		"ringBonus":    ringBonus,
+		"amuletBonus":  amuletBonus,
+	}
+	// If backstab was triggered this turn, set the cooldown (kro will decrement from here)
+	if isBackstab {
+		patchSpec["backstabCooldown"] = backstabCD // backstabCD was set to 3 above
 	}
 
 	lootDrop := ""
@@ -1317,7 +1287,6 @@ func (h *Handler) processAction(ctx context.Context, ns, name, action string, cl
 	heroMana := getInt(spec, "heroMana")
 	heroClass := getString(spec, "heroClass", "warrior")
 	inventory := getString(spec, "inventory", "")
-	backstabCD := getInt(spec, "backstabCooldown")
 	difficulty := getString(spec, "difficulty", "normal")
 	bossHP := getInt(spec, "bossHP")
 	actionSeq := getInt(spec, "actionSeq")
@@ -1332,9 +1301,8 @@ func (h *Handler) processAction(ctx context.Context, ns, name, action string, cl
 	}
 	monsterHPRaw, _ := spec["monsterHP"].([]interface{})
 
-	if backstabCD > 0 {
-		backstabCD--
-	}
+	// NOTE: backstabCooldown decrement is now handled by kro specPatch node (tickCooldown)
+	// in dungeon-graph.yaml, gated on attackSeq + actionSeq advancement.
 
 	newSeq := actionSeq + 1
 
@@ -1365,9 +1333,8 @@ func (h *Handler) processAction(ctx context.Context, ns, name, action string, cl
 	}
 
 	patchSpec := map[string]interface{}{
-		"backstabCooldown": backstabCD,
-		"lastLootDrop":     "",
-		"actionSeq":        newSeq,
+		"lastLootDrop": "",
+		"actionSeq":    newSeq,
 	}
 
 	switch {
