@@ -821,11 +821,12 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 		}
 		patch := map[string]interface{}{
 			"spec": map[string]interface{}{
-				"tauntActive":     1,
-				"lastHeroAction":  "Warrior activates Taunt! Next attack has 60% counter-attack reduction.",
-				"lastEnemyAction": "",
-				"lastLootDrop":    "",
-				"attackSeq":       newSeq,
+				"tauntActive":       1,
+				"tauntProcessedSeq": newSeq, // pre-arm: kro won't advance taunt on this same turn
+				"lastHeroAction":    "Warrior activates Taunt! Next attack has 60% counter-attack reduction.",
+				"lastEnemyAction":   "",
+				"lastLootDrop":      "",
+				"attackSeq":         newSeq,
 			},
 		}
 		return h.patchAndRespond(ctx, ns, name, patch, w)
@@ -923,9 +924,12 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 		"ringBonus":    ringBonus,
 		"amuletBonus":  amuletBonus,
 	}
-	// If backstab was triggered this turn, set the cooldown (kro will decrement from here)
+	// If backstab was triggered this turn, set the cooldown (kro will decrement from here).
+	// Pre-arm cooldownProcessedSeq to current sum so kro doesn't decrement on this same turn.
 	if isBackstab {
 		patchSpec["backstabCooldown"] = backstabCD // backstabCD was set to 3 above
+		actionSeqForGate := getInt(spec, "actionSeq")
+		patchSpec["cooldownProcessedSeq"] = newSeq + actionSeqForGate
 	}
 
 	lootDrop := ""
