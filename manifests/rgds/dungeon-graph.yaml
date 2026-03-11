@@ -575,7 +575,7 @@ spec:
                 : ''
               )))
             : ''
-          )))))))))))))))))))}
+          )))))))))))))))))}
 
         # --- Inventory: add loot item if dropped and under cap ---
         inventory: >-
@@ -631,7 +631,7 @@ spec:
               )))
             : '',
             lootItem != '' ? csv.add(schema.spec.inventory, lootItem, 8) : schema.spec.inventory
-          ))))))))))))))))))))}
+          ))))))))))))))))))}
 
         # --- Clear attack context so specPatch doesn't re-fire ---
         lastAttackTarget: "${''}"
