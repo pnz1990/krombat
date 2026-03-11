@@ -916,7 +916,6 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 	// combat math for log text generation (same FNV-1a RNG → same results as kro).
 	patchSpec := map[string]interface{}{
 		"attackSeq":            newSeq,
-		"lastLootDrop":         "",
 		"lastAttackTarget":     realTarget,
 		"lastAttackSeed":       attackUID,
 		"lastAttackIndex":      int64(-1), // will be set below for monster targets
@@ -934,7 +933,8 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 		patchSpec["cooldownProcessedSeq"] = newSeq + actionSeqForGate
 	}
 
-	lootDrop := ""
+	// MIGRATION: loot state (lastLootDrop, inventory) is now computed by kro's combatResolve.
+	// Backend still needs inventory2 to decide log text ("inventory full!" vs "Dropped X!").
 	inventory2 := inventory
 
 	if isBossTarget {
@@ -1051,7 +1051,6 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 			bossLootItem := computeBossLoot(name)
 			if updated, added := inventoryAdd(inventory2, bossLootItem); added {
 				inventory2 = updated
-				lootDrop = bossLootItem
 				classNote += " Boss dropped " + bossLootItem + "!"
 			} else {
 				classNote += " Boss dropped " + bossLootItem + " (inventory full!)"
@@ -1063,8 +1062,8 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 		// Backend writes only log text and loot/inventory.
 		patchSpec["lastHeroAction"] = heroAction
 		patchSpec["lastEnemyAction"] = enemyAction + effectNote
-		patchSpec["lastLootDrop"] = lootDrop
-		patchSpec["inventory"] = inventory2
+		// MIGRATION: lastLootDrop and inventory are now computed by kro's combatResolve specPatch.
+		// Backend keeps computeBossLoot() for log text (classNote) but does not write loot state.
 
 	} else {
 		// Monster target — parse index as native int to avoid int64→int narrowing
@@ -1109,7 +1108,6 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 			if dropped, item := computeMonsterLoot(name, idxInt, difficulty); dropped {
 				if updated, added := inventoryAdd(inventory2, item); added {
 					inventory2 = updated
-					lootDrop = item
 					classNote += " Dropped " + item + "!"
 				} else {
 					classNote += " " + item + " dropped but inventory full!"
@@ -1260,11 +1258,9 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 
 		heroAction := fmt.Sprintf("Hero (%s) deals %d damage to %s (HP: %d -> %d)%s", heroClass, effectiveDamage, realTarget, oldHP, newHP, classNote)
 		// MIGRATION: game state (heroHP, monsterHP, poisonTurns, etc.) is computed by kro.
-		// Backend writes only log text and loot/inventory.
+		// Backend writes only log text. lastLootDrop and inventory computed by kro combatResolve.
 		patchSpec["lastHeroAction"] = heroAction
 		patchSpec["lastEnemyAction"] = enemyAction + effectNote
-		patchSpec["lastLootDrop"] = lootDrop
-		patchSpec["inventory"] = inventory2
 	}
 
 	patch := map[string]interface{}{"spec": patchSpec}

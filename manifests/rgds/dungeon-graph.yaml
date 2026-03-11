@@ -523,6 +523,116 @@ spec:
         # --- Combat processed sentinel ---
         combatProcessedSeq: "${schema.spec.attackSeq}"
 
+        # --- Loot drop: compute on kill transition (monster or boss) ---
+        lastLootDrop: >-
+          ${cel.bind(s, schema.spec.lastAttackSeed,
+          cel.bind(isBoss, schema.spec.lastAttackIsBoss,
+          cel.bind(diff, schema.spec.difficulty,
+          cel.bind(idx, schema.spec.lastAttackIndex,
+          cel.bind(alpha, 'abcdefghijklmnopqrstuvwxyz0123456789',
+          cel.bind(name, schema.metadata.name,
+          cel.bind(baseDmg,
+            (diff == 'easy' ? random.seededInt(s + '-d1', 20) + 3
+             : diff == 'hard' ? random.seededInt(s + '-d1', 20) + random.seededInt(s + '-d2', 20) + random.seededInt(s + '-d3', 20) + 8
+             : random.seededInt(s + '-d1', 12) + random.seededInt(s + '-d2', 12) + 6)
+            + (isBoss ? random.seededInt(s + '-dboss', 20) + 3 : 0),
+          cel.bind(classMult,
+            schema.spec.lastAttackIsBackstab ? baseDmg * 3
+            : schema.spec.heroClass == 'mage' ? (schema.spec.heroMana > 0 ? baseDmg * 13 / 10 : baseDmg / 2)
+            : schema.spec.heroClass == 'rogue' ? baseDmg * 11 / 10
+            : baseDmg,
+          cel.bind(modMult,
+            schema.spec.modifier == 'curse-darkness' ? classMult * 3 / 4
+            : schema.spec.modifier == 'blessing-strength' ? classMult * 3 / 2
+            : schema.spec.modifier == 'blessing-fortune' && random.seededInt(s + '-crit', 100) < 20 ? classMult * 2
+            : classMult,
+          cel.bind(wpnDmg, schema.spec.weaponUses > 0 ? modMult + schema.spec.weaponBonus : modMult,
+          cel.bind(helmDmg, schema.spec.helmetBonus > 0 && random.seededInt(s + '-helmet-crit', 100) < schema.spec.helmetBonus ? wpnDmg * 2 : wpnDmg,
+          cel.bind(amuDmg, schema.spec.amuletBonus > 0 ? helmDmg * (100 + schema.spec.amuletBonus) / 100 : helmDmg,
+          cel.bind(finalDmg, schema.spec.stunTurns > 0 ? 0 : amuDmg,
+          cel.bind(monsterKill, !isBoss && idx >= 0 && schema.spec.monsterHP[idx] > 0
+            && schema.spec.monsterHP[idx] - finalDmg <= 0,
+          cel.bind(bossKill, isBoss && schema.spec.bossHP > 0
+            && schema.spec.bossHP - finalDmg <= 0,
+          cel.bind(types8, ['weapon','armor','hppotion','manapotion','shield','helmet','pants','boots'],
+          cel.bind(types7, ['weapon','armor','hppotion','shield','helmet','pants','boots'],
+            bossKill ?
+              cel.bind(bRar, alpha.indexOf(random.seededString(1, name + '-boss-rar')) % 36,
+              cel.bind(bRarity, bRar >= 18 ? 'epic' : 'rare',
+              cel.bind(bTyp, alpha.indexOf(random.seededString(1, name + '-boss-typ')) % 7,
+                types7[bTyp] + '-' + bRarity
+              )))
+            : monsterKill ?
+              cel.bind(mSeed, name + '-m' + string(idx),
+              cel.bind(dropRoll, alpha.indexOf(random.seededString(1, mSeed + '-drop')) % 36,
+              cel.bind(dropThresh, diff == 'easy' ? 22 : diff == 'hard' ? 13 : 16,
+                dropRoll < dropThresh ?
+                  cel.bind(rarRoll, alpha.indexOf(random.seededString(1, mSeed + '-rar')) % 36,
+                  cel.bind(mRarity, rarRoll >= 33 ? 'epic' : rarRoll >= 22 ? 'rare' : 'common',
+                  cel.bind(typRoll, alpha.indexOf(random.seededString(1, mSeed + '-typ')) % 8,
+                    types8[typRoll] + '-' + mRarity
+                  )))
+                : ''
+              )))
+            : ''
+          )))))))))))))))))))}
+
+        # --- Inventory: add loot item if dropped and under cap ---
+        inventory: >-
+          ${cel.bind(s, schema.spec.lastAttackSeed,
+          cel.bind(isBoss, schema.spec.lastAttackIsBoss,
+          cel.bind(diff, schema.spec.difficulty,
+          cel.bind(idx, schema.spec.lastAttackIndex,
+          cel.bind(alpha, 'abcdefghijklmnopqrstuvwxyz0123456789',
+          cel.bind(name, schema.metadata.name,
+          cel.bind(baseDmg,
+            (diff == 'easy' ? random.seededInt(s + '-d1', 20) + 3
+             : diff == 'hard' ? random.seededInt(s + '-d1', 20) + random.seededInt(s + '-d2', 20) + random.seededInt(s + '-d3', 20) + 8
+             : random.seededInt(s + '-d1', 12) + random.seededInt(s + '-d2', 12) + 6)
+            + (isBoss ? random.seededInt(s + '-dboss', 20) + 3 : 0),
+          cel.bind(classMult,
+            schema.spec.lastAttackIsBackstab ? baseDmg * 3
+            : schema.spec.heroClass == 'mage' ? (schema.spec.heroMana > 0 ? baseDmg * 13 / 10 : baseDmg / 2)
+            : schema.spec.heroClass == 'rogue' ? baseDmg * 11 / 10
+            : baseDmg,
+          cel.bind(modMult,
+            schema.spec.modifier == 'curse-darkness' ? classMult * 3 / 4
+            : schema.spec.modifier == 'blessing-strength' ? classMult * 3 / 2
+            : schema.spec.modifier == 'blessing-fortune' && random.seededInt(s + '-crit', 100) < 20 ? classMult * 2
+            : classMult,
+          cel.bind(wpnDmg, schema.spec.weaponUses > 0 ? modMult + schema.spec.weaponBonus : modMult,
+          cel.bind(helmDmg, schema.spec.helmetBonus > 0 && random.seededInt(s + '-helmet-crit', 100) < schema.spec.helmetBonus ? wpnDmg * 2 : wpnDmg,
+          cel.bind(amuDmg, schema.spec.amuletBonus > 0 ? helmDmg * (100 + schema.spec.amuletBonus) / 100 : helmDmg,
+          cel.bind(finalDmg, schema.spec.stunTurns > 0 ? 0 : amuDmg,
+          cel.bind(monsterKill, !isBoss && idx >= 0 && schema.spec.monsterHP[idx] > 0
+            && schema.spec.monsterHP[idx] - finalDmg <= 0,
+          cel.bind(bossKill, isBoss && schema.spec.bossHP > 0
+            && schema.spec.bossHP - finalDmg <= 0,
+          cel.bind(types8, ['weapon','armor','hppotion','manapotion','shield','helmet','pants','boots'],
+          cel.bind(types7, ['weapon','armor','hppotion','shield','helmet','pants','boots'],
+          cel.bind(lootItem,
+            bossKill ?
+              cel.bind(bRar, alpha.indexOf(random.seededString(1, name + '-boss-rar')) % 36,
+              cel.bind(bRarity, bRar >= 18 ? 'epic' : 'rare',
+              cel.bind(bTyp, alpha.indexOf(random.seededString(1, name + '-boss-typ')) % 7,
+                types7[bTyp] + '-' + bRarity
+              )))
+            : monsterKill ?
+              cel.bind(mSeed, name + '-m' + string(idx),
+              cel.bind(dropRoll, alpha.indexOf(random.seededString(1, mSeed + '-drop')) % 36,
+              cel.bind(dropThresh, diff == 'easy' ? 22 : diff == 'hard' ? 13 : 16,
+                dropRoll < dropThresh ?
+                  cel.bind(rarRoll, alpha.indexOf(random.seededString(1, mSeed + '-rar')) % 36,
+                  cel.bind(mRarity, rarRoll >= 33 ? 'epic' : rarRoll >= 22 ? 'rare' : 'common',
+                  cel.bind(typRoll, alpha.indexOf(random.seededString(1, mSeed + '-typ')) % 8,
+                    types8[typRoll] + '-' + mRarity
+                  )))
+                : ''
+              )))
+            : '',
+            lootItem != '' ? csv.add(schema.spec.inventory, lootItem, 8) : schema.spec.inventory
+          ))))))))))))))))))))}
+
         # --- Clear attack context so specPatch doesn't re-fire ---
         lastAttackTarget: "${''}"
 
