@@ -405,7 +405,7 @@ curl -s -X POST "$BASE/api/v1/dungeons" \
   -H "Content-Type: application/json" \
   -d "{\"name\":\"$DOOR_DUNGEON\",\"monsters\":1,\"difficulty\":\"easy\",\"heroClass\":\"warrior\"}" -o /dev/null
 sleep 15
-DOOR_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeons/default/$DOOR_DUNGEON/action" \
+DOOR_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeons/default/$DOOR_DUNGEON/attacks" \
   -H "Content-Type: application/json" \
   -d '{"target":"unlock-door"}')
 [ "$DOOR_CODE" = "400" ] && pass "unlock-door rejected before treasure opened -> 400" || fail "unlock-door -> $DOOR_CODE (expected 400)"
@@ -459,7 +459,7 @@ curl -s -X POST "$BASE/api/v1/dungeons" \
   -d "{\"name\":\"$R2_DUNGEON\",\"monsters\":1,\"difficulty\":\"easy\",\"heroClass\":\"warrior\"}" -o /dev/null
 sleep 15
 # doorUnlocked defaults to 0 — enter-room-2 must be rejected
-R2_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeons/default/$R2_DUNGEON/action" \
+R2_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeons/default/$R2_DUNGEON/attacks" \
   -H "Content-Type: application/json" \
   -d '{"target":"enter-room-2"}')
 [ "$R2_CODE" = "400" ] && pass "enter-room-2 rejected before door unlocked -> 400" || fail "enter-room-2 -> $R2_CODE (expected 400)"
@@ -477,7 +477,7 @@ curl -s -X PATCH "$BASE/api/v1/dungeons/default/$R2B_DUNGEON" \
   -H "Content-Type: application/json" \
   -d '{"spec":{"currentRoom":2,"doorUnlocked":1,"treasureOpened":1}}' -o /dev/null 2>/dev/null || true
 sleep 5
-R2B_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeons/default/$R2B_DUNGEON/action" \
+R2B_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeons/default/$R2B_DUNGEON/attacks" \
   -H "Content-Type: application/json" \
   -d '{"target":"enter-room-2"}')
 [ "$R2B_CODE" = "400" ] && pass "enter-room-2 rejected when already in room 2 -> 400" || {
