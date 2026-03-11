@@ -3,6 +3,9 @@
 # Requires: kubectl port-forward svc/rpg-backend -n rpg-system 8080:8080
 set -euo pipefail
 
+KUBECTL_CONTEXT="${KUBECTL_CONTEXT:-arn:aws:eks:us-west-2:569190534191:cluster/krombat}"
+kctl() { kubectl --context "$KUBECTL_CONTEXT" "$@"; }
+
 BASE="${API_URL:-http://localhost:8080}"
 DUNGEON="api-test-$(date +%s)"
 PASS=0
@@ -15,8 +18,8 @@ fail() { echo "  ❌ $1"; FAIL=$((FAIL+1)); TESTS+=("FAIL: $1"); }
 
 cleanup() {
   log "Cleanup"
-  kubectl delete dungeon "$DUNGEON"  --ignore-not-found --wait=false 2>/dev/null || true
-  kubectl delete attacks --all --ignore-not-found --wait=false 2>/dev/null || true
+  kctl delete dungeon "$DUNGEON"  --ignore-not-found --wait=false 2>/dev/null || true
+  kctl delete attacks --all --ignore-not-found --wait=false 2>/dev/null || true
 }
 trap cleanup EXIT
 
@@ -143,7 +146,7 @@ CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeons/def
   -H "Content-Type: application/json" \
   -d "{\"target\":\"${ROGUE_DUNGEON}-monster-0-backstab\",\"damage\":20,\"seq\":-1}")
 [ "$CODE" = "400" ] && pass "Backstab-on-cooldown rejected -> 400" || fail "Backstab-on-cooldown -> $CODE (expected 400)"
-kubectl delete dungeon "$ROGUE_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
+kctl delete dungeon "$ROGUE_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
 
 # --- Test 13: Ability rejection — mage heal with insufficient mana ---
 log "Test 13: Mage heal no-mana rejection"
@@ -153,7 +156,7 @@ curl -s -X POST "$BASE/api/v1/dungeons" \
   -d "{\"name\":\"$MAGE_DUNGEON\",\"monsters\":1,\"difficulty\":\"easy\",\"heroClass\":\"mage\"}" -o /dev/null
 sleep 15
 # Drain mage mana to 0 by patching the dungeon CR directly
-kubectl patch dungeon "$MAGE_DUNGEON" -n default --type=merge -p '{"spec":{"heroMana":0}}' &>/dev/null || true
+kctl patch dungeon "$MAGE_DUNGEON" -n default --type=merge -p '{"spec":{"heroMana":0}}' &>/dev/null || true
 sleep 3
 # Attempt heal with 0 mana — should be 400
 # Target is "hero" (mage-heal is handled via target="hero" in processCombat)
@@ -161,7 +164,7 @@ CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeons/def
   -H "Content-Type: application/json" \
   -d "{\"target\":\"hero\",\"damage\":0,\"seq\":-1}")
 [ "$CODE" = "400" ] && pass "Mage heal with 0 mana rejected -> 400" || fail "Mage heal no-mana -> $CODE (expected 400)"
-kubectl delete dungeon "$MAGE_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
+kctl delete dungeon "$MAGE_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
 
 # --- Test 14: Ability rejection — taunt by non-warrior class ---
 log "Test 14: Taunt by non-warrior rejection"
@@ -175,7 +178,7 @@ CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeons/def
   -H "Content-Type: application/json" \
   -d "{\"target\":\"activate-taunt\",\"damage\":0}")
 [ "$CODE" = "400" ] && pass "Non-warrior taunt attempt rejected -> 400" || fail "Non-warrior taunt -> $CODE (expected 400)"
-kubectl delete dungeon "$MAGE_TAUNT" --ignore-not-found --wait=false 2>/dev/null || true
+kctl delete dungeon "$MAGE_TAUNT" --ignore-not-found --wait=false 2>/dev/null || true
 
 # --- Test 15: lastLootDrop field present in spec after kill ---
 log "Test 15: lastLootDrop field present after kill"
@@ -200,7 +203,7 @@ print('lastLootDrop:', repr(spec['lastLootDrop']))
 " 2>/dev/null \
   && pass "lastLootDrop field present in spec after kill (may be empty if no drop)" \
   || fail "lastLootDrop field missing from dungeon spec after kill"
-kubectl delete dungeon "$LOOT_TEST" --ignore-not-found --wait=false 2>/dev/null || true
+kctl delete dungeon "$LOOT_TEST" --ignore-not-found --wait=false 2>/dev/null || true
 
 # --- Test 16: Ability rejection — backstab on cooldown (direct patch) ---
 log "Test 16: Backstab-on-cooldown rejection (direct spec patch)"
@@ -210,14 +213,14 @@ curl -s -X POST "$BASE/api/v1/dungeons" \
   -d "{\"name\":\"$ROGUE_CD_DUNGEON\",\"monsters\":2,\"difficulty\":\"easy\",\"heroClass\":\"rogue\"}" -o /dev/null
 sleep 15
 # Patch backstabCooldown to 1 directly on the spec
-kubectl patch dungeon "$ROGUE_CD_DUNGEON" -n default --type=merge -p '{"spec":{"backstabCooldown":1}}' &>/dev/null || true
+kctl patch dungeon "$ROGUE_CD_DUNGEON" -n default --type=merge -p '{"spec":{"backstabCooldown":1}}' &>/dev/null || true
 sleep 3
 # Attempt backstab — should be rejected with 400 (cooldown active)
 CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeons/default/$ROGUE_CD_DUNGEON/attacks" \
   -H "Content-Type: application/json" \
   -d "{\"target\":\"${ROGUE_CD_DUNGEON}-monster-0-backstab\",\"damage\":20}")
 [ "$CODE" = "400" ] && pass "Backstab-on-cooldown (patched) rejected -> 400" || fail "Backstab-on-cooldown (patched) -> $CODE (expected 400)"
-kubectl delete dungeon "$ROGUE_CD_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
+kctl delete dungeon "$ROGUE_CD_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
 
 # --- Test 17: Ability rejection — mage heal with 0 mana (direct patch, correct target) ---
 log "Test 17: Mage heal no-mana rejection (direct spec patch, target=hero)"
@@ -227,14 +230,14 @@ curl -s -X POST "$BASE/api/v1/dungeons" \
   -d "{\"name\":\"$MAGE_NOMANA_DUNGEON\",\"monsters\":1,\"difficulty\":\"easy\",\"heroClass\":\"mage\"}" -o /dev/null
 sleep 15
 # Drain heroMana to 0 by patching the dungeon CR directly
-kubectl patch dungeon "$MAGE_NOMANA_DUNGEON" -n default --type=merge -p '{"spec":{"heroMana":0}}' &>/dev/null || true
+kctl patch dungeon "$MAGE_NOMANA_DUNGEON" -n default --type=merge -p '{"spec":{"heroMana":0}}' &>/dev/null || true
 sleep 3
 # Attempt heal with 0 mana (target="hero" is the heal trigger) — should be 400
 CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeons/default/$MAGE_NOMANA_DUNGEON/attacks" \
   -H "Content-Type: application/json" \
   -d '{"target":"hero","damage":0}')
 [ "$CODE" = "400" ] && pass "Mage heal with 0 mana (patched) rejected -> 400" || fail "Mage heal no-mana (patched) -> $CODE (expected 400)"
-kubectl delete dungeon "$MAGE_NOMANA_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
+kctl delete dungeon "$MAGE_NOMANA_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
 
 # --- Test 18: Ability rejection — taunt already active (direct patch) ---
 log "Test 18: Taunt-already-active rejection (direct spec patch)"
@@ -244,14 +247,14 @@ curl -s -X POST "$BASE/api/v1/dungeons" \
   -d "{\"name\":\"$WARRIOR_TAUNT_DUNGEON\",\"monsters\":1,\"difficulty\":\"easy\",\"heroClass\":\"warrior\"}" -o /dev/null
 sleep 15
 # Patch tauntActive to true (non-zero) directly on the spec
-kubectl patch dungeon "$WARRIOR_TAUNT_DUNGEON" -n default --type=merge -p '{"spec":{"tauntActive":1}}' &>/dev/null || true
+kctl patch dungeon "$WARRIOR_TAUNT_DUNGEON" -n default --type=merge -p '{"spec":{"tauntActive":1}}' &>/dev/null || true
 sleep 3
 # Attempt taunt while already active — should be rejected with 400
 CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeons/default/$WARRIOR_TAUNT_DUNGEON/attacks" \
   -H "Content-Type: application/json" \
   -d '{"target":"activate-taunt","damage":0}')
 [ "$CODE" = "400" ] && pass "Taunt-already-active rejected -> 400" || fail "Taunt-already-active -> $CODE (expected 400)"
-kubectl delete dungeon "$WARRIOR_TAUNT_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
+kctl delete dungeon "$WARRIOR_TAUNT_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
 
 # --- Test 19: GET /leaderboard endpoint ---
 log "Test 19: GET /leaderboard"
@@ -338,8 +341,8 @@ print(f'NG+ monster HP ratio {ratio:.2f} (base={base_hp} -> ng={ng_hp}) OK')
   && pass "NG+ monster HP is scaled vs base dungeon HP" \
   || pass "NG+ monster HP scaling check skipped (modifier may affect base; both dungeons created independently)"
 
-kubectl delete dungeon "$BASE_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
-kubectl delete dungeon "$NG_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
+kctl delete dungeon "$BASE_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
+kctl delete dungeon "$NG_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
 
 # --- Test 21: monsterTypes field in created dungeon spec ---
 log "Test 21: monsterTypes field in dungeon spec"
@@ -364,7 +367,7 @@ print('monsterTypes:', mt)
 " 2>/dev/null \
   && pass "monsterTypes field has correct values (goblin/skeleton/archer/shaman)" \
   || fail "monsterTypes field missing or incorrect in dungeon spec"
-kubectl delete dungeon "$MT_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
+kctl delete dungeon "$MT_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
 
 # --- Test 22: mana potion rejected for non-Mage hero ---
 log "Test 22: mana potion rejected for warrior"
@@ -374,13 +377,13 @@ curl -s -X POST "$BASE/api/v1/dungeons" \
   -d "{\"name\":\"$MANA_DUNGEON\",\"monsters\":1,\"difficulty\":\"easy\",\"heroClass\":\"warrior\"}" -o /dev/null
 sleep 15
 # Inject a manapotion-common into the warrior's inventory via kubectl patch
-kubectl patch dungeon "$MANA_DUNGEON" --type merge -p '{"spec":{"inventory":"manapotion-common"}}' 2>/dev/null || true
+kctl patch dungeon "$MANA_DUNGEON" --type merge -p '{"spec":{"inventory":"manapotion-common"}}' 2>/dev/null || true
 sleep 3
 MP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeons/default/$MANA_DUNGEON/attacks" \
   -H "Content-Type: application/json" \
   -d '{"target":"use-manapotion-common","damage":0}')
 [ "$MP_CODE" = "400" ] && pass "Mana potion rejected for warrior -> 400" || fail "Mana potion warrior -> $MP_CODE (expected 400)"
-kubectl delete dungeon "$MANA_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
+kctl delete dungeon "$MANA_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
 
 # --- Test 23: open-treasure rejected before boss is defeated ---
 log "Test 23: open-treasure rejected when boss alive"
@@ -393,7 +396,7 @@ TR_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeons/
   -H "Content-Type: application/json" \
   -d '{"target":"open-treasure","damage":0}')
 [ "$TR_CODE" = "400" ] && pass "open-treasure rejected when boss alive -> 400" || fail "open-treasure -> $TR_CODE (expected 400)"
-kubectl delete dungeon "$TR_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
+kctl delete dungeon "$TR_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
 
 # --- Test 24: unlock-door rejected before treasure opened ---
 log "Test 24: unlock-door rejected before treasure opened"
@@ -406,7 +409,7 @@ DOOR_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeon
   -H "Content-Type: application/json" \
   -d '{"target":"unlock-door"}')
 [ "$DOOR_CODE" = "400" ] && pass "unlock-door rejected before treasure opened -> 400" || fail "unlock-door -> $DOOR_CODE (expected 400)"
-kubectl delete dungeon "$DOOR_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
+kctl delete dungeon "$DOOR_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
 
 # --- Test 25: NG+ boots carry-over ---
 log "Test 25: NG+ boots carry-over"
@@ -425,7 +428,7 @@ bb=spec.get('bootsBonus')
 assert bb == 20, f'bootsBonus should be 20, got {bb}'
 print('bootsBonus=20 OK')
 " 2>/dev/null && pass "bootsBonus=20 carries over in NG+ dungeon spec" || fail "bootsBonus not found in NG+ dungeon spec"
-kubectl delete dungeon "$BOOTS_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
+kctl delete dungeon "$BOOTS_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
 
 # --- Test 26: NG+ ring/amulet carry-over ---
 log "Test 26: NG+ ring/amulet carry-over"
@@ -446,7 +449,7 @@ assert rb == 5, f'ringBonus should be 5, got {rb}'
 assert ab == 10, f'amuletBonus should be 10, got {ab}'
 print(f'ringBonus={rb} amuletBonus={ab} OK')
 " 2>/dev/null && pass "ringBonus=5 and amuletBonus=10 carry over in NG+ dungeon spec" || fail "ringBonus/amuletBonus not found in NG+ dungeon spec"
-kubectl delete dungeon "$RING_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
+kctl delete dungeon "$RING_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
 
 # --- Test 27: enter-room-2 rejected when door not yet unlocked ---
 log "Test 27: enter-room-2 rejected when door not yet unlocked"
@@ -460,7 +463,7 @@ R2_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeons/
   -H "Content-Type: application/json" \
   -d '{"target":"enter-room-2"}')
 [ "$R2_CODE" = "400" ] && pass "enter-room-2 rejected before door unlocked -> 400" || fail "enter-room-2 -> $R2_CODE (expected 400)"
-kubectl delete dungeon "$R2_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
+kctl delete dungeon "$R2_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
 
 # --- Test 28: enter-room-2 rejected when already in room 2 (currentRoom=2) ---
 log "Test 28: enter-room-2 rejected when already in room 2"
@@ -481,7 +484,7 @@ R2B_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeons
   # Accept 200 as a no-op (idempotent) if the backend chooses not to error
   [ "$R2B_CODE" = "200" ] && pass "enter-room-2 in room 2 returns 200 no-op (idempotent)" || fail "enter-room-2 already-in-r2 -> $R2B_CODE (expected 400 or 200 no-op)"
 }
-kubectl delete dungeon "$R2B_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
+kctl delete dungeon "$R2B_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
 
 # --- Test 29: Boss ENRAGED phase — counter multiplier 1.5x at ≤50% HP ---
 # Strategy: create a dungeon (easy, 0 monsters so boss is immediately ready),
@@ -514,7 +517,7 @@ else
     fail "Boss ENRAGED phase not reflected in lastEnemyAction (got: \"$(echo "$BP1_ACTION" | head -c 100)\")"
   fi
 fi
-kubectl delete dungeon "$BP1_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
+kctl delete dungeon "$BP1_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
 
 # --- Test 30: Boss BERSERK phase — counter multiplier 2.0x at ≤25% HP ---
 # Same approach: patch bossHP to 25% of easy maxHP (200 → 50 = exactly 25%).
@@ -544,7 +547,7 @@ else
     fail "Boss BERSERK phase not reflected in lastEnemyAction (got: \"$(echo "$BP2_ACTION" | head -c 100)\")"
   fi
 fi
-kubectl delete dungeon "$BP2_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
+kctl delete dungeon "$BP2_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
 
 echo ""
 echo "========================================"
