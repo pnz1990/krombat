@@ -1285,7 +1285,6 @@ func (h *Handler) processAction(ctx context.Context, ns, name, action string, cl
 	heroMana := getInt(spec, "heroMana")
 	heroClass := getString(spec, "heroClass", "warrior")
 	inventory := getString(spec, "inventory", "")
-	difficulty := getString(spec, "difficulty", "normal")
 	bossHP := getInt(spec, "bossHP")
 	actionSeq := getInt(spec, "actionSeq")
 
@@ -1331,9 +1330,14 @@ func (h *Handler) processAction(ctx context.Context, ns, name, action string, cl
 	}
 
 	patchSpec := map[string]interface{}{
-		"lastLootDrop": "",
-		"actionSeq":    newSeq,
+		"actionSeq":  newSeq,
+		"lastAction": action, // trigger field for kro's actionResolve specPatch
 	}
+
+	// MIGRATION: state mutations (inventory, heroHP, heroMana, equipment bonuses,
+	// treasureOpened, doorUnlocked, room transition fields) are now computed by
+	// kro's actionResolve specPatch. Backend writes only trigger + log text.
+	// Validation stays here (returns 400 errors before setting trigger).
 
 	switch {
 	case strings.HasPrefix(action, "use-"):
@@ -1342,26 +1346,21 @@ func (h *Handler) processAction(ctx context.Context, ns, name, action string, cl
 			writeError(w, "item not in inventory: "+item, http.StatusBadRequest)
 			return fmt.Errorf("item not in inventory")
 		}
-		newInv := inventoryRemove(inventory, item)
-		patchSpec["inventory"] = newInv
 
 		switch item {
 		case "hppotion-common":
 			maxHP := classMaxHP(heroClass)
 			newHP := min64(heroHP+20, maxHP)
-			patchSpec["heroHP"] = newHP
 			patchSpec["lastHeroAction"] = fmt.Sprintf("Used %s! HP: %d -> %d", item, heroHP, newHP)
 			patchSpec["lastEnemyAction"] = "Item used"
 		case "hppotion-rare":
 			maxHP := classMaxHP(heroClass)
 			newHP := min64(heroHP+40, maxHP)
-			patchSpec["heroHP"] = newHP
 			patchSpec["lastHeroAction"] = fmt.Sprintf("Used %s! HP: %d -> %d", item, heroHP, newHP)
 			patchSpec["lastEnemyAction"] = "Item used"
 		case "hppotion-epic":
 			maxHP := classMaxHP(heroClass)
 			newHP := min64(heroHP+999, maxHP)
-			patchSpec["heroHP"] = newHP
 			patchSpec["lastHeroAction"] = fmt.Sprintf("Used %s! HP: %d -> %d", item, heroHP, newHP)
 			patchSpec["lastEnemyAction"] = "Item used"
 		case "manapotion-common":
@@ -1370,7 +1369,6 @@ func (h *Handler) processAction(ctx context.Context, ns, name, action string, cl
 				return fmt.Errorf("mana potion non-mage")
 			}
 			newMana := min64(heroMana+2, classMaxMana(heroClass))
-			patchSpec["heroMana"] = newMana
 			patchSpec["lastHeroAction"] = fmt.Sprintf("Used %s! Mana: %d -> %d", item, heroMana, newMana)
 			patchSpec["lastEnemyAction"] = "Item used"
 		case "manapotion-rare":
@@ -1379,7 +1377,6 @@ func (h *Handler) processAction(ctx context.Context, ns, name, action string, cl
 				return fmt.Errorf("mana potion non-mage")
 			}
 			newMana := min64(heroMana+3, classMaxMana(heroClass))
-			patchSpec["heroMana"] = newMana
 			patchSpec["lastHeroAction"] = fmt.Sprintf("Used %s! Mana: %d -> %d", item, heroMana, newMana)
 			patchSpec["lastEnemyAction"] = "Item used"
 		case "manapotion-epic":
@@ -1388,7 +1385,6 @@ func (h *Handler) processAction(ctx context.Context, ns, name, action string, cl
 				return fmt.Errorf("mana potion non-mage")
 			}
 			newMana := min64(heroMana+8, classMaxMana(heroClass))
-			patchSpec["heroMana"] = newMana
 			patchSpec["lastHeroAction"] = fmt.Sprintf("Used %s! Mana: %d -> %d", item, heroMana, newMana)
 			patchSpec["lastEnemyAction"] = "Item used"
 		default:
@@ -1402,84 +1398,55 @@ func (h *Handler) processAction(ctx context.Context, ns, name, action string, cl
 			writeError(w, "item not in inventory: "+item, http.StatusBadRequest)
 			return fmt.Errorf("item not in inventory")
 		}
-		newInv := inventoryRemove(inventory, item)
-		patchSpec["inventory"] = newInv
 
 		switch item {
 		case "weapon-common":
-			patchSpec["weaponBonus"] = int64(5)
-			patchSpec["weaponUses"] = int64(3)
 			patchSpec["lastHeroAction"] = "Equipped weapon-common! +5 damage for 3 attacks"
 		case "weapon-rare":
-			patchSpec["weaponBonus"] = int64(10)
-			patchSpec["weaponUses"] = int64(3)
 			patchSpec["lastHeroAction"] = "Equipped weapon-rare! +10 damage for 3 attacks"
 		case "weapon-epic":
-			patchSpec["weaponBonus"] = int64(20)
-			patchSpec["weaponUses"] = int64(3)
 			patchSpec["lastHeroAction"] = "Equipped weapon-epic! +20 damage for 3 attacks"
 		case "armor-common":
-			patchSpec["armorBonus"] = int64(10)
 			patchSpec["lastHeroAction"] = "Equipped armor-common! +10% defense"
 		case "armor-rare":
-			patchSpec["armorBonus"] = int64(20)
 			patchSpec["lastHeroAction"] = "Equipped armor-rare! +20% defense"
 		case "armor-epic":
-			patchSpec["armorBonus"] = int64(30)
 			patchSpec["lastHeroAction"] = "Equipped armor-epic! +30% defense"
 		case "shield-common":
-			patchSpec["shieldBonus"] = int64(10)
 			patchSpec["lastHeroAction"] = "Equipped shield-common! +10% block chance"
 		case "shield-rare":
-			patchSpec["shieldBonus"] = int64(15)
 			patchSpec["lastHeroAction"] = "Equipped shield-rare! +15% block chance"
 		case "shield-epic":
-			patchSpec["shieldBonus"] = int64(25)
 			patchSpec["lastHeroAction"] = "Equipped shield-epic! +25% block chance"
 		case "helmet-common":
-			patchSpec["helmetBonus"] = int64(5)
 			patchSpec["lastHeroAction"] = "Equipped helmet-common! +5% crit chance"
 		case "helmet-rare":
-			patchSpec["helmetBonus"] = int64(10)
 			patchSpec["lastHeroAction"] = "Equipped helmet-rare! +10% crit chance"
 		case "helmet-epic":
-			patchSpec["helmetBonus"] = int64(15)
 			patchSpec["lastHeroAction"] = "Equipped helmet-epic! +15% crit chance"
 		case "pants-common":
-			patchSpec["pantsBonus"] = int64(5)
 			patchSpec["lastHeroAction"] = "Equipped pants-common! +5% dodge chance"
 		case "pants-rare":
-			patchSpec["pantsBonus"] = int64(10)
 			patchSpec["lastHeroAction"] = "Equipped pants-rare! +10% dodge chance"
 		case "pants-epic":
-			patchSpec["pantsBonus"] = int64(15)
 			patchSpec["lastHeroAction"] = "Equipped pants-epic! +15% dodge chance"
 		case "boots-common":
-			patchSpec["bootsBonus"] = int64(20)
 			patchSpec["lastHeroAction"] = "Equipped boots-common! +20% status resist"
 		case "boots-rare":
-			patchSpec["bootsBonus"] = int64(40)
 			patchSpec["lastHeroAction"] = "Equipped boots-rare! +40% status resist"
 		case "boots-epic":
-			patchSpec["bootsBonus"] = int64(60)
 			patchSpec["lastHeroAction"] = "Equipped boots-epic! +60% status resist"
 		case "ring-common":
-			patchSpec["ringBonus"] = int64(5)
 			patchSpec["lastHeroAction"] = "Equipped ring-common! +5 HP regen per round"
 		case "ring-rare":
-			patchSpec["ringBonus"] = int64(8)
 			patchSpec["lastHeroAction"] = "Equipped ring-rare! +8 HP regen per round"
 		case "ring-epic":
-			patchSpec["ringBonus"] = int64(12)
 			patchSpec["lastHeroAction"] = "Equipped ring-epic! +12 HP regen per round"
 		case "amulet-common":
-			patchSpec["amuletBonus"] = int64(10)
 			patchSpec["lastHeroAction"] = "Equipped amulet-common! +10% damage boost"
 		case "amulet-rare":
-			patchSpec["amuletBonus"] = int64(20)
 			patchSpec["lastHeroAction"] = "Equipped amulet-rare! +20% damage boost"
 		case "amulet-epic":
-			patchSpec["amuletBonus"] = int64(30)
 			patchSpec["lastHeroAction"] = "Equipped amulet-epic! +30% damage boost"
 		default:
 			writeError(w, "cannot equip: "+item, http.StatusBadRequest)
@@ -1499,7 +1466,6 @@ func (h *Handler) processAction(ctx context.Context, ns, name, action string, cl
 			writeError(w, "cannot open treasure: boss not defeated", http.StatusBadRequest)
 			return fmt.Errorf("cannot open treasure")
 		}
-		patchSpec["treasureOpened"] = int64(1)
 		patchSpec["lastHeroAction"] = "Opened the treasure chest!"
 		patchSpec["lastEnemyAction"] = ""
 
@@ -1509,7 +1475,6 @@ func (h *Handler) processAction(ctx context.Context, ns, name, action string, cl
 			writeError(w, "open the treasure first", http.StatusBadRequest)
 			return fmt.Errorf("open treasure first")
 		}
-		patchSpec["doorUnlocked"] = int64(1)
 		patchSpec["lastHeroAction"] = "Door unlocked! A new room awaits..."
 		patchSpec["lastEnemyAction"] = ""
 
@@ -1519,51 +1484,8 @@ func (h *Handler) processAction(ctx context.Context, ns, name, action string, cl
 			writeError(w, "unlock the door first", http.StatusBadRequest)
 			return fmt.Errorf("unlock door first")
 		}
-		modifier := getString(spec, "modifier", "none")
-
-		// Scale Room 2 HP from Room 1 base values:
-		//   monsters: Room1Base × 1.5  (×3/2)
-		//   boss:     Room1Base × 1.3  (×13/10)
-		// Then apply modifier adjustment:
-		//   blessing: ×0.9 (×9/10) — dungeon feels more forgiving
-		//   curse:    ×1.1 (×11/10) — dungeon feels more punishing
-		r1 := defaultHP[difficulty]
-		r2MonsterHP := r1.monster * 3 / 2
-		r2BossHP := r1.boss * 13 / 10
-		if strings.Contains(modifier, "blessing") {
-			r2MonsterHP = r2MonsterHP * 9 / 10
-			r2BossHP = r2BossHP * 9 / 10
-		} else if strings.Contains(modifier, "curse") {
-			r2MonsterHP = r2MonsterHP * 11 / 10
-			r2BossHP = r2BossHP * 11 / 10
-		}
-		newMonsterHP := make([]interface{}, len(monsterHPRaw))
-		for i := range newMonsterHP {
-			newMonsterHP[i] = r2MonsterHP
-		}
-		// Room 2 monster types: troll(even), ghoul(odd) — no special classes in room 2
-		r2MonsterTypes := make([]interface{}, len(monsterHPRaw))
-		for i := range r2MonsterTypes {
-			if i%2 == 0 {
-				r2MonsterTypes[i] = "troll"
-			} else {
-				r2MonsterTypes[i] = "ghoul"
-			}
-		}
-		patchSpec["currentRoom"] = int64(2)
-		patchSpec["monsterHP"] = newMonsterHP
-		patchSpec["bossHP"] = r2BossHP
-		patchSpec["room2MonsterHP"] = newMonsterHP
-		patchSpec["room2BossHP"] = r2BossHP
-		patchSpec["monsterTypes"] = r2MonsterTypes
-		patchSpec["treasureOpened"] = int64(0)
-		patchSpec["doorUnlocked"] = int64(0)
 		patchSpec["lastHeroAction"] = "Entered Room 2! Stronger enemies await..."
 		patchSpec["lastEnemyAction"] = ""
-		// Restore mana to class maximum when entering Room 2
-		if heroClass == "mage" {
-			patchSpec["heroMana"] = int64(8)
-		}
 
 	default:
 		writeError(w, "unknown action: "+action, http.StatusBadRequest)

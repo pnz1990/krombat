@@ -54,6 +54,8 @@ spec:
       lastAttackIsBoss: boolean | default=false
       lastAttackIsBackstab: boolean | default=false
       combatProcessedSeq: integer | default=0
+      lastAction: string | default=""
+      actionProcessedSeq: integer | default=0
       runCount: integer | default=0
       monsterTypes: "[]string"
     status:
@@ -635,4 +637,203 @@ spec:
 
         # --- Clear attack context so specPatch doesn't re-fire ---
         lastAttackTarget: "${''}"
+
+    # ===================================================================
+    # actionResolve: handles use/equip/treasure/door/room2 state mutations
+    # Backend writes: lastAction, actionSeq, lastHeroAction, lastEnemyAction
+    # kro computes: inventory, heroHP, heroMana, equipment bonuses, room transition
+    # ===================================================================
+    - id: actionResolve
+      type: specPatch
+      includeWhen:
+        - "${schema.spec.actionSeq > schema.spec.actionProcessedSeq && schema.spec.lastAction != ''}"
+      patch:
+        # --- Inventory: remove item on use/equip ---
+        inventory: >-
+          ${cel.bind(a, schema.spec.lastAction,
+          cel.bind(inv, schema.spec.inventory,
+            a.startsWith('use-') || a.startsWith('equip-') ?
+              csv.remove(inv, a.startsWith('use-') ? a.substring(4) : a.substring(6))
+            : inv
+          ))}
+
+        # --- heroHP: HP potion healing ---
+        heroHP: >-
+          ${cel.bind(a, schema.spec.lastAction,
+          cel.bind(hp, schema.spec.heroHP,
+          cel.bind(maxHP,
+            schema.spec.heroClass == 'warrior' ? 200
+            : schema.spec.heroClass == 'mage' ? 120
+            : schema.spec.heroClass == 'rogue' ? 150 : 100,
+            a == 'use-hppotion-common' ? (hp + 20 > maxHP ? maxHP : hp + 20)
+            : a == 'use-hppotion-rare' ? (hp + 40 > maxHP ? maxHP : hp + 40)
+            : a == 'use-hppotion-epic' ? maxHP
+            : hp
+          )))}
+
+        # --- heroMana: mana potion restore + room 2 mana refill ---
+        heroMana: >-
+          ${cel.bind(a, schema.spec.lastAction,
+          cel.bind(mana, schema.spec.heroMana,
+            a == 'use-manapotion-common' ? (mana + 2 > 8 ? 8 : mana + 2)
+            : a == 'use-manapotion-rare' ? (mana + 3 > 8 ? 8 : mana + 3)
+            : a == 'use-manapotion-epic' ? 8
+            : a == 'enter-room-2' && schema.spec.heroClass == 'mage' ? 8
+            : mana
+          ))}
+
+        # --- Equipment bonus fields (overwrite on equip) ---
+        weaponBonus: >-
+          ${cel.bind(a, schema.spec.lastAction,
+            a == 'equip-weapon-common' ? 5
+            : a == 'equip-weapon-rare' ? 10
+            : a == 'equip-weapon-epic' ? 20
+            : schema.spec.weaponBonus
+          )}
+        weaponUses: >-
+          ${cel.bind(a, schema.spec.lastAction,
+            a == 'equip-weapon-common' || a == 'equip-weapon-rare' || a == 'equip-weapon-epic' ? 3
+            : schema.spec.weaponUses
+          )}
+        armorBonus: >-
+          ${cel.bind(a, schema.spec.lastAction,
+            a == 'equip-armor-common' ? 10
+            : a == 'equip-armor-rare' ? 20
+            : a == 'equip-armor-epic' ? 30
+            : schema.spec.armorBonus
+          )}
+        shieldBonus: >-
+          ${cel.bind(a, schema.spec.lastAction,
+            a == 'equip-shield-common' ? 10
+            : a == 'equip-shield-rare' ? 15
+            : a == 'equip-shield-epic' ? 25
+            : schema.spec.shieldBonus
+          )}
+        helmetBonus: >-
+          ${cel.bind(a, schema.spec.lastAction,
+            a == 'equip-helmet-common' ? 5
+            : a == 'equip-helmet-rare' ? 10
+            : a == 'equip-helmet-epic' ? 15
+            : schema.spec.helmetBonus
+          )}
+        pantsBonus: >-
+          ${cel.bind(a, schema.spec.lastAction,
+            a == 'equip-pants-common' ? 5
+            : a == 'equip-pants-rare' ? 10
+            : a == 'equip-pants-epic' ? 15
+            : schema.spec.pantsBonus
+          )}
+        bootsBonus: >-
+          ${cel.bind(a, schema.spec.lastAction,
+            a == 'equip-boots-common' ? 20
+            : a == 'equip-boots-rare' ? 40
+            : a == 'equip-boots-epic' ? 60
+            : schema.spec.bootsBonus
+          )}
+        ringBonus: >-
+          ${cel.bind(a, schema.spec.lastAction,
+            a == 'equip-ring-common' ? 5
+            : a == 'equip-ring-rare' ? 8
+            : a == 'equip-ring-epic' ? 12
+            : schema.spec.ringBonus
+          )}
+        amuletBonus: >-
+          ${cel.bind(a, schema.spec.lastAction,
+            a == 'equip-amulet-common' ? 10
+            : a == 'equip-amulet-rare' ? 20
+            : a == 'equip-amulet-epic' ? 30
+            : schema.spec.amuletBonus
+          )}
+
+        # --- Treasure and door ---
+        treasureOpened: >-
+          ${cel.bind(a, schema.spec.lastAction,
+            a == 'open-treasure' ? 1
+            : a == 'enter-room-2' ? 0
+            : schema.spec.treasureOpened
+          )}
+        doorUnlocked: >-
+          ${cel.bind(a, schema.spec.lastAction,
+            a == 'unlock-door' ? 1
+            : a == 'enter-room-2' ? 0
+            : schema.spec.doorUnlocked
+          )}
+
+        # --- Room 2 transition fields ---
+        currentRoom: >-
+          ${schema.spec.lastAction == 'enter-room-2' ? 2 : schema.spec.currentRoom}
+
+        monsterHP: >-
+          ${cel.bind(a, schema.spec.lastAction,
+          cel.bind(diff, schema.spec.difficulty,
+          cel.bind(mod, schema.spec.modifier,
+            a == 'enter-room-2' ?
+              cel.bind(r1m, diff == 'easy' ? 30 : diff == 'hard' ? 80 : 50,
+              cel.bind(r2m, r1m * 3 / 2,
+              cel.bind(adj,
+                mod.startsWith('blessing') ? r2m * 9 / 10
+                : mod.startsWith('curse') ? r2m * 11 / 10
+                : r2m,
+                schema.spec.monsterHP.map(x, adj)
+              )))
+            : schema.spec.monsterHP
+          )))}
+
+        bossHP: >-
+          ${cel.bind(a, schema.spec.lastAction,
+          cel.bind(diff, schema.spec.difficulty,
+          cel.bind(mod, schema.spec.modifier,
+            a == 'enter-room-2' ?
+              cel.bind(r1b, diff == 'easy' ? 200 : diff == 'hard' ? 800 : 400,
+              cel.bind(r2b, r1b * 13 / 10,
+                mod.startsWith('blessing') ? r2b * 9 / 10
+                : mod.startsWith('curse') ? r2b * 11 / 10
+                : r2b
+              ))
+            : schema.spec.bossHP
+          )))}
+
+        room2MonsterHP: >-
+          ${cel.bind(a, schema.spec.lastAction,
+          cel.bind(diff, schema.spec.difficulty,
+          cel.bind(mod, schema.spec.modifier,
+            a == 'enter-room-2' ?
+              cel.bind(r1m, diff == 'easy' ? 30 : diff == 'hard' ? 80 : 50,
+              cel.bind(r2m, r1m * 3 / 2,
+              cel.bind(adj,
+                mod.startsWith('blessing') ? r2m * 9 / 10
+                : mod.startsWith('curse') ? r2m * 11 / 10
+                : r2m,
+                schema.spec.monsterHP.map(x, adj)
+              )))
+            : schema.spec.room2MonsterHP
+          )))}
+
+        room2BossHP: >-
+          ${cel.bind(a, schema.spec.lastAction,
+          cel.bind(diff, schema.spec.difficulty,
+          cel.bind(mod, schema.spec.modifier,
+            a == 'enter-room-2' ?
+              cel.bind(r1b, diff == 'easy' ? 200 : diff == 'hard' ? 800 : 400,
+              cel.bind(r2b, r1b * 13 / 10,
+                mod.startsWith('blessing') ? r2b * 9 / 10
+                : mod.startsWith('curse') ? r2b * 11 / 10
+                : r2b
+              ))
+            : schema.spec.room2BossHP
+          )))}
+
+        monsterTypes: >-
+          ${schema.spec.lastAction == 'enter-room-2' ?
+            lists.range(size(schema.spec.monsterHP)).map(i, i % 2 == 0 ? 'troll' : 'ghoul')
+            : schema.spec.monsterTypes}
+
+        # --- Loot cleared on every action ---
+        lastLootDrop: "${''}"
+
+        # --- Action processed sentinel ---
+        actionProcessedSeq: "${schema.spec.actionSeq}"
+
+        # --- Clear action trigger so specPatch doesn't re-fire ---
+        lastAction: "${''}"
 
