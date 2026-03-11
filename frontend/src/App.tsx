@@ -351,13 +351,15 @@ export default function App() {
           setCombatModal({ phase: 'rolling', formula, heroAction: '', enemyAction: '', spec: detail?.spec, oldHP })
         }
 
-        // Poll until attackSeq > prevSeq AND lastAttackTarget is cleared (kro finished processing).
-        // The backend writes trigger fields (lastAttackTarget, attackSeq, etc.) and kro's
-        // combatResolve specPatch computes the actual state mutations, then clears lastAttackTarget.
+        // Poll until attackSeq > prevSeq AND all kro triggers are cleared:
+        // - lastAttackTarget cleared by combatResolve (normal combat)
+        // - lastAbility cleared by abilityResolve (mage heal, warrior taunt)
+        // The backend writes trigger fields and kro's specPatch nodes compute
+        // the actual state mutations, then clear the triggers.
         for (let attempt = 0; attempt < 20; attempt++) {
           await new Promise(r => setTimeout(r, 1000))
           const current = await getDungeon(selected.ns, selected.name)
-          if ((current.spec.attackSeq || 0) > prevSeq && !current.spec.lastAttackTarget) {
+          if ((current.spec.attackSeq || 0) > prevSeq && !current.spec.lastAttackTarget && !current.spec.lastAbility) {
             updated = current
             addK8s(`kubectl get dungeon ${selected.name}`, `heroHP:${current.spec.heroHP} bossHP:${current.spec.bossHP}`,
               JSON.stringify({ spec: current.spec, status: current.status }, null, 2))

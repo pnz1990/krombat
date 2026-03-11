@@ -60,7 +60,9 @@ teardown_backend_pf() {
 }
 
 # Submit an attack via the backend REST API and wait for attackSeq to increment
-# AND for kro's combatResolve to finish (lastAttackTarget cleared).
+# AND for kro to finish processing all triggers:
+# - lastAttackTarget cleared by combatResolve (normal combat + backstab)
+# - lastAbility cleared by abilityResolve (mage heal, warrior taunt)
 # Usage: submit_attack <dungeon-name> <target> [damage]
 submit_attack() {
   local dname="$1" target="$2" damage="${3:-0}"
@@ -72,9 +74,9 @@ submit_attack() {
   # Wait for attackSeq to increment (backend wrote triggers)
   wait_for "${dname} attackSeq > ${prev_seq}" \
     "[ \$(kctl get dungeon ${dname} -o jsonpath='{.spec.attackSeq}' 2>/dev/null || echo 0) -gt ${prev_seq} ]" 30
-  # Wait for kro combatResolve to finish (clears lastAttackTarget)
+  # Wait for kro to finish — both combatResolve (clears lastAttackTarget) and abilityResolve (clears lastAbility)
   wait_for "${dname} kro resolved" \
-    "[ -z \"\$(kctl get dungeon ${dname} -o jsonpath='{.spec.lastAttackTarget}' 2>/dev/null)\" ]" 30
+    "[ -z \"\$(kctl get dungeon ${dname} -o jsonpath='{.spec.lastAttackTarget}' 2>/dev/null)\" ] && [ -z \"\$(kctl get dungeon ${dname} -o jsonpath='{.spec.lastAbility}' 2>/dev/null)\" ]" 30
 }
 
 # Submit an action (non-combat) via the backend REST API and wait for kro to finish.

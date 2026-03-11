@@ -787,13 +787,15 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 			writeError(w, "not enough mana", http.StatusBadRequest)
 			return fmt.Errorf("not enough mana")
 		}
+		// Compute heal values for log text (kro will independently compute the same mutations)
 		maxHP := int64(120)
 		newHP := min64(heroHP+40, maxHP)
 		heroMana -= 2
 		heroAction := fmt.Sprintf("Mage heals for %d HP! (Mana: %d)", newHP-heroHP, heroMana)
+		// MIGRATION: Write trigger fields only — kro's abilityResolve computes heroHP/heroMana
 		patch := map[string]interface{}{
 			"spec": map[string]interface{}{
-				"heroHP": newHP, "heroMana": heroMana,
+				"lastAbility":     "mage-heal",
 				"lastHeroAction":  heroAction,
 				"lastEnemyAction": "No counter-attack during heal",
 				"lastLootDrop":    "",
@@ -818,14 +820,14 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 			writeError(w, "taunt already active", http.StatusBadRequest)
 			return fmt.Errorf("taunt already active")
 		}
+		// MIGRATION: Write trigger fields only — kro's abilityResolve sets tauntActive + pre-arms tauntProcessedSeq
 		patch := map[string]interface{}{
 			"spec": map[string]interface{}{
-				"tauntActive":       1,
-				"tauntProcessedSeq": newSeq, // pre-arm: kro won't advance taunt on this same turn
-				"lastHeroAction":    "Warrior activates Taunt! Next attack has 60% counter-attack reduction.",
-				"lastEnemyAction":   "",
-				"lastLootDrop":      "",
-				"attackSeq":         newSeq,
+				"lastAbility":     "warrior-taunt",
+				"lastHeroAction":  "Warrior activates Taunt! Next attack has 60% counter-attack reduction.",
+				"lastEnemyAction": "",
+				"lastLootDrop":    "",
+				"attackSeq":       newSeq,
 			},
 		}
 		return h.patchAndRespond(ctx, ns, name, patch, w)
@@ -926,13 +928,9 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 		"ringBonus":   ringBonus,
 		"amuletBonus": amuletBonus,
 	}
-	// If backstab was triggered this turn, set the cooldown (kro will decrement from here).
-	// Pre-arm cooldownProcessedSeq to current sum so kro doesn't decrement on this same turn.
-	if isBackstab {
-		patchSpec["backstabCooldown"] = backstabCD // backstabCD was set to 3 above
-		actionSeqForGate := getInt(spec, "actionSeq")
-		patchSpec["cooldownProcessedSeq"] = newSeq + actionSeqForGate
-	}
+	// MIGRATION: backstabCooldown and cooldownProcessedSeq are now set by kro's
+	// combatResolve specPatch when lastAttackIsBackstab == true. Backend no longer
+	// writes these fields directly.
 
 	// MIGRATION: loot state (lastLootDrop, inventory) is now computed by kro's combatResolve.
 	// Backend still needs inventory2 to decide log text ("inventory full!" vs "Dropped X!").
