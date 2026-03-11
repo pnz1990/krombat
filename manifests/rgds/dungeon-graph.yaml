@@ -47,6 +47,13 @@ spec:
       dotProcessedSeq: integer | default=0
       tauntProcessedSeq: integer | default=0
       cooldownProcessedSeq: integer | default=0
+      ringProcessedSeq: integer | default=0
+      lastAttackTarget: string | default=""
+      lastAttackSeed: string | default=""
+      lastAttackIndex: integer | default=-1
+      lastAttackIsBoss: boolean | default=false
+      lastAttackIsBackstab: boolean | default=false
+      combatProcessedSeq: integer | default=0
       runCount: integer | default=0
       monsterTypes: "[]string"
     status:
@@ -202,4 +209,250 @@ spec:
       patch:
         backstabCooldown: "${schema.spec.backstabCooldown - 1}"
         cooldownProcessedSeq: "${schema.spec.attackSeq + schema.spec.actionSeq}"
+
+    # --- Ring HP regen: restore ringBonus HP per attack turn, capped at class max ---
+    # Gate: attackSeq has advanced past ringProcessedSeq AND ringBonus is active.
+    # maxHP: warrior=200, mage=120, rogue=150, fallback=100.
+    - id: regenRing
+      type: specPatch
+      includeWhen:
+        - "${schema.spec.attackSeq > schema.spec.ringProcessedSeq && schema.spec.ringBonus > 0}"
+      patch:
+        heroHP: "${(schema.spec.heroHP + schema.spec.ringBonus) > (schema.spec.heroClass == 'warrior' ? 200 : schema.spec.heroClass == 'mage' ? 120 : schema.spec.heroClass == 'rogue' ? 150 : 100) ? (schema.spec.heroClass == 'warrior' ? 200 : schema.spec.heroClass == 'mage' ? 120 : schema.spec.heroClass == 'rogue' ? 150 : 100) : (schema.spec.heroHP + schema.spec.ringBonus)}"
+        ringProcessedSeq: "${schema.spec.attackSeq}"
+
+    # --- Combat resolution: compute all combat math in one atomic specPatch ---
+    # Gate: attackSeq has advanced past combatProcessedSeq AND there's a target.
+    # This replaces the Go backend's processCombat function.
+    # Uses cel.bind() for intermediate values and kro CEL extensions for RNG + arrays.
+    - id: combatResolve
+      type: specPatch
+      includeWhen:
+        - "${schema.spec.attackSeq > schema.spec.combatProcessedSeq && schema.spec.lastAttackTarget != ''}"
+      patch:
+        # --- Monster HP: apply hero damage to targeted monster ---
+        monsterHP: >-
+          ${!schema.spec.lastAttackIsBoss && schema.spec.lastAttackIndex >= 0 ?
+            cel.bind(s, schema.spec.lastAttackSeed,
+            cel.bind(diff, schema.spec.difficulty,
+            cel.bind(baseDmg,
+              diff == 'easy' ? random.seededInt(s + '-d1', 20) + 3
+              : diff == 'hard' ? random.seededInt(s + '-d1', 20) + random.seededInt(s + '-d2', 20) + random.seededInt(s + '-d3', 20) + 8
+              : random.seededInt(s + '-d1', 12) + random.seededInt(s + '-d2', 12) + 6,
+            cel.bind(classMult,
+              schema.spec.lastAttackIsBackstab ? baseDmg * 3
+              : schema.spec.heroClass == 'mage' ? (schema.spec.heroMana > 0 ? baseDmg * 13 / 10 : baseDmg / 2)
+              : schema.spec.heroClass == 'rogue' ? baseDmg * 11 / 10
+              : baseDmg,
+            cel.bind(modMult,
+              schema.spec.modifier == 'curse-darkness' ? classMult * 3 / 4
+              : schema.spec.modifier == 'blessing-strength' ? classMult * 3 / 2
+              : schema.spec.modifier == 'blessing-fortune' && random.seededInt(s + '-crit', 100) < 20 ? classMult * 2
+              : classMult,
+            cel.bind(wpnDmg, schema.spec.weaponUses > 0 ? modMult + schema.spec.weaponBonus : modMult,
+            cel.bind(helmDmg, schema.spec.helmetBonus > 0 && random.seededInt(s + '-helmet-crit', 100) < schema.spec.helmetBonus ? wpnDmg * 2 : wpnDmg,
+            cel.bind(amuDmg, schema.spec.amuletBonus > 0 ? helmDmg * (100 + schema.spec.amuletBonus) / 100 : helmDmg,
+            cel.bind(finalDmg, schema.spec.stunTurns > 0 ? 0 : amuDmg,
+            cel.bind(idx, schema.spec.lastAttackIndex,
+            cel.bind(oldHP, schema.spec.monsterHP[idx],
+            cel.bind(newHP, oldHP - finalDmg < 0 ? 0 : oldHP - finalDmg,
+              lists.set(schema.spec.monsterHP, idx, newHP)
+            ))))))))))))
+            : schema.spec.monsterHP}
+
+        # --- Boss HP: apply hero damage to boss ---
+        bossHP: >-
+          ${schema.spec.lastAttackIsBoss ?
+            cel.bind(s, schema.spec.lastAttackSeed,
+            cel.bind(diff, schema.spec.difficulty,
+            cel.bind(baseDmg,
+              (diff == 'easy' ? random.seededInt(s + '-d1', 20) + 3
+               : diff == 'hard' ? random.seededInt(s + '-d1', 20) + random.seededInt(s + '-d2', 20) + random.seededInt(s + '-d3', 20) + 8
+               : random.seededInt(s + '-d1', 12) + random.seededInt(s + '-d2', 12) + 6)
+              + random.seededInt(s + '-dboss', 20) + 3,
+            cel.bind(classMult,
+              schema.spec.lastAttackIsBackstab ? baseDmg * 3
+              : schema.spec.heroClass == 'mage' ? (schema.spec.heroMana > 0 ? baseDmg * 13 / 10 : baseDmg / 2)
+              : schema.spec.heroClass == 'rogue' ? baseDmg * 11 / 10
+              : baseDmg,
+            cel.bind(modMult,
+              schema.spec.modifier == 'curse-darkness' ? classMult * 3 / 4
+              : schema.spec.modifier == 'blessing-strength' ? classMult * 3 / 2
+              : schema.spec.modifier == 'blessing-fortune' && random.seededInt(s + '-crit', 100) < 20 ? classMult * 2
+              : classMult,
+            cel.bind(wpnDmg, schema.spec.weaponUses > 0 ? modMult + schema.spec.weaponBonus : modMult,
+            cel.bind(helmDmg, schema.spec.helmetBonus > 0 && random.seededInt(s + '-helmet-crit', 100) < schema.spec.helmetBonus ? wpnDmg * 2 : wpnDmg,
+            cel.bind(amuDmg, schema.spec.amuletBonus > 0 ? helmDmg * (100 + schema.spec.amuletBonus) / 100 : helmDmg,
+            cel.bind(finalDmg, schema.spec.stunTurns > 0 ? 0 : amuDmg,
+            cel.bind(newBossHP, schema.spec.bossHP - finalDmg < 0 ? 0 : schema.spec.bossHP - finalDmg,
+              newBossHP
+            ))))))))))
+            : schema.spec.bossHP}
+
+        # --- Weapon uses: decrement if weapon was used ---
+        weaponUses: >-
+          ${schema.spec.weaponUses > 0 ? schema.spec.weaponUses - 1 : 0}
+
+        # --- Weapon bonus: zero out if weapon broke ---
+        weaponBonus: >-
+          ${schema.spec.weaponUses > 0 && schema.spec.weaponUses - 1 == 0 ? 0 : schema.spec.weaponBonus}
+
+        # --- Hero mana: decrement if mage attacked with mana, regen on monster kill ---
+        heroMana: >-
+          ${cel.bind(s, schema.spec.lastAttackSeed,
+          cel.bind(mana, schema.spec.heroMana,
+          cel.bind(usedMana,
+            schema.spec.heroClass == 'mage' && mana > 0 && !schema.spec.lastAttackIsBackstab && schema.spec.stunTurns == 0,
+          cel.bind(manaAfterUse, usedMana ? mana - 1 : mana,
+          cel.bind(diff, schema.spec.difficulty,
+          cel.bind(baseDmg,
+            (diff == 'easy' ? random.seededInt(s + '-d1', 20) + 3
+             : diff == 'hard' ? random.seededInt(s + '-d1', 20) + random.seededInt(s + '-d2', 20) + random.seededInt(s + '-d3', 20) + 8
+             : random.seededInt(s + '-d1', 12) + random.seededInt(s + '-d2', 12) + 6)
+            + (schema.spec.lastAttackIsBoss ? random.seededInt(s + '-dboss', 20) + 3 : 0),
+          cel.bind(classMult,
+            schema.spec.lastAttackIsBackstab ? baseDmg * 3
+            : schema.spec.heroClass == 'mage' ? (mana > 0 ? baseDmg * 13 / 10 : baseDmg / 2)
+            : schema.spec.heroClass == 'rogue' ? baseDmg * 11 / 10
+            : baseDmg,
+          cel.bind(modMult,
+            schema.spec.modifier == 'curse-darkness' ? classMult * 3 / 4
+            : schema.spec.modifier == 'blessing-strength' ? classMult * 3 / 2
+            : schema.spec.modifier == 'blessing-fortune' && random.seededInt(s + '-crit', 100) < 20 ? classMult * 2
+            : classMult,
+          cel.bind(wpnDmg, schema.spec.weaponUses > 0 ? modMult + schema.spec.weaponBonus : modMult,
+          cel.bind(helmDmg, schema.spec.helmetBonus > 0 && random.seededInt(s + '-helmet-crit', 100) < schema.spec.helmetBonus ? wpnDmg * 2 : wpnDmg,
+          cel.bind(amuDmg, schema.spec.amuletBonus > 0 ? helmDmg * (100 + schema.spec.amuletBonus) / 100 : helmDmg,
+          cel.bind(finalDmg, schema.spec.stunTurns > 0 ? 0 : amuDmg,
+          cel.bind(killedMonster,
+            !schema.spec.lastAttackIsBoss && schema.spec.lastAttackIndex >= 0
+            && schema.spec.monsterHP[schema.spec.lastAttackIndex] > 0
+            && schema.spec.monsterHP[schema.spec.lastAttackIndex] - finalDmg <= 0,
+          cel.bind(regenMana,
+            killedMonster && schema.spec.heroClass == 'mage' && manaAfterUse < 8,
+            killedMonster && regenMana ? manaAfterUse + 1 : manaAfterUse
+          ))))))))))))))}
+
+        # --- Hero HP: apply counter-attack from boss or monsters ---
+        heroHP: >-
+          ${cel.bind(s, schema.spec.lastAttackSeed,
+          cel.bind(diff, schema.spec.difficulty,
+          cel.bind(hp, schema.spec.heroHP,
+          cel.bind(baseDmg,
+            (diff == 'easy' ? random.seededInt(s + '-d1', 20) + 3
+             : diff == 'hard' ? random.seededInt(s + '-d1', 20) + random.seededInt(s + '-d2', 20) + random.seededInt(s + '-d3', 20) + 8
+             : random.seededInt(s + '-d1', 12) + random.seededInt(s + '-d2', 12) + 6)
+            + (schema.spec.lastAttackIsBoss ? random.seededInt(s + '-dboss', 20) + 3 : 0),
+          cel.bind(classMult,
+            schema.spec.lastAttackIsBackstab ? baseDmg * 3
+            : schema.spec.heroClass == 'mage' ? (schema.spec.heroMana > 0 ? baseDmg * 13 / 10 : baseDmg / 2)
+            : schema.spec.heroClass == 'rogue' ? baseDmg * 11 / 10
+            : baseDmg,
+          cel.bind(modMult,
+            schema.spec.modifier == 'curse-darkness' ? classMult * 3 / 4
+            : schema.spec.modifier == 'blessing-strength' ? classMult * 3 / 2
+            : schema.spec.modifier == 'blessing-fortune' && random.seededInt(s + '-crit', 100) < 20 ? classMult * 2
+            : classMult,
+          cel.bind(wpnDmg, schema.spec.weaponUses > 0 ? modMult + schema.spec.weaponBonus : modMult,
+          cel.bind(helmDmg, schema.spec.helmetBonus > 0 && random.seededInt(s + '-helmet-crit', 100) < schema.spec.helmetBonus ? wpnDmg * 2 : wpnDmg,
+          cel.bind(amuDmg, schema.spec.amuletBonus > 0 ? helmDmg * (100 + schema.spec.amuletBonus) / 100 : helmDmg,
+          cel.bind(finalDmg, schema.spec.stunTurns > 0 ? 0 : amuDmg,
+          cel.bind(isBoss, schema.spec.lastAttackIsBoss,
+          cel.bind(newBossHP, isBoss ? (schema.spec.bossHP - finalDmg < 0 ? 0 : schema.spec.bossHP - finalDmg) : schema.spec.bossHP,
+          cel.bind(maxBossHP, diff == 'easy' ? 200 : diff == 'hard' ? 800 : 400,
+          cel.bind(bossCounter,
+            isBoss && newBossHP > 0 ?
+              cel.bind(bc, diff == 'easy' ? 3 : diff == 'hard' ? 8 : 5,
+              cel.bind(hpPct, newBossHP * 100 / maxBossHP,
+              cel.bind(dmgMult, hpPct > 50 ? 10 : hpPct > 25 ? 15 : 20,
+              cel.bind(phased, bc * dmgMult / 10,
+              cel.bind(modded,
+                schema.spec.modifier == 'curse-fury' ? phased * 2
+                : schema.spec.modifier == 'blessing-resilience' ? phased / 2
+                : phased,
+              cel.bind(armored, schema.spec.armorBonus > 0 ? modded * (100 - schema.spec.armorBonus) / 100 : modded,
+              cel.bind(shielded, schema.spec.shieldBonus > 0 && armored > 0 && random.seededInt(s + '-shield', 100) < schema.spec.shieldBonus ? 0 : armored,
+              cel.bind(classed,
+                schema.spec.heroClass == 'warrior' ? shielded * 3 / 4
+                : schema.spec.heroClass == 'rogue' && random.seededInt(s + '-dodge-boss', 100) < 25 ? 0
+                : shielded,
+              cel.bind(pantsed, schema.spec.pantsBonus > 0 && classed > 0 && random.seededInt(s + '-pants-dodge', 100) < schema.spec.pantsBonus ? 0 : classed,
+              cel.bind(taunted, schema.spec.tauntActive == 2 && pantsed > 0 ? pantsed * 2 / 5 : pantsed,
+              cel.bind(oneshotProtected, hp - taunted < 1 && taunted < hp ? hp - 1 : taunted,
+                oneshotProtected
+              )))))))))))
+            : 0,
+          cel.bind(idx, schema.spec.lastAttackIndex,
+          cel.bind(newMonsterArr,
+            (!isBoss && idx >= 0) ?
+              lists.set(schema.spec.monsterHP, idx, (schema.spec.monsterHP[idx] - finalDmg < 0 ? 0 : schema.spec.monsterHP[idx] - finalDmg))
+            : schema.spec.monsterHP,
+          cel.bind(aliveCount,
+            (!isBoss && idx >= 0) ? newMonsterArr.filter(h, h > 0).size() : 0,
+          cel.bind(monsterCounter,
+            !isBoss && idx >= 0 && aliveCount > 0 ?
+              cel.bind(mbc, diff == 'easy' ? 1 : diff == 'hard' ? 3 : 2,
+              cel.bind(mtotal, aliveCount * mbc,
+              cel.bind(mModded, schema.spec.modifier == 'blessing-resilience' ? mtotal / 2 : mtotal,
+              cel.bind(mArmored, schema.spec.armorBonus > 0 ? mModded * (100 - schema.spec.armorBonus) / 100 : mModded,
+              cel.bind(mShielded, schema.spec.shieldBonus > 0 && mArmored > 0 && random.seededInt(s + '-shield-m', 100) < schema.spec.shieldBonus ? 0 : mArmored,
+              cel.bind(mClassed,
+                schema.spec.heroClass == 'warrior' ? mShielded * 3 / 4
+                : schema.spec.heroClass == 'rogue' && random.seededInt(s + '-dodge-monster', 100) < 25 ? 0
+                : mShielded,
+              cel.bind(mPantsed, schema.spec.pantsBonus > 0 && mClassed > 0 && random.seededInt(s + '-pants-dodge', 100) < schema.spec.pantsBonus ? 0 : mClassed,
+              cel.bind(mTaunted, schema.spec.tauntActive == 2 && mPantsed > 0 ? mPantsed * 2 / 5 : mPantsed,
+              cel.bind(mOSP, hp - mTaunted < 1 && mTaunted < hp ? hp - 1 : mTaunted,
+                mOSP
+              )))))))))
+            : 0,
+          cel.bind(totalCounter, bossCounter + monsterCounter,
+            hp - totalCounter < 0 ? 0 : hp - totalCounter
+          )))))))))))))))))))}
+
+        # --- Status effects from boss/monster counter-attacks ---
+        poisonTurns: >-
+          ${cel.bind(s, schema.spec.lastAttackSeed,
+          cel.bind(pt, schema.spec.poisonTurns,
+          cel.bind(isBoss, schema.spec.lastAttackIsBoss,
+          cel.bind(effectRoll, random.seededInt(s + '-fx', 100),
+          cel.bind(resistRoll, random.seededInt(s + '-boots-resist', 100),
+          cel.bind(resisted, schema.spec.bootsBonus > 0 && resistRoll < schema.spec.bootsBonus,
+            isBoss ?
+              (schema.spec.currentRoom == 2 ?
+                (effectRoll >= 15 && effectRoll < 45 && pt == 0 && !resisted ? 3 : pt)
+                : pt)
+            : (!isBoss && pt == 0 && effectRoll < 20 && !resisted ? 3 : pt)
+          ))))))}
+
+        burnTurns: >-
+          ${cel.bind(s, schema.spec.lastAttackSeed,
+          cel.bind(bt, schema.spec.burnTurns,
+          cel.bind(isBoss, schema.spec.lastAttackIsBoss,
+          cel.bind(effectRoll, random.seededInt(s + '-fx', 100),
+          cel.bind(resistRoll, random.seededInt(s + '-boots-resist', 100),
+          cel.bind(resisted, schema.spec.bootsBonus > 0 && resistRoll < schema.spec.bootsBonus,
+            isBoss && schema.spec.currentRoom == 1 ?
+              (effectRoll >= 15 && effectRoll < 40 && bt == 0 && !resisted ? 2 : bt)
+            : bt
+          ))))))}
+
+        stunTurns: >-
+          ${cel.bind(s, schema.spec.lastAttackSeed,
+          cel.bind(st, schema.spec.stunTurns,
+          cel.bind(wasStunned, st > 0,
+          cel.bind(isBoss, schema.spec.lastAttackIsBoss,
+          cel.bind(effectRoll, random.seededInt(s + '-fx', 100),
+          cel.bind(resistRoll, random.seededInt(s + '-boots-resist', 100),
+          cel.bind(resisted, schema.spec.bootsBonus > 0 && resistRoll < schema.spec.bootsBonus,
+            isBoss ?
+              (effectRoll < 15 && st == 0 && !wasStunned && !resisted ? 1 : st)
+            : st
+          )))))))}
+
+        # --- Combat processed sentinel ---
+        combatProcessedSeq: "${schema.spec.attackSeq}"
+
+        # --- Clear attack context so specPatch doesn't re-fire ---
+        lastAttackTarget: "${''}"
 
