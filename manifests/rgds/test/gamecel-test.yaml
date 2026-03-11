@@ -1,0 +1,43 @@
+apiVersion: kro.run/v1alpha1
+kind: ResourceGraphDefinition
+metadata:
+  name: gamecel-test
+spec:
+  schema:
+    apiVersion: v1alpha1
+    kind: GameCelTest
+    group: game.k8s.example
+    spec:
+      seed: string | default="test-seed"
+      inventory: string | default=""
+      monsterHP: "[]integer"
+    status:
+      roll20: "${gameConfig.data.roll20}"
+      roll100: "${gameConfig.data.roll100}"
+      roll36: "${gameConfig.data.roll36}"
+      arrayResult: "${gameConfig.data.arrayResult}"
+      csvRemoveResult: "${gameConfig.data.csvRemoveResult}"
+      csvAddResult: "${gameConfig.data.csvAddResult}"
+      csvContainsResult: "${gameConfig.data.csvContainsResult}"
+
+  resources:
+    - id: gameConfig
+      template:
+        apiVersion: v1
+        kind: ConfigMap
+        metadata:
+          name: "${schema.metadata.name + '-gamecel'}"
+          namespace: default
+        data:
+          # Test random.seededInt — deterministic roll
+          roll20: "${string(random.seededInt(schema.spec.seed, 20))}"
+          roll100: "${string(random.seededInt(schema.spec.seed + '-shield', 100))}"
+          roll36: "${string(random.seededInt(schema.spec.seed + '-rar', 36))}"
+          # Test lists.set — set element at index
+          arrayResult: "${string(lists.set(schema.spec.monsterHP, 1, 0)[0]) + ',' + string(lists.set(schema.spec.monsterHP, 1, 0)[1]) + ',' + string(lists.set(schema.spec.monsterHP, 1, 0)[2])}"
+          # Test csv.remove
+          csvRemoveResult: "${csv.remove('weapon-common,hppotion-rare,armor-epic', 'hppotion-rare')}"
+          # Test csv.add
+          csvAddResult: "${csv.add(schema.spec.inventory, 'sword', 8)}"
+          # Test csv.contains
+          csvContainsResult: "${csv.contains('weapon-common,armor-rare', 'weapon-common') ? 'true' : 'false'}"

@@ -895,12 +895,8 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 		classNote += fmt.Sprintf(" [+%d%% amulet]", amuletBonus)
 	}
 
-	// Ring regen: restore HP at start of round (before enemy hits)
-	if ringBonus > 0 {
-		maxHP := classMaxHP(heroClass)
-		heroHP = min64(heroHP+ringBonus, maxHP)
-		classNote += fmt.Sprintf(" [+%d regen]", ringBonus)
-	}
+	// Ring regen is now handled by kro specPatch node (regenRing).
+	// The backend no longer applies ring HP regen here.
 
 	// Stun zeroes damage
 	if isStunned {
