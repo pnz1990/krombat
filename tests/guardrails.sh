@@ -3,6 +3,9 @@
 # This test prevents regression — the backend must never touch native K8s objects
 set -euo pipefail
 
+KUBECTL_CONTEXT="${KUBECTL_CONTEXT:-arn:aws:eks:us-west-2:569190534191:cluster/krombat}"
+kctl() { kubectl --context "$KUBECTL_CONTEXT" "$@"; }
+
 PASS=0
 FAIL=0
 TESTS=()
@@ -89,31 +92,31 @@ echo ""
 echo "--- Live cluster checks ---"
 
 # Verify the SA can access dungeons
-RESULT=$(kubectl auth can-i get dungeons.game.k8s.example --as=system:serviceaccount:rpg-system:rpg-backend-sa 2>&1 || true)
+RESULT=$(kctl auth can-i get dungeons.game.k8s.example --as=system:serviceaccount:rpg-system:rpg-backend-sa 2>&1 || true)
 [ "$RESULT" = "yes" ] \
   && pass "rpg-backend-sa can get dungeons" \
   || fail "rpg-backend-sa cannot get dungeons"
 
 # Verify the SA CANNOT access pods
-RESULT=$(kubectl auth can-i get pods --as=system:serviceaccount:rpg-system:rpg-backend-sa 2>&1 || true)
+RESULT=$(kctl auth can-i get pods --as=system:serviceaccount:rpg-system:rpg-backend-sa 2>&1 || true)
 [ "$RESULT" = "no" ] \
   && pass "rpg-backend-sa CANNOT get pods" \
   || fail "rpg-backend-sa can get pods (should not)"
 
 # Verify the SA CANNOT access secrets
-RESULT=$(kubectl auth can-i get secrets --as=system:serviceaccount:rpg-system:rpg-backend-sa 2>&1 || true)
+RESULT=$(kctl auth can-i get secrets --as=system:serviceaccount:rpg-system:rpg-backend-sa 2>&1 || true)
 [ "$RESULT" = "no" ] \
   && pass "rpg-backend-sa CANNOT get secrets" \
   || fail "rpg-backend-sa can get secrets (should not)"
 
 # Verify the SA CANNOT access jobs
-RESULT=$(kubectl auth can-i get jobs --as=system:serviceaccount:rpg-system:rpg-backend-sa 2>&1 || true)
+RESULT=$(kctl auth can-i get jobs --as=system:serviceaccount:rpg-system:rpg-backend-sa 2>&1 || true)
 [ "$RESULT" = "no" ] \
   && pass "rpg-backend-sa CANNOT get jobs" \
   || fail "rpg-backend-sa can get jobs (should not)"
 
 # Verify the SA CANNOT create namespaces
-RESULT=$(kubectl auth can-i create namespaces --as=system:serviceaccount:rpg-system:rpg-backend-sa 2>/dev/null || true)
+RESULT=$(kctl auth can-i create namespaces --as=system:serviceaccount:rpg-system:rpg-backend-sa 2>/dev/null || true)
 echo "$RESULT" | grep -q "no" \
   && pass "rpg-backend-sa CANNOT create namespaces" \
   || fail "rpg-backend-sa can create namespaces (should not)"
@@ -168,7 +171,7 @@ echo "--- API response checks ---"
 PF_PID=""
 GUARDRAIL_PORT=8083
 if ! curl -s http://localhost:$GUARDRAIL_PORT/healthz &>/dev/null; then
-  kubectl port-forward svc/rpg-backend -n rpg-system ${GUARDRAIL_PORT}:8080 &
+  kctl port-forward svc/rpg-backend -n rpg-system ${GUARDRAIL_PORT}:8080 &
   PF_PID=$!
   sleep 3
 fi
@@ -196,7 +199,7 @@ assert 'loot' not in d or isinstance(d.get('loot'), str), 'loot at top level'
   || fail "GetDungeon response has wrong shape"
 
 # Cleanup
-kubectl delete dungeon "$TEST_NAME"  --ignore-not-found --wait=false &>/dev/null
+kctl delete dungeon "$TEST_NAME"  --ignore-not-found --wait=false &>/dev/null
 [ -n "$PF_PID" ] && kill "$PF_PID" 2>/dev/null
 
 # --- Loot guardrails ---
@@ -231,7 +234,7 @@ LOOT_TEST="loot-guard-$(date +%s)"
 PF_LOOT_PID=""
 LOOT_PORT=8085
 if ! curl -s http://localhost:$LOOT_PORT/healthz &>/dev/null; then
-  kubectl port-forward svc/rpg-backend -n rpg-system ${LOOT_PORT}:8080 &
+  kctl port-forward svc/rpg-backend -n rpg-system ${LOOT_PORT}:8080 &
   PF_LOOT_PID=$!
   sleep 3
 fi
@@ -243,7 +246,7 @@ curl -s -X POST http://localhost:$LOOT_PORT/api/v1/dungeons \
 sleep 10  # wait for kro to reconcile
 
 # Verify no Loot Secret exists while monster-0 is alive (hp > 0)
-LOOT_SECRET_BEFORE=$(kubectl get secret "${LOOT_TEST}-monster-0-loot" -n default --ignore-not-found 2>/dev/null || true)
+LOOT_SECRET_BEFORE=$(kctl get secret "${LOOT_TEST}-monster-0-loot" -n default --ignore-not-found 2>/dev/null || true)
 [ -z "$LOOT_SECRET_BEFORE" ] && pass "No Loot Secret while monster is alive (hp > 0)" || fail "Loot Secret exists before monster killed"
 
 # Kill monster-0 with lethal damage (easy monster has 30 HP; send 100 damage to guarantee kill)
@@ -253,15 +256,15 @@ curl -s -X POST http://localhost:$LOOT_PORT/api/v1/dungeons/default/$LOOT_TEST/a
 sleep 8  # wait for kro to reconcile Loot CR and Secret
 
 # Verify Loot Secret exists now that monster-0 is dead (hp == 0)
-LOOT_SECRET_AFTER=$(kubectl get secret "${LOOT_TEST}-monster-0-loot" -n default --ignore-not-found 2>/dev/null || true)
+LOOT_SECRET_AFTER=$(kctl get secret "${LOOT_TEST}-monster-0-loot" -n default --ignore-not-found 2>/dev/null || true)
 [ -n "$LOOT_SECRET_AFTER" ] && pass "Loot Secret exists after monster killed (hp == 0)" || fail "Loot Secret missing after monster killed"
 
 # Verify lastLootDrop field is present in dungeon spec (may be empty if no drop — that is valid)
-LOOT_DROP_FIELD=$(kubectl get dungeon "$LOOT_TEST" -n default -o jsonpath='{.spec.lastLootDrop}' 2>/dev/null || echo "__missing__")
+LOOT_DROP_FIELD=$(kctl get dungeon "$LOOT_TEST" -n default -o jsonpath='{.spec.lastLootDrop}' 2>/dev/null || echo "__missing__")
 [ "$LOOT_DROP_FIELD" != "__missing__" ] && pass "lastLootDrop field present in dungeon spec after kill" || fail "lastLootDrop field missing from dungeon spec"
 
 # Cleanup loot test dungeon
-kubectl delete dungeon "$LOOT_TEST" --ignore-not-found --wait=false &>/dev/null
+kctl delete dungeon "$LOOT_TEST" --ignore-not-found --wait=false &>/dev/null
 [ -n "$PF_LOOT_PID" ] && kill "$PF_LOOT_PID" 2>/dev/null
 
 # --- loot-graph includeWhen drop guard (direct Monster CR) ---
@@ -273,7 +276,7 @@ DROP_GUARD_NAME="loot-drop-guard-$(date +%s)"
 DROP_GUARD_NS="default"
 
 # Apply a Monster CR with hp=10 (alive) directly — no dungeon needed for this RGD test
-kubectl apply -f - &>/dev/null <<EOF
+kctl apply -f - &>/dev/null <<EOF
 apiVersion: game.k8s.example/v1alpha1
 kind: Monster
 metadata:
@@ -289,38 +292,38 @@ EOF
 sleep 8  # wait for kro to reconcile
 
 # Assert: no Loot CR while monster is alive (hp > 0)
-LOOT_CR_ALIVE=$(kubectl get loot "${DROP_GUARD_NAME}-monster-0-loot" -n "$DROP_GUARD_NS" --ignore-not-found 2>/dev/null || true)
+LOOT_CR_ALIVE=$(kctl get loot "${DROP_GUARD_NAME}-monster-0-loot" -n "$DROP_GUARD_NS" --ignore-not-found 2>/dev/null || true)
 [ -z "$LOOT_CR_ALIVE" ] \
   && pass "loot-graph: no Loot CR created for living monster (hp > 0)" \
   || fail "loot-graph: Loot CR created for living monster (hp > 0) — includeWhen guard broken"
 
 # Assert: no loot Secret while monster is alive
-LOOT_SEC_ALIVE=$(kubectl get secret "${DROP_GUARD_NAME}-monster-0-loot" -n "$DROP_GUARD_NS" --ignore-not-found 2>/dev/null || true)
+LOOT_SEC_ALIVE=$(kctl get secret "${DROP_GUARD_NAME}-monster-0-loot" -n "$DROP_GUARD_NS" --ignore-not-found 2>/dev/null || true)
 [ -z "$LOOT_SEC_ALIVE" ] \
   && pass "loot-graph: no loot Secret created for living monster (hp > 0)" \
   || fail "loot-graph: loot Secret created for living monster (hp > 0) — includeWhen guard broken"
 
 # Patch hp to 0 (kill transition) directly on the Monster CR
-kubectl patch monster "${DROP_GUARD_NAME}" -n "$DROP_GUARD_NS" \
+kctl patch monster "${DROP_GUARD_NAME}" -n "$DROP_GUARD_NS" \
   --type=merge -p '{"spec":{"hp":0}}' &>/dev/null
 
 sleep 8  # wait for kro to reconcile loot-graph
 
 # Assert: Loot CR now exists (hp == 0 satisfies includeWhen)
-LOOT_CR_DEAD=$(kubectl get loot "${DROP_GUARD_NAME}-monster-0-loot" -n "$DROP_GUARD_NS" --ignore-not-found 2>/dev/null || true)
+LOOT_CR_DEAD=$(kctl get loot "${DROP_GUARD_NAME}-monster-0-loot" -n "$DROP_GUARD_NS" --ignore-not-found 2>/dev/null || true)
 [ -n "$LOOT_CR_DEAD" ] \
   && pass "loot-graph: Loot CR created after monster killed (hp == 0)" \
   || fail "loot-graph: Loot CR missing after monster killed (hp == 0) — includeWhen not firing"
 
 # Assert: loot Secret now exists (loot-graph reconciled from the Loot CR)
-LOOT_SEC_DEAD=$(kubectl get secret "${DROP_GUARD_NAME}-monster-0-loot" -n "$DROP_GUARD_NS" --ignore-not-found 2>/dev/null || true)
+LOOT_SEC_DEAD=$(kctl get secret "${DROP_GUARD_NAME}-monster-0-loot" -n "$DROP_GUARD_NS" --ignore-not-found 2>/dev/null || true)
 [ -n "$LOOT_SEC_DEAD" ] \
   && pass "loot-graph: loot Secret created after monster killed (hp == 0)" \
   || fail "loot-graph: loot Secret missing after monster killed (hp == 0) — loot-graph not reconciling"
 
 # Cleanup
-kubectl delete monster "${DROP_GUARD_NAME}" -n "$DROP_GUARD_NS" --ignore-not-found --wait=false &>/dev/null
-kubectl delete loot "${DROP_GUARD_NAME}-monster-0-loot" -n "$DROP_GUARD_NS" --ignore-not-found --wait=false &>/dev/null
+kctl delete monster "${DROP_GUARD_NAME}" -n "$DROP_GUARD_NS" --ignore-not-found --wait=false &>/dev/null
+kctl delete loot "${DROP_GUARD_NAME}-monster-0-loot" -n "$DROP_GUARD_NS" --ignore-not-found --wait=false &>/dev/null
 
 # --- Combat/Action separation guardrails ---
 echo "=== Combat/Action separation"

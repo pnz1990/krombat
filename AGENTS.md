@@ -1,5 +1,11 @@
 # Krombat — AI Agent Context
 
+## CRITICAL: kubectl Context Rule
+
+**ALWAYS pass `--context arn:aws:eks:us-west-2:569190534191:cluster/krombat` on EVERY kubectl command.** Multiple EKS clusters share this kubeconfig. Never rely on `kubectl config use-context` — another session may switch it. This applies to direct kubectl calls AND to test scripts (set `KUBECTL_CONTEXT` env var or pass `--context` inline).
+
+Example: `kubectl --context arn:aws:eks:us-west-2:569190534191:cluster/krombat get pods -n rpg-system`
+
 ## What This Is
 
 A turn-based dungeon RPG where game state lives in Kubernetes Custom Resources on Amazon EKS, with kro ResourceGraphDefinitions orchestrating the resource graph. Demonstrates Kubernetes as a general-purpose state machine.

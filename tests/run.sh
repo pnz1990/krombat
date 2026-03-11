@@ -4,6 +4,7 @@
 set -uo pipefail  # no -e: we handle failures from wait_group manually
 
 DIR="$(dirname "$0")"
+source "$DIR/helpers.sh"
 chmod +x "$DIR"/test-core.sh "$DIR"/test-abilities.sh "$DIR"/test-features.sh "$DIR"/test-infra.sh "$DIR"/helpers.sh
 
 echo "🧪 Running 4 test groups in parallel..."
@@ -12,7 +13,7 @@ echo ""
 # Pre-flight: verify CRDs exist
 echo "=== Pre-flight ==="
 for i in $(seq 1 90); do
-  if kubectl get crd dungeons.game.k8s.example &>/dev/null && kubectl get crd attacks.game.k8s.example &>/dev/null; then
+  if kctl get crd dungeons.game.k8s.example &>/dev/null && kctl get crd attacks.game.k8s.example &>/dev/null; then
     echo "  ✅ CRDs available"
     break
   fi
@@ -55,8 +56,8 @@ wait_group "Infra"          $PID_INFRA /tmp/test-infra.log
 
 # Cleanup all test dungeons
 echo "=== Cleanup ==="
-kubectl delete attacks --all --ignore-not-found --wait=false 2>/dev/null || true
-kubectl delete dungeons --all --ignore-not-found --wait=false 2>/dev/null || true
+kctl delete attacks --all --ignore-not-found --wait=false 2>/dev/null || true
+kctl delete dungeons --all --ignore-not-found --wait=false 2>/dev/null || true
 
 # Count totals
 TOTAL_PASS=$(grep -rh "^  PASS:" /tmp/test-*.log 2>/dev/null | wc -l | tr -d ' ')
