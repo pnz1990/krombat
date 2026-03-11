@@ -909,14 +909,22 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 	// NOT included here — kro specPatch nodes manage these fields asynchronously.
 	// The backend only writes new DoT values when boss/monster inflicts them (below),
 	// and writes backstabCooldown=3 when backstab is triggered (to start the countdown).
+	//
+	// MIGRATION: The backend now writes TRIGGER FIELDS that kro's combatResolve specPatch
+	// reads to compute the actual state mutations (monsterHP, bossHP, heroHP, weaponUses,
+	// weaponBonus, heroMana, poisonTurns, burnTurns, stunTurns). The backend still computes
+	// combat math for log text generation (same FNV-1a RNG → same results as kro).
 	patchSpec := map[string]interface{}{
-		"weaponBonus":  weaponBonus,
-		"weaponUses":   weaponUses,
-		"attackSeq":    newSeq,
-		"lastLootDrop": "",
-		"heroMana":     heroMana,
-		"ringBonus":    ringBonus,
-		"amuletBonus":  amuletBonus,
+		"attackSeq":            newSeq,
+		"lastLootDrop":         "",
+		"lastAttackTarget":     realTarget,
+		"lastAttackSeed":       attackUID,
+		"lastAttackIndex":      int64(-1), // will be set below for monster targets
+		"lastAttackIsBoss":     isBossTarget,
+		"lastAttackIsBackstab": isBackstab,
+		// ringBonus and amuletBonus: pass through (not mutated by combat)
+		"ringBonus":   ringBonus,
+		"amuletBonus": amuletBonus,
 	}
 	// If backstab was triggered this turn, set the cooldown (kro will decrement from here).
 	// Pre-arm cooldownProcessedSeq to current sum so kro doesn't decrement on this same turn.
@@ -936,7 +944,7 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 			return h.patchAndRespond(ctx, ns, name, patch, w)
 		}
 		newBossHP := max64(bossHP-effectiveDamage, 0)
-		patchSpec["bossHP"] = newBossHP
+		// MIGRATION: bossHP is computed by kro combatResolve. Backend only computes for log.
 
 		// Counter-attack
 		var counter int64
@@ -1051,12 +1059,10 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 		}
 
 		heroAction := fmt.Sprintf("Hero (%s) deals %d damage to %s (HP: %d -> %d)%s", heroClass, effectiveDamage, realTarget, bossHP, newBossHP, classNote)
-		patchSpec["heroHP"] = heroHP
+		// MIGRATION: game state (heroHP, bossHP, poisonTurns, etc.) is computed by kro.
+		// Backend writes only log text and loot/inventory.
 		patchSpec["lastHeroAction"] = heroAction
 		patchSpec["lastEnemyAction"] = enemyAction + effectNote
-		patchSpec["poisonTurns"] = poisonTurns
-		patchSpec["burnTurns"] = burnTurns
-		patchSpec["stunTurns"] = stunTurns
 		patchSpec["lastLootDrop"] = lootDrop
 		patchSpec["inventory"] = inventory2
 
@@ -1076,6 +1082,8 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 			writeError(w, "invalid monster index", http.StatusBadRequest)
 			return fmt.Errorf("invalid monster index")
 		}
+		// MIGRATION: set lastAttackIndex for kro combatResolve to identify the target monster
+		patchSpec["lastAttackIndex"] = int64(idxInt)
 		oldHP := sliceInt(monsterHPRaw[idxInt])
 		if oldHP <= 0 {
 			patch := map[string]interface{}{"spec": map[string]interface{}{"lastLootDrop": "", "lastHeroAction": "Monster already dead", "lastEnemyAction": "", "attackSeq": newSeq}}
@@ -1251,16 +1259,12 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 		}
 
 		heroAction := fmt.Sprintf("Hero (%s) deals %d damage to %s (HP: %d -> %d)%s", heroClass, effectiveDamage, realTarget, oldHP, newHP, classNote)
-		patchSpec["heroHP"] = heroHP
-		patchSpec["monsterHP"] = newMonsterHP
+		// MIGRATION: game state (heroHP, monsterHP, poisonTurns, etc.) is computed by kro.
+		// Backend writes only log text and loot/inventory.
 		patchSpec["lastHeroAction"] = heroAction
 		patchSpec["lastEnemyAction"] = enemyAction + effectNote
-		patchSpec["poisonTurns"] = poisonTurns
-		patchSpec["burnTurns"] = burnTurns
-		patchSpec["stunTurns"] = stunTurns
 		patchSpec["lastLootDrop"] = lootDrop
 		patchSpec["inventory"] = inventory2
-		patchSpec["heroMana"] = heroMana
 	}
 
 	patch := map[string]interface{}{"spec": patchSpec}
