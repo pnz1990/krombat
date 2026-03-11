@@ -315,27 +315,15 @@ export default function App() {
       let updated = detail!
 
       if (isItem) {
-        // Items: poll until the specific field changes
-        const checkField = (d: any) => {
-          if (target === 'open-treasure') return d.spec.treasureOpened
-          if (target === 'unlock-door') return d.spec.doorUnlocked
-          if (target === 'enter-room-2') return d.spec.currentRoom
-          if (target.startsWith('equip-weapon')) return d.spec.weaponBonus
-          if (target.startsWith('equip-armor')) return d.spec.armorBonus
-          if (target.startsWith('equip-shield')) return d.spec.shieldBonus
-          if (target.startsWith('equip-helmet')) return d.spec.helmetBonus
-          if (target.startsWith('equip-pants')) return d.spec.pantsBonus
-          if (target.startsWith('equip-boots')) return d.spec.bootsBonus
-          if (target.startsWith('equip-ring')) return d.spec.ringBonus
-          if (target.startsWith('equip-amulet')) return d.spec.amuletBonus
-          return d.spec.lastHeroAction
-        }
-        const prevVal = checkField(detail)
+        // Poll until actionSeq > prevSeq AND lastAction is cleared (kro finished processing).
+        // The backend writes trigger fields (lastAction, actionSeq, etc.) and kro's
+        // actionResolve specPatch computes the actual state mutations, then clears lastAction.
+        const prevSeq = detail?.spec.actionSeq ?? 0
         if (target === 'enter-room-2') setRoomLoading(true)
         for (let attempt = 0; attempt < 20; attempt++) {
           await new Promise(r => setTimeout(r, 1500))
           const current = await getDungeon(selected.ns, selected.name)
-          if (checkField(current) !== prevVal) {
+          if ((current.spec.actionSeq || 0) > prevSeq && !current.spec.lastAction) {
             updated = current
             break
           }

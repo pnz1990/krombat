@@ -77,16 +77,18 @@ submit_attack() {
     "[ -z \"\$(kctl get dungeon ${dname} -o jsonpath='{.spec.lastAttackTarget}' 2>/dev/null)\" ]" 30
 }
 
-# Submit an action (non-combat) via the backend REST API and wait for lastHeroAction to change.
+# Submit an action (non-combat) via the backend REST API and wait for kro to finish.
+# The backend writes trigger fields (lastAction, actionSeq) and kro's actionResolve
+# specPatch computes the actual state mutations, then clears lastAction.
 # Usage: submit_action <dungeon-name> <action>
 submit_action() {
   local dname="$1" action="$2"
-  local prev_action prev_seq
-  prev_action=$(kctl get dungeon "$dname" -o jsonpath='{.spec.lastHeroAction}' 2>/dev/null || echo "")
+  local prev_seq
   prev_seq=$(kctl get dungeon "$dname" -o jsonpath='{.spec.actionSeq}' 2>/dev/null || echo "0")
   curl -s -X POST "${BACKEND_URL}/api/v1/dungeons/default/${dname}/attacks" \
     -H "Content-Type: application/json" \
     -d "{\"target\":\"${action}\",\"damage\":0,\"seq\":${prev_seq}}" -o /dev/null
-  wait_for "${dname} action changed" \
-    "[ \"\$(kctl get dungeon ${dname} -o jsonpath='{.spec.lastHeroAction}' 2>/dev/null)\" != \"${prev_action}\" ]" 30
+  # Wait for actionSeq > prevSeq (backend wrote triggers) AND lastAction == '' (kro finished)
+  wait_for "${dname} action processed" \
+    "[ \"\$(kctl get dungeon ${dname} -o jsonpath='{.spec.actionSeq}' 2>/dev/null)\" -gt \"${prev_seq}\" ] && [ -z \"\$(kctl get dungeon ${dname} -o jsonpath='{.spec.lastAction}' 2>/dev/null)\" ]" 30
 }
