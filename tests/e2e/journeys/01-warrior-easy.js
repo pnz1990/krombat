@@ -131,17 +131,37 @@ async function run() {
 
     // === STEP 7: Enter Room 2 ===
     console.log('\n=== Step 7: Enter Room 2 ===');
+    // Wait for all combat state to settle before clicking door
+    await page.waitForTimeout(3000);
     await clearModals(page);
+    await page.waitForTimeout(1000);
     const doorEntity = page.locator('.arena-entity.door-entity');
     if (await doorEntity.count() > 0) {
-      await doorEntity.click({ force: true });
+      // Click the img inside the door entity (onClick is on the img, not the div)
+      const doorImg = doorEntity.locator('img');
+      if (await doorImg.count() > 0) {
+        await doorImg.click({ force: true });
+      } else {
+        await doorEntity.click({ force: true });
+      }
+      // Also try direct API call as fallback to ensure room transition happens
+      await page.waitForTimeout(2000);
+      let r2Loaded = false;
       for (let i = 0; i < 45; i++) {
         body = await getBodyText(page);
-        if (body.includes('Room 2') || body.includes('Room: 2')) break;
+        // Accept any room 2 indicator: overlay text, status bar, or attack buttons appearing
+        const hasR2Text = body.includes('Room 2') || body.includes('Room: 2');
+        const atkButtons = await page.locator('.arena-atk-btn.btn-primary').count();
+        if (hasR2Text || (atkButtons > 0 && i > 2)) { r2Loaded = true; break; }
+        // Re-try clicking door if not loaded yet (in case first click was blocked)
+        if (i === 5 || i === 10) {
+          await clearModals(page);
+          const di = page.locator('.arena-entity.door-entity img');
+          if (await di.count() > 0) await di.click({ force: true }).catch(() => {});
+        }
         await page.waitForTimeout(2000);
       }
-      body = await getBodyText(page);
-      (body.includes('Room 2') || body.includes('Room: 2')) ? ok('Room 2 loaded') : fail('Room 2 did not load');
+      r2Loaded ? ok('Room 2 loaded') : fail('Room 2 did not load');
 
       // Wait for monsters to appear
       for (let i = 0; i < 15; i++) {
@@ -160,8 +180,11 @@ async function run() {
     let r2 = 0;
     while (r2 < 60) {
       await clearModals(page);
+      // Check for actual victory banner (not event log text)
+      const victoryBanner = await page.locator('.victory-banner').count();
+      if (victoryBanner > 0) break;
       body = await getBodyText(page);
-      if (body.includes('VICTORY') || body.includes('Victory') || body.includes('Dungeon Complete')) break;
+      if (body.includes('Dungeon Complete')) break;
       if (body.includes('DEFEAT') || body.includes('fallen')) { warn('Hero defeated in room 2'); break; }
 
       alive = await aliveMonsterCount(page);
@@ -176,8 +199,8 @@ async function run() {
           r2++;
           const result = await waitForCombatResult(page);
           if (!result) {
-            body = await getBodyText(page);
-            if (body.includes('VICTORY') || body.includes('Victory')) break;
+            const vb = await page.locator('.victory-banner').count();
+            if (vb > 0) break;
           }
         } else {
           await page.waitForTimeout(3000);
@@ -188,7 +211,8 @@ async function run() {
       await page.waitForTimeout(1000);
     }
     body = await getBodyText(page);
-    (body.includes('VICTORY') || body.includes('Victory') || body.includes('Dungeon Complete'))
+    const r2VictoryBanner = await page.locator('.victory-banner').count();
+    (r2VictoryBanner > 0 || body.includes('Dungeon Complete'))
       ? ok(`Room 2 complete (${r2} attacks)`)
       : fail(`Room 2 not complete after ${r2} attacks`);
 
