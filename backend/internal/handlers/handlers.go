@@ -238,16 +238,17 @@ func (h *Handler) CreateDungeon(w http.ResponseWriter, r *http.Request) {
 	}
 
 	dungeonSpec := map[string]interface{}{
-		"monsters":     req.Monsters,
-		"difficulty":   req.Difficulty,
-		"monsterHP":    monsterHP,
-		"bossHP":       hp.boss,
-		"heroHP":       heroHP,
-		"heroClass":    heroClass,
-		"heroMana":     heroMana,
-		"modifier":     modifier,
-		"monsterTypes": monsterTypes,
-		"runCount":     runCount,
+		"monsters":       req.Monsters,
+		"difficulty":     req.Difficulty,
+		"monsterHP":      monsterHP,
+		"bossHP":         hp.boss,
+		"heroHP":         heroHP,
+		"heroClass":      heroClass,
+		"heroMana":       heroMana,
+		"modifier":       modifier,
+		"monsterTypes":   monsterTypes,
+		"runCount":       runCount,
+		"room2MonsterHP": []interface{}{},
 	}
 	// Carry over gear bonuses from prior run (New Game+)
 	if req.WeaponBonus > 0 {
