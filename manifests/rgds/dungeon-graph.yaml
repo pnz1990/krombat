@@ -176,12 +176,13 @@ spec:
           bossCounter: "${schema.spec.difficulty == 'easy' ? '3' : schema.spec.difficulty == 'hard' ? '8' : '5'}"
 
     # --- DoT tick: decrement poison/burn/stun and apply HP damage, once per attack turn ---
-    # Gate: attackSeq has advanced past dotProcessedSeq AND at least one DoT is active.
-    # includeWhen becomes false once dotProcessedSeq catches up, preventing runaway loops.
+    # Gate: attackSeq has advanced past dotProcessedSeq AND at least one DoT is active
+    # AND lastAttackTarget is empty (meaning combatResolve isn't handling this turn).
+    # When combatResolve fires (lastAttackTarget != ''), DoT is folded into combat.
     - id: tickDoT
       type: specPatch
       includeWhen:
-        - "${schema.spec.attackSeq > schema.spec.dotProcessedSeq && (schema.spec.poisonTurns > 0 || schema.spec.burnTurns > 0 || schema.spec.stunTurns > 0)}"
+        - "${schema.spec.attackSeq > schema.spec.dotProcessedSeq && (schema.spec.poisonTurns > 0 || schema.spec.burnTurns > 0 || schema.spec.stunTurns > 0) && schema.spec.lastAttackTarget == ''}"
       patch:
         heroHP: "${schema.spec.heroHP - (schema.spec.poisonTurns > 0 ? 5 : 0) - (schema.spec.burnTurns > 0 ? 8 : 0) < 0 ? 0 : schema.spec.heroHP - (schema.spec.poisonTurns > 0 ? 5 : 0) - (schema.spec.burnTurns > 0 ? 8 : 0)}"
         poisonTurns: "${schema.spec.poisonTurns > 0 ? schema.spec.poisonTurns - 1 : 0}"
@@ -190,33 +191,34 @@ spec:
         dotProcessedSeq: "${schema.spec.attackSeq}"
 
     # --- Taunt advancement: 1→2 (protecting) → 0 (expired), once per attack turn ---
-    # Gate: attackSeq has advanced past tauntProcessedSeq AND taunt is active (> 0).
+    # Gate: attackSeq has advanced past tauntProcessedSeq AND taunt is active (> 0)
+    # AND lastAttackTarget is empty (combatResolve handles taunt when it fires).
     - id: advanceTaunt
       type: specPatch
       includeWhen:
-        - "${schema.spec.attackSeq > schema.spec.tauntProcessedSeq && schema.spec.tauntActive > 0}"
+        - "${schema.spec.attackSeq > schema.spec.tauntProcessedSeq && schema.spec.tauntActive > 0 && schema.spec.lastAttackTarget == ''}"
       patch:
         tauntActive: "${schema.spec.tauntActive == 1 ? 2 : 0}"
         tauntProcessedSeq: "${schema.spec.attackSeq}"
 
     # --- Backstab cooldown tick: decrement once per attack or action turn ---
-    # Gate: sum of both seqs has advanced past cooldownProcessedSeq AND cooldown > 0.
-    # Using the sum of attackSeq + actionSeq means it fires on any turn type.
+    # Gate: sum of both seqs has advanced past cooldownProcessedSeq AND cooldown > 0
+    # AND lastAttackTarget is empty (combatResolve handles cooldown when it fires).
     - id: tickCooldown
       type: specPatch
       includeWhen:
-        - "${schema.spec.attackSeq + schema.spec.actionSeq > schema.spec.cooldownProcessedSeq && schema.spec.backstabCooldown > 0}"
+        - "${schema.spec.attackSeq + schema.spec.actionSeq > schema.spec.cooldownProcessedSeq && schema.spec.backstabCooldown > 0 && schema.spec.lastAttackTarget == ''}"
       patch:
         backstabCooldown: "${schema.spec.backstabCooldown - 1}"
         cooldownProcessedSeq: "${schema.spec.attackSeq + schema.spec.actionSeq}"
 
     # --- Ring HP regen: restore ringBonus HP per attack turn, capped at class max ---
-    # Gate: attackSeq has advanced past ringProcessedSeq AND ringBonus is active.
-    # maxHP: warrior=200, mage=120, rogue=150, fallback=100.
+    # Gate: attackSeq has advanced past ringProcessedSeq AND ringBonus is active
+    # AND lastAttackTarget is empty (combatResolve handles ring regen when it fires).
     - id: regenRing
       type: specPatch
       includeWhen:
-        - "${schema.spec.attackSeq > schema.spec.ringProcessedSeq && schema.spec.ringBonus > 0}"
+        - "${schema.spec.attackSeq > schema.spec.ringProcessedSeq && schema.spec.ringBonus > 0 && schema.spec.lastAttackTarget == ''}"
       patch:
         heroHP: "${(schema.spec.heroHP + schema.spec.ringBonus) > (schema.spec.heroClass == 'warrior' ? 200 : schema.spec.heroClass == 'mage' ? 120 : schema.spec.heroClass == 'rogue' ? 150 : 100) ? (schema.spec.heroClass == 'warrior' ? 200 : schema.spec.heroClass == 'mage' ? 120 : schema.spec.heroClass == 'rogue' ? 150 : 100) : (schema.spec.heroHP + schema.spec.ringBonus)}"
         ringProcessedSeq: "${schema.spec.attackSeq}"
@@ -333,11 +335,13 @@ spec:
             killedMonster && regenMana ? manaAfterUse + 1 : manaAfterUse
           ))))))))))))))}
 
-        # --- Hero HP: apply counter-attack from boss or monsters ---
+        # --- Hero HP: ring regen + counter-attack from boss or monsters ---
         heroHP: >-
           ${cel.bind(s, schema.spec.lastAttackSeed,
           cel.bind(diff, schema.spec.difficulty,
-          cel.bind(hp, schema.spec.heroHP,
+          cel.bind(maxHP, schema.spec.heroClass == 'warrior' ? 200 : schema.spec.heroClass == 'mage' ? 120 : schema.spec.heroClass == 'rogue' ? 150 : 100,
+          cel.bind(baseHP, schema.spec.heroHP,
+          cel.bind(hp, schema.spec.ringBonus > 0 ? (baseHP + schema.spec.ringBonus > maxHP ? maxHP : baseHP + schema.spec.ringBonus) : baseHP,
           cel.bind(baseDmg,
             (diff == 'easy' ? random.seededInt(s + '-d1', 20) + 3
              : diff == 'hard' ? random.seededInt(s + '-d1', 20) + random.seededInt(s + '-d2', 20) + random.seededInt(s + '-d3', 20) + 8
@@ -408,7 +412,10 @@ spec:
             : 0,
           cel.bind(totalCounter, bossCounter + monsterCounter,
             hp - totalCounter < 0 ? 0 : hp - totalCounter
-          )))))))))))))))))))}
+          )))))))))))))))))))))}
+
+        # --- Ring processed sentinel (handled by combatResolve) ---
+        ringProcessedSeq: "${schema.spec.attackSeq}"
 
         # --- Status effects from boss/monster counter-attacks ---
         poisonTurns: >-
