@@ -136,9 +136,21 @@ async function run() {
       }
     } else {
       warn('Did not reach Room 2 victory — RNG-dependent. Testing New Game+ button wiring indirectly.');
+      // Dismiss any blocking overlays before going back
+      const insightDismiss = page.locator('.kro-insight-card.visible .kro-insight-dismiss');
+      if (await insightDismiss.count() > 0) {
+        await insightDismiss.first().click({ force: true }).catch(() => {});
+        await page.waitForTimeout(500);
+      }
+      const modalOverlay = page.locator('.modal-overlay');
+      if (await modalOverlay.count() > 0) {
+        await page.keyboard.press('Escape').catch(() => {});
+        await modalOverlay.first().click({ force: true, position: { x: 5, y: 5 } }).catch(() => {});
+        await page.waitForTimeout(400);
+      }
       // Go back to home and verify no crashes
       const backBtn = page.locator('.back-btn');
-      if (await backBtn.count() > 0) await backBtn.click();
+      if (await backBtn.count() > 0) await backBtn.click({ force: true });
       await page.waitForTimeout(2000);
     }
 

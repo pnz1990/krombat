@@ -83,20 +83,33 @@ async function run() {
       await page.waitForTimeout(300);
     }
 
-    // Open treasure and enter door
-    const treasureBtn = page.locator('button:has-text("Open Treasure")');
-    if (await treasureBtn.count() > 0) {
-      await treasureBtn.click();
-      await page.waitForTimeout(3000);
+    // Treasure auto-opens and door auto-unlocks after boss kill.
+    // Wait for "Enter" text to appear indicating door is ready.
+    let doorReady = false;
+    for (let i = 0; i < 45; i++) {
+      const body = await page.textContent('body');
+      if (body.includes('Enter')) { doorReady = true; break; }
       const gotIt = page.locator('button:has-text("Got it!")');
-      if (await gotIt.count() > 0) await gotIt.click();
+      if (await gotIt.count() > 0) await gotIt.click({ force: true }).catch(() => {});
       await page.waitForTimeout(1000);
     }
 
-    const doorBtn = page.locator('button:has-text("Enter Door"), button:has-text("Enter Room 2")');
-    if (await doorBtn.count() > 0) {
-      await doorBtn.click();
-      await page.waitForTimeout(5000); // Wait for Room 2 to load fully
+    if (doorReady) {
+      // Click the door img (onClick handler is on the img element)
+      const doorImg = page.locator('.arena-entity.door-entity img');
+      if (await doorImg.count() > 0) {
+        await doorImg.click({ force: true });
+      } else {
+        const doorEntity = page.locator('.arena-entity.door-entity');
+        if (await doorEntity.count() > 0) await doorEntity.click({ force: true });
+      }
+      // Wait for Room 2 to load fully
+      for (let i = 0; i < 20; i++) {
+        const atkCount = await page.locator('.arena-atk-btn.btn-primary').count();
+        const body = await page.textContent('body');
+        if ((body.includes('Room: 2') || atkCount > 0) && i >= 2) break;
+        await page.waitForTimeout(1500);
+      }
       ok('Entered Room 2');
 
       // ── Mana restored to 8 after entering Room 2 ─────────────────────────

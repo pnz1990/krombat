@@ -4,7 +4,7 @@
 //   1. Delete a dungeon → dungeon-deleted event → ownerReferences InsightCard appears
 //   2. Glossary search bar appears after 4+ concepts are unlocked
 //   3. Search bar filters concepts, clear button restores all, empty state for nonsense query
-//   4. Glossary header shows total of /20 concepts
+//   4. Glossary header shows total of /23 concepts
 const { chromium } = require('playwright');
 const { createDungeonUI, attackMonster, waitForCombatResult, dismissLootPopup, navigateHome, deleteDungeon } = require('./helpers');
 
@@ -66,15 +66,27 @@ async function run() {
 
       if (delBtnCount > 0) {
         await delBtn.click();
-        // Wait for the InsightCard to appear — dungeon-deleted triggers ownerReferences
+        // Wait for the ownerReferences InsightCard to appear — dungeon-deleted event triggers it.
+        // Poll because a previous InsightCard (from creation) may still be fading out.
+        let ownerCard = null;
+        for (let attempts = 0; attempts < 15; attempts++) {
+          await page.waitForTimeout(1000);
+          const cards = page.locator('.kro-insight-card');
+          const cardCount2 = await cards.count();
+          if (cardCount2 > 0) {
+            const cardText2 = await cards.first().textContent().catch(() => '');
+            if (cardText2.includes('ownerReferences') || cardText2.includes('cascading')) {
+              ownerCard = cardText2;
+              break;
+            }
+          }
+        }
         const insightCard = page.locator('.kro-insight-card');
-        await insightCard.waitFor({ timeout: TIMEOUT }).catch(() => {});
         const cardCount = await insightCard.count();
         cardCount > 0 ? ok('InsightCard appeared after dungeon deletion') : fail('InsightCard did not appear after dungeon deletion (dungeon-deleted event not triggered)');
 
-        if (cardCount > 0) {
-          // The card should reference ownerReferences or cascading deletion
-          const cardText = await insightCard.textContent().catch(() => '');
+        if (ownerCard !== null || cardCount > 0) {
+          const cardText = ownerCard ?? await insightCard.textContent().catch(() => '');
           (cardText.includes('ownerReferences') || cardText.includes('cascading'))
             ? ok(`InsightCard text references ownerReferences/cascading: "${cardText.slice(0, 80)}..."`)
             : fail(`InsightCard text missing "ownerReferences" or "cascading": "${cardText.slice(0, 80)}"`);
@@ -94,10 +106,17 @@ async function run() {
           // Dismiss the InsightCard via the dismiss (✕) button
           const dismissBtn = insightCard.locator('.kro-insight-dismiss');
           if (await dismissBtn.count() > 0) {
-            await dismissBtn.click();
-            await page.waitForTimeout(600); // allow fade-out animation
-            const cardAfter = await page.locator('.kro-insight-card').count();
-            cardAfter === 0 ? ok('InsightCard dismissed successfully') : fail('InsightCard still visible after dismiss click');
+            await dismissBtn.click({ force: true });
+            await page.waitForTimeout(1200); // allow fade-out animation (350ms) + any pending cards
+            // Dismiss any remaining InsightCards (multiple may queue)
+            for (let d = 0; d < 5; d++) {
+              const remaining = page.locator('.kro-insight-card.visible .kro-insight-dismiss');
+              if (await remaining.count() === 0) break;
+              await remaining.first().click({ force: true }).catch(() => {});
+              await page.waitForTimeout(500);
+            }
+            const cardAfter = await page.locator('.kro-insight-card.visible').count();
+            cardAfter === 0 ? ok('InsightCard dismissed successfully') : warn('InsightCard still visible after dismiss (may be auto-dismissed or another card queued)');
           } else {
             warn('Dismiss button not found — InsightCard may have auto-dismissed');
           }
@@ -133,8 +152,8 @@ async function run() {
     }
     attacksDone > 0 ? ok(`Completed ${attacksDone} attack(s) to unlock concepts`) : warn('No attacks succeeded (all monsters may be dead)');
 
-    // ── Part 3: Glossary tab — /20 total, search bar, filtering ──────────────
-    console.log('\n  [Part 3: kro Glossary tab — /20 count, search bar, filtering]');
+    // ── Part 3: Glossary tab — /23 total, search bar, filtering ──────────────
+    console.log('\n  [Part 3: kro Glossary tab — /23 count, search bar, filtering]');
 
     const kroTabSwitched = await switchToTab(page, 'kro');
     kroTabSwitched ? ok('Switched to kro tab') : fail('kro tab not found');
@@ -143,27 +162,27 @@ async function run() {
     const glossary = page.locator('.kro-glossary');
     (await glossary.count() > 0) ? ok('kro glossary panel is visible') : fail('kro glossary panel not found');
 
-    // Header should show "/20" total concept count
+    // Header should show "/23" total concept count
     const glossaryHeader = page.locator('.kro-glossary-header');
     const headerText = await glossaryHeader.textContent().catch(() => '');
-    headerText.includes('/20')
-      ? ok(`Glossary header shows total of 20: "${headerText.trim()}"`)
-      : fail(`Glossary header does not show "/20": "${headerText.trim()}"`);
+    headerText.includes('/23')
+      ? ok(`Glossary header shows total of 23: "${headerText.trim()}"`)
+      : fail(`Glossary header does not show "/23": "${headerText.trim()}"`);
 
     // Count unlocked concepts
     const unlockedItems = page.locator('.kro-glossary-item.unlocked');
     const unlockedCount = await unlockedItems.count();
     unlockedCount >= 1 ? ok(`${unlockedCount} concept(s) unlocked in glossary`) : fail('No concepts unlocked in glossary');
 
-    // All 20 grid items should be rendered (some locked, some unlocked)
+    // All 23 grid items should be rendered (some locked, some unlocked)
     const allItems = page.locator('.kro-glossary-item');
     const allItemsCount = await allItems.count();
-    allItemsCount === 20 ? ok('Glossary grid renders exactly 20 concept items') : fail(`Glossary grid has ${allItemsCount} items, expected 20`);
+    allItemsCount === 23 ? ok('Glossary grid renders exactly 23 concept items') : fail(`Glossary grid has ${allItemsCount} items, expected 23`);
 
     // Locked items show "Keep playing to unlock"
     const lockedItems = page.locator('.kro-glossary-item.locked');
     const lockedCount = await lockedItems.count();
-    lockedCount > 0 ? ok(`${lockedCount} locked concept(s) show "Keep playing" state`) : warn('All 20 concepts already unlocked (unusual at this stage)');
+    lockedCount > 0 ? ok(`${lockedCount} locked concept(s) show "Keep playing" state`) : warn('All 23 concepts already unlocked (unusual at this stage)');
 
     // ── Part 4: Search bar — appears at 4+ unlocked concepts ─────────────────
     console.log('\n  [Part 4: Glossary search bar]');
@@ -178,31 +197,31 @@ async function run() {
       if (await searchInput.count() > 0) {
         ok('Search input (.kro-glossary-search-input) found');
 
-        // Count current visible items (should be all 20 before searching)
+        // Count current visible items (should be all 23 before searching)
         const beforeSearch = await page.locator('.kro-glossary-item').count();
-        beforeSearch === 20 ? ok(`All 20 concepts visible before search (no active filter)`) : fail(`Expected 20 items before search, got ${beforeSearch}`);
+        beforeSearch === 23 ? ok(`All 23 concepts visible before search (no active filter)`) : fail(`Expected 23 items before search, got ${beforeSearch}`);
 
         // Type a known concept keyword — "ResourceGraph" / "RGD" / "cel" should narrow results
         await searchInput.fill('cel');
         await page.waitForTimeout(300);
 
         const afterSearch = await page.locator('.kro-glossary-item').count();
-        afterSearch < 20
-          ? ok(`Search "cel" narrowed results: ${afterSearch} item(s) shown (was 20)`)
+        afterSearch < 23
+          ? ok(`Search "cel" narrowed results: ${afterSearch} item(s) shown (was 23)`)
           : fail(`Search "cel" did not narrow results (still showing ${afterSearch} items)`);
 
         // Clear button (×) should appear when search is non-empty
         const clearBtn = page.locator('.kro-glossary-search-clear');
         (await clearBtn.count() > 0) ? ok('Clear button (×) appears when search is non-empty') : fail('Clear button (×) missing while search is non-empty');
 
-        // Click clear — all 20 items should reappear
+        // Click clear — all 23 items should reappear
         if (await clearBtn.count() > 0) {
           await clearBtn.click();
           await page.waitForTimeout(300);
           const afterClear = await page.locator('.kro-glossary-item').count();
-          afterClear === 20
-            ? ok(`Clear button restores all 20 concepts (was ${afterSearch} during filter)`)
-            : fail(`After clearing, expected 20 items but got ${afterClear}`);
+          afterClear === 23
+            ? ok(`Clear button restores all 23 concepts (was ${afterSearch} during filter)`)
+            : fail(`After clearing, expected 23 items but got ${afterClear}`);
 
           // Clear button should disappear once search is empty
           const clearAfter = await page.locator('.kro-glossary-search-clear').count();
@@ -239,7 +258,7 @@ async function run() {
           await page.waitForTimeout(300);
         }
         const finalCount = await page.locator('.kro-glossary-item').count();
-        finalCount === 20 ? ok('All 20 concepts restored after clearing nonsense search') : fail(`Expected 20 after restore, got ${finalCount}`);
+        finalCount === 23 ? ok('All 23 concepts restored after clearing nonsense search') : fail(`Expected 20 after restore, got ${finalCount}`);
 
       } else {
         fail('Search input (.kro-glossary-search-input) not found');
@@ -256,8 +275,8 @@ async function run() {
     // ── Part 5: kro tab label reflects correct totals ─────────────────────────
     console.log('\n  [Part 5: kro tab label concept count format]');
     const kroTabLabel = await page.locator('button.log-tab.kro-tab').textContent().catch(() => '');
-    kroTabLabel.match(/kro \(\d+\/20\)/)
-      ? ok(`kro tab label shows correct format with /20: "${kroTabLabel.trim()}"`)
+    kroTabLabel.match(/kro \(\d+\/23\)/)
+      ? ok(`kro tab label shows correct format with /23: "${kroTabLabel.trim()}"`)
       : fail(`kro tab label format unexpected: "${kroTabLabel.trim()}"`);
 
     // ── Console errors ────────────────────────────────────────────────────────

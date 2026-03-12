@@ -33,20 +33,19 @@ async function run() {
 
     // Try an uppercase name (DNS labels must be lowercase)
     await nameInput.fill('InvalidName');
-    await page.locator('button:has-text("Create Dungeon")').click();
-    await page.waitForTimeout(1000);
-    // Should show validation error
+    await page.waitForTimeout(500);
+    // Button should be disabled for invalid names; check for inline validation error
+    const btnDisabled1 = await page.locator('button:has-text("Create Dungeon")').getAttribute('disabled').catch(() => null);
     const body1 = await page.textContent('body');
     const hasError = body1.includes('invalid') || body1.includes('lowercase') ||
-                     body1.includes('alphanumeric') || body1.includes('DNS');
+                     body1.includes('alphanumeric') || body1.includes('DNS') || btnDisabled1 !== null;
     hasError
       ? ok('Invalid uppercase dungeon name rejected with validation message')
       : warn('No validation error shown for uppercase name (may be silently rejected or client-side normalised)');
 
     // Try name starting with hyphen
     await nameInput.fill('-bad-start');
-    await page.locator('button:has-text("Create Dungeon")').click();
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(500);
     const body2 = await page.textContent('body');
     const hasError2 = body2.includes('invalid') || body2.includes('lowercase') ||
                       body2.includes('alphanumeric') || body2.includes('DNS') || body2.includes('must start');
@@ -54,13 +53,13 @@ async function run() {
       ? ok('Hyphen-starting name rejected with validation message')
       : warn('No validation error for hyphen-starting name');
 
-    // Try empty name
+    // Try empty name — button should be disabled
     await nameInput.fill('');
-    await page.locator('button:has-text("Create Dungeon")').click();
     await page.waitForTimeout(500);
     const body3 = await page.textContent('body');
-    body3.includes('invalid') || body3.includes('name') || body3.includes('required')
-      ? ok('Empty dungeon name rejected')
+    const btnDisabled3 = await page.locator('button:has-text("Create Dungeon")').getAttribute('disabled').catch(() => null);
+    body3.includes('invalid') || body3.includes('name') || body3.includes('required') || btnDisabled3 !== null
+      ? ok('Empty dungeon name rejected (button disabled)')
       : warn('Empty name not explicitly rejected (may require UI interaction)');
 
     // Valid name should work

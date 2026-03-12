@@ -74,8 +74,16 @@ async function run() {
   // Spam attacks until defeat banner appears or 30 iterations
   let defeated = false;
   for (let i = 0; i < 30 && !defeated; i++) {
+    // Click any available attack button (monster or boss)
+    const monsterAtk = page.locator('.arena-entity.monster-entity:not(.dead) .arena-atk-btn.btn-primary');
+    const bossAtk = page.locator('.arena-entity.boss-entity .arena-atk-btn.btn-primary');
+    if (await monsterAtk.count() > 0) {
+      await monsterAtk.first().click({ force: true });
+    } else if (await bossAtk.count() > 0) {
+      await bossAtk.click({ force: true });
+    }
     await waitForCombatResult(page);
-    await page.waitForTimeout(600);
+    await page.waitForTimeout(300);
     const txt = await page.textContent('body').catch(() => '');
     if (txt.includes('DEFEAT') || txt.includes('fallen')) { defeated = true; }
   }
