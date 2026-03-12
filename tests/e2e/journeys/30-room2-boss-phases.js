@@ -68,28 +68,51 @@ async function run() {
       warn('Room 1 boss state unclear after attacks');
     }
 
-    // ── Open treasure ────────────────────────────────────────────────────────
-    const treasureBtn = page.locator('button:has-text("Open Treasure")');
-    if (await treasureBtn.count() > 0) {
-      await treasureBtn.click();
-      await page.waitForTimeout(3000);
+    // ── Wait for auto-treasure + door unlock ────────────────────────────────
+    // Treasure auto-opens after boss kill; door auto-unlocks after treasure.
+    // Just wait for the "Enter" text to appear indicating door is ready.
+    let autoSeqDone = false;
+    for (let i = 0; i < 30; i++) {
+      const body = await page.textContent('body');
+      if (body.includes('Enter')) { autoSeqDone = true; break; }
+      // Also dismiss any loot/combat modals that may appear
       const gotIt = page.locator('button:has-text("Got it!")');
-      if (await gotIt.count() > 0) await gotIt.click();
+      if (await gotIt.count() > 0) await gotIt.click({ force: true }).catch(() => {});
+      const cont = page.locator('button:has-text("Continue")');
+      if (await cont.count() > 0) await cont.click({ force: true }).catch(() => {});
       await page.waitForTimeout(1000);
-      ok('Treasure opened');
     }
+    autoSeqDone ? ok('Door unlock sequence completed (Enter visible)') : warn('Door unlock sequence unclear');
 
     // ── Enter Room 2 ─────────────────────────────────────────────────────────
     console.log('\n  [Enter Room 2]');
-    const doorBtn = page.locator('button:has-text("Enter Door"), button:has-text("Enter Room 2")');
+    // Wait for door to unlock (auto-unlocks after boss kill + treasure open)
+    let doorReady = false;
+    for (let i = 0; i < 45; i++) {
+      const body = await page.textContent('body');
+      if (body.includes('Enter')) { doorReady = true; break; }
+      await page.waitForTimeout(2000);
+    }
     let inRoom2 = false;
-    if (await doorBtn.count() > 0) {
-      await doorBtn.click();
-      await page.waitForTimeout(5000);
+    if (doorReady) {
+      // Click the door img (onClick handler is on the img element, not a button)
+      const doorImg = page.locator('.arena-entity.door-entity img');
+      if (await doorImg.count() > 0) {
+        await doorImg.click({ force: true });
+      } else {
+        const doorEntity = page.locator('.arena-entity.door-entity');
+        if (await doorEntity.count() > 0) await doorEntity.click({ force: true });
+      }
+      // Wait for Room 2 to load
+      for (let i = 0; i < 20; i++) {
+        const atkCount = await page.locator('.arena-atk-btn.btn-primary').count();
+        const body = await page.textContent('body');
+        if ((body.includes('Room: 2') || body.includes('Room 2') || atkCount > 0) && i >= 2) break;
+        await page.waitForTimeout(1500);
+      }
       ok('Clicked door to enter Room 2');
 
       // Room 2 should show Troll/Ghoul names
-      const bodyR2 = await page.textContent('body');
       inRoom2 = true;
 
       // ── Verify Room 2 monster names ─────────────────────────────────────

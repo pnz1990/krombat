@@ -140,7 +140,19 @@ async function run() {
     (await closeBtn.count() > 0) ? ok('Close button (✕) found in inspector header') : fail('Close button not found in .kro-inspector-header');
 
     if (await closeBtn.count() > 0) {
-      await closeBtn.click();
+      // Dismiss any InsightCard or modal overlay that may intercept pointer events
+      const insightDismiss = page.locator('.kro-insight-card.visible .kro-insight-dismiss');
+      if (await insightDismiss.count() > 0) {
+        await insightDismiss.first().click({ force: true }).catch(() => {});
+        await page.waitForTimeout(500);
+      }
+      const modalOverlay = page.locator('.modal-overlay');
+      if (await modalOverlay.count() > 0) {
+        await page.keyboard.press('Escape').catch(() => {});
+        await modalOverlay.first().click({ force: true, position: { x: 5, y: 5 } }).catch(() => {});
+        await page.waitForTimeout(400);
+      }
+      await closeBtn.click({ force: true });
       await page.waitForTimeout(400);
       const inspectorAfterClose = await page.locator('.kro-inspector').count();
       inspectorAfterClose === 0 ? ok('Inspector dismissed after clicking ✕') : fail('Inspector still visible after clicking ✕');

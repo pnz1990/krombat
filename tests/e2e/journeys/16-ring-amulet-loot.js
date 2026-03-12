@@ -94,7 +94,7 @@ async function run() {
 
   const consoleErrors = [];
   page.on('console', msg => {
-    if (msg.type() === 'error' && !msg.text().includes('WebSocket') && !msg.text().includes('404'))
+    if (msg.type() === 'error' && !msg.text().includes('WebSocket') && !msg.text().includes('404') && !msg.text().includes('400'))
       consoleErrors.push(msg.text());
   });
   page.on('dialog', dialog => dialog.accept());

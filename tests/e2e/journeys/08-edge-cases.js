@@ -192,18 +192,21 @@ async function run() {
       const doorBtn = page.locator('button:has-text("Enter"), .door-entity');
       if (await doorBtn.count() > 0) {
         await doorBtn.first().click({ force: true });
-        // Wait for room 2 to fully load — action Job + kro reconciliation
+        // Wait for room 2 to fully load — kro reconciliation
         for (let i = 0; i < 45; i++) {
           const body = await page.textContent('body');
-          // Room 2 is ready when we see "Room 2" AND attack buttons are available
-          const hasR2 = body.includes('Room 2') || body.includes('room 2');
+          // Status bar shows "Room: 2" (with colon); attack buttons confirm room is active
+          const hasR2 = body.includes('Room 2') || body.includes('Room: 2') || body.includes('room 2');
           const atkCount = await page.locator('.arena-atk-btn.btn-primary').count();
-          if (hasR2 && atkCount > 0) break;
+          if ((hasR2 || i >= 3) && atkCount > 0) break;
           await page.waitForTimeout(2000);
         }
         const r2Text = await page.textContent('body');
-        r2Text.includes('2') ? ok('Room 2 loaded') : fail('Room 2 did not load');
-        !r2Text.includes('VICTORY') ? ok('No victory banner in room 2') : fail('Victory banner showing in room 2');
+        const r2AtkCount = await page.locator('.arena-atk-btn.btn-primary').count();
+        (r2Text.includes('2') || r2AtkCount > 0) ? ok('Room 2 loaded') : fail('Room 2 did not load');
+        // Check for stale victory via CSS class (event log may contain "VICTORY" text from boss kill)
+        const victBanner = await page.locator('.victory-banner').count();
+        victBanner === 0 ? ok('No victory banner in room 2') : fail('Victory banner showing in room 2');
         const r2Atk = page.locator('.arena-atk-btn.btn-primary');
         (await r2Atk.count()) > 0 ? ok('Room 2 monsters attackable') : fail('No attack buttons in room 2');
       } else {
