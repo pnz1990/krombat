@@ -534,7 +534,7 @@ body {
 @keyframes dieShake { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
 
 /* Combat modal */
-.combat-modal { max-width: 400px; width: 90%; position: relative; }
+.combat-modal { max-width: 620px; width: 94%; position: relative; }
 .combat-modal .modal-close { position: absolute; top: 8px; right: 12px; background: none; border: none; color: #888; font-size: 16px; cursor: pointer; font-family: inherit; }
 .combat-modal .modal-close:hover { color: #fff; }
 .combat-breakdown { display: flex; flex-direction: column; gap: 6px; text-align: left; }
@@ -1510,6 +1510,7 @@ body {
   border-collapse: collapse;
   font-family: 'Press Start 2P', monospace;
   font-size: 6px;
+  table-layout: fixed;
 }
 .cel-trace-table th {
   color: #444;
@@ -1519,15 +1520,20 @@ body {
   font-weight: normal;
   letter-spacing: 0.5px;
 }
+.cel-trace-table th:nth-child(1) { width: 48%; }
+.cel-trace-table th:nth-child(2) { width: 20%; }
+.cel-trace-table th:nth-child(3) { width: 32%; }
 .cel-trace-table td {
   padding: 3px 4px;
   border-bottom: 1px solid #0f1a2e;
   vertical-align: top;
   line-height: 1.6;
+  word-break: break-all;
+  overflow-wrap: anywhere;
 }
-.cel-trace-expr { color: #9b59b6; font-family: 'Press Start 2P', monospace; }
-.cel-trace-val  { color: #00ff41; white-space: nowrap; }
-.cel-trace-note { color: #555; }
+.cel-trace-expr { color: #9b59b6; font-family: 'Press Start 2P', monospace; word-break: break-all; }
+.cel-trace-val  { color: #00ff41; white-space: normal; word-break: break-all; }
+.cel-trace-note { color: #888; word-break: break-word; }
 
 /* ─── kro Expert Certificate ──────────────────────────────────────────────── */
 .kro-cert-overlay {
