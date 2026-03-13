@@ -56,6 +56,7 @@ spec:
       combatProcessedSeq: integer | default=0
       lastAction: string | default=""
       actionProcessedSeq: integer | default=0
+      room2ProcessedSeq: integer | default=0
       lastAbility: string | default=""
       abilityProcessedSeq: integer | default=0
       runCount: integer | default=0
@@ -108,7 +109,7 @@ spec:
     # --- Monster CRs ---
     - id: monsterCRs
       forEach:
-        - idx: ${lists.range(size(schema.spec.monsterHP))}
+        - idx: "${has(schema.spec.monsterHP) ? lists.range(size(schema.spec.monsterHP)) : []}"
       template:
         apiVersion: game.k8s.example/v1alpha1
         kind: Monster
@@ -134,7 +135,7 @@ spec:
           hp: ${schema.spec.bossHP}
           maxHP: "${schema.spec.difficulty == 'easy' ? 200 : schema.spec.difficulty == 'hard' ? 800 : 400}"
           difficulty: ${schema.spec.difficulty}
-          monstersAlive: "${size(schema.spec.monsterHP.filter(hp, hp > 0))}"
+          monstersAlive: "${has(schema.spec.monsterHP) ? size(schema.spec.monsterHP.filter(hp, hp > 0)) : 0}"
 
     # --- Treasure CR ---
     - id: treasureCR
@@ -688,9 +689,10 @@ spec:
         lastAttackTarget: "${''}"
 
     # ===================================================================
-    # actionResolve: handles use/equip/treasure/door/room2 state mutations
+    # actionResolve: handles use/equip/treasure/door scalar state mutations.
+    # Array/room2 transition fields are handled by enterRoom2Resolve below.
     # Backend writes: lastAction, actionSeq, lastHeroAction, lastEnemyAction
-    # kro computes: inventory, heroHP, heroMana, equipment bonuses, room transition
+    # kro computes: inventory, heroHP, heroMana, equipment bonuses, treasure/door
     # ===================================================================
     - id: actionResolve
       type: specPatch
@@ -808,74 +810,9 @@ spec:
             : schema.spec.doorUnlocked
           )}
 
-        # --- Room 2 transition fields ---
+        # --- Room 2 scalar transition ---
         currentRoom: >-
           ${schema.spec.lastAction == 'enter-room-2' ? 2 : schema.spec.currentRoom}
-
-        monsterHP: >-
-          ${cel.bind(a, schema.spec.lastAction,
-          cel.bind(diff, schema.spec.difficulty,
-          cel.bind(mod, schema.spec.modifier,
-            a == 'enter-room-2' ?
-              cel.bind(r1m, diff == 'easy' ? 30 : diff == 'hard' ? 80 : 50,
-              cel.bind(r2m, r1m * 3 / 2,
-              cel.bind(adj,
-                mod.startsWith('blessing') ? r2m * 9 / 10
-                : mod.startsWith('curse') ? r2m * 11 / 10
-                : r2m,
-                schema.spec.monsterHP.map(x, adj)
-              )))
-            : schema.spec.monsterHP
-          )))}
-
-        bossHP: >-
-          ${cel.bind(a, schema.spec.lastAction,
-          cel.bind(diff, schema.spec.difficulty,
-          cel.bind(mod, schema.spec.modifier,
-            a == 'enter-room-2' ?
-              cel.bind(r1b, diff == 'easy' ? 200 : diff == 'hard' ? 800 : 400,
-              cel.bind(r2b, r1b * 13 / 10,
-                mod.startsWith('blessing') ? r2b * 9 / 10
-                : mod.startsWith('curse') ? r2b * 11 / 10
-                : r2b
-              ))
-            : schema.spec.bossHP
-          )))}
-
-        room2MonsterHP: >-
-          ${cel.bind(a, schema.spec.lastAction,
-          cel.bind(diff, schema.spec.difficulty,
-          cel.bind(mod, schema.spec.modifier,
-            a == 'enter-room-2' ?
-              cel.bind(r1m, diff == 'easy' ? 30 : diff == 'hard' ? 80 : 50,
-              cel.bind(r2m, r1m * 3 / 2,
-              cel.bind(adj,
-                mod.startsWith('blessing') ? r2m * 9 / 10
-                : mod.startsWith('curse') ? r2m * 11 / 10
-                : r2m,
-                schema.spec.monsterHP.map(x, adj)
-              )))
-            : schema.spec.room2MonsterHP
-          )))}
-
-        room2BossHP: >-
-          ${cel.bind(a, schema.spec.lastAction,
-          cel.bind(diff, schema.spec.difficulty,
-          cel.bind(mod, schema.spec.modifier,
-            a == 'enter-room-2' ?
-              cel.bind(r1b, diff == 'easy' ? 200 : diff == 'hard' ? 800 : 400,
-              cel.bind(r2b, r1b * 13 / 10,
-                mod.startsWith('blessing') ? r2b * 9 / 10
-                : mod.startsWith('curse') ? r2b * 11 / 10
-                : r2b
-              ))
-            : schema.spec.room2BossHP
-          )))}
-
-        monsterTypes: >-
-          ${schema.spec.lastAction == 'enter-room-2' ?
-            lists.range(size(schema.spec.monsterHP)).map(i, i % 2 == 0 ? 'troll' : 'ghoul')
-            : schema.spec.monsterTypes}
 
         # --- Loot cleared on every action ---
         lastLootDrop: "${''}"
@@ -885,4 +822,66 @@ spec:
 
         # --- Clear action trigger so specPatch doesn't re-fire ---
         lastAction: "${''}"
+
+    # ===================================================================
+    # enterRoom2Resolve: handles ONLY the array fields for room 2 transition.
+    # Kept separate from actionResolve because []string / []integer arrays
+    # with no default cause kro "data pending" errors when passed through
+    # as-is in a specPatch that fires on every action turn.
+    # Fires independently on its own sentinel (room2ProcessedSeq).
+    # ===================================================================
+    - id: enterRoom2Resolve
+      type: specPatch
+      includeWhen:
+        - "${schema.spec.currentRoom == 2 && schema.spec.actionSeq > schema.spec.room2ProcessedSeq}"
+      patch:
+        monsterHP: >-
+          ${cel.bind(diff, schema.spec.difficulty,
+          cel.bind(mod, schema.spec.modifier,
+            cel.bind(r1m, diff == 'easy' ? 30 : diff == 'hard' ? 80 : 50,
+            cel.bind(r2m, r1m * 3 / 2,
+            cel.bind(adj,
+              mod.startsWith('blessing') ? r2m * 9 / 10
+              : mod.startsWith('curse') ? r2m * 11 / 10
+              : r2m,
+              lists.range(schema.spec.monsters).map(i, adj)
+            )))))}
+
+        bossHP: >-
+          ${cel.bind(diff, schema.spec.difficulty,
+          cel.bind(mod, schema.spec.modifier,
+            cel.bind(r1b, diff == 'easy' ? 200 : diff == 'hard' ? 800 : 400,
+            cel.bind(r2b, r1b * 13 / 10,
+              mod.startsWith('blessing') ? r2b * 9 / 10
+              : mod.startsWith('curse') ? r2b * 11 / 10
+              : r2b
+            ))))}
+
+        room2MonsterHP: >-
+          ${cel.bind(diff, schema.spec.difficulty,
+          cel.bind(mod, schema.spec.modifier,
+            cel.bind(r1m, diff == 'easy' ? 30 : diff == 'hard' ? 80 : 50,
+            cel.bind(r2m, r1m * 3 / 2,
+            cel.bind(adj,
+              mod.startsWith('blessing') ? r2m * 9 / 10
+              : mod.startsWith('curse') ? r2m * 11 / 10
+              : r2m,
+              lists.range(schema.spec.monsters).map(i, adj)
+            )))))}
+
+        room2BossHP: >-
+          ${cel.bind(diff, schema.spec.difficulty,
+          cel.bind(mod, schema.spec.modifier,
+            cel.bind(r1b, diff == 'easy' ? 200 : diff == 'hard' ? 800 : 400,
+            cel.bind(r2b, r1b * 13 / 10,
+              mod.startsWith('blessing') ? r2b * 9 / 10
+              : mod.startsWith('curse') ? r2b * 11 / 10
+              : r2b
+            ))))}
+
+        monsterTypes: >-
+          ${lists.range(schema.spec.monsters).map(i, i % 2 == 0 ? 'troll' : 'ghoul')}
+
+        # --- Room 2 sentinel ---
+        room2ProcessedSeq: "${schema.spec.actionSeq}"
 

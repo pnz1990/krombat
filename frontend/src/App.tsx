@@ -318,12 +318,16 @@ export default function App() {
         // Poll until actionSeq > prevSeq AND lastAction is cleared (kro finished processing).
         // The backend writes trigger fields (lastAction, actionSeq, etc.) and kro's
         // actionResolve specPatch computes the actual state mutations, then clears lastAction.
+        // For enter-room-2: also wait for room2ProcessedSeq to advance (enterRoom2Resolve fires
+        // on the next reconcile after actionResolve sets currentRoom=2).
         const prevSeq = detail?.spec.actionSeq ?? 0
         if (target === 'enter-room-2') setRoomLoading(true)
-        for (let attempt = 0; attempt < 20; attempt++) {
+        for (let attempt = 0; attempt < 40; attempt++) {
           await new Promise(r => setTimeout(r, 1500))
           const current = await getDungeon(selected.ns, selected.name)
-          if ((current.spec.actionSeq || 0) > prevSeq && !current.spec.lastAction) {
+          const seqAdvanced = (current.spec.actionSeq || 0) > prevSeq && !current.spec.lastAction
+          const room2Ready = target !== 'enter-room-2' || (current.spec.room2ProcessedSeq || 0) >= (current.spec.actionSeq || 0)
+          if (seqAdvanced && room2Ready) {
             updated = current
             break
           }

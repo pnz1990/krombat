@@ -1,0 +1,31 @@
+apiVersion: kro.run/v1alpha1
+kind: ResourceGraphDefinition
+metadata:
+  name: statewrite-counter-test
+spec:
+  schema:
+    apiVersion: v1alpha1
+    kind: StateCounter
+    spec:
+      label: "string | default=hello"
+    status:
+      lastLabel: "${counterCm.data.label}"
+  resources:
+    # A ConfigMap that reflects the label value (regular resource node)
+    - id: counterCm
+      template:
+        apiVersion: v1
+        kind: ConfigMap
+        metadata:
+          name: "${schema.metadata.name}-state"
+        data:
+          label: "${schema.spec.label}"
+
+    # stateWrite node: increment a counter in status.kstate each reconcile
+    # includeWhen prevents infinite loop: only write when counter < 5
+    - id: incrementCounter
+      type: stateWrite
+      includeWhen:
+        - "${!has(schema.status.kstate.counter) || schema.status.kstate.counter < 5}"
+      state:
+        counter: "${has(schema.status.kstate.counter) ? schema.status.kstate.counter + 1 : 1}"
