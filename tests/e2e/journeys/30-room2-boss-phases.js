@@ -95,14 +95,11 @@ async function run() {
     }
     let inRoom2 = false;
     if (doorReady) {
-      // Click the door img (onClick handler is on the img element, not a button)
-      const doorImg = page.locator('.arena-entity.door-entity img');
-      if (await doorImg.count() > 0) {
-        await doorImg.click({ force: true });
-      } else {
-        const doorEntity = page.locator('.arena-entity.door-entity');
-        if (await doorEntity.count() > 0) await doorEntity.click({ force: true });
-      }
+      // Use JS click to reliably trigger React onClick on the door-entity div
+      await page.evaluate(() => {
+        const door = document.querySelector('[role="button"][aria-label="Enter Room 2"], .arena-entity.door-entity');
+        if (door) door.click();
+      });
       // Wait for Room 2 to load
       for (let i = 0; i < 20; i++) {
         const atkCount = await page.locator('.arena-atk-btn.btn-primary').count();

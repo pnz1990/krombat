@@ -129,39 +129,37 @@ async function run() {
     }
     doorReady ? ok('Door ready (Enter visible)') : fail('Door did not unlock');
 
-    // === STEP 7: Enter Room 2 ===
-    console.log('\n=== Step 7: Enter Room 2 ===');
-    // Wait for all combat state to settle before clicking door
-    await page.waitForTimeout(3000);
-    await clearModals(page);
-    await page.waitForTimeout(1000);
-    const doorEntity = page.locator('.arena-entity.door-entity');
-    if (await doorEntity.count() > 0) {
-      // Click the img inside the door entity (onClick is on the img, not the div)
-      const doorImg = doorEntity.locator('img');
-      if (await doorImg.count() > 0) {
-        await doorImg.click({ force: true });
-      } else {
-        await doorEntity.click({ force: true });
-      }
-      // Also try direct API call as fallback to ensure room transition happens
-      await page.waitForTimeout(2000);
-      let r2Loaded = false;
-      for (let i = 0; i < 45; i++) {
-        body = await getBodyText(page);
-        // Accept any room 2 indicator: overlay text, status bar, or attack buttons appearing
-        const hasR2Text = body.includes('Room 2') || body.includes('Room: 2');
-        const atkButtons = await page.locator('.arena-atk-btn.btn-primary').count();
-        if (hasR2Text || (atkButtons > 0 && i > 2)) { r2Loaded = true; break; }
-        // Re-try clicking door if not loaded yet (in case first click was blocked)
-        if (i === 5 || i === 10) {
-          await clearModals(page);
-          const di = page.locator('.arena-entity.door-entity img');
-          if (await di.count() > 0) await di.click({ force: true }).catch(() => {});
-        }
-        await page.waitForTimeout(2000);
-      }
-      r2Loaded ? ok('Room 2 loaded') : fail('Room 2 did not load');
+     // === STEP 7: Enter Room 2 ===
+     console.log('\n=== Step 7: Enter Room 2 ===');
+     // Wait for all combat state to settle before clicking door
+     await page.waitForTimeout(3000);
+     await clearModals(page);
+     await page.waitForTimeout(1000);
+     // Use JS click to reliably trigger React onClick on the door-entity div
+     const doorClicked1 = await page.evaluate(() => {
+       const door = document.querySelector('[role="button"][aria-label="Enter Room 2"], .arena-entity.door-entity');
+       if (!door) return false;
+       door.click();
+       return true;
+     });
+     if (doorClicked1) {
+       // Wait for Room 2 to load
+       await page.waitForTimeout(2000);
+       let r2Loaded = false;
+       for (let i = 0; i < 45; i++) {
+         body = await getBodyText(page);
+         // Accept any room 2 indicator: overlay text, status bar, or attack buttons appearing
+         const hasR2Text = body.includes('Room 2') || body.includes('Room: 2');
+         const atkButtons = await page.locator('.arena-atk-btn.btn-primary').count();
+         if (hasR2Text || (atkButtons > 0 && i > 2)) { r2Loaded = true; break; }
+         // Re-try clicking door if not loaded yet (in case first click was blocked)
+         if (i === 5 || i === 10) {
+           await clearModals(page);
+           await page.evaluate(() => { const d = document.querySelector('[role="button"][aria-label="Enter Room 2"], .arena-entity.door-entity'); if (d) d.click(); });
+         }
+         await page.waitForTimeout(2000);
+       }
+       r2Loaded ? ok('Room 2 loaded') : fail('Room 2 did not load');
 
       // Wait for monsters to appear
       for (let i = 0; i < 15; i++) {

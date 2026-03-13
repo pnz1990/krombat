@@ -140,21 +140,19 @@ async function run() {
     body = await getBodyText(page);
     !body.includes('Open Chest') ? ok('Treasure already opened (no "Open Chest" prompt)') : warn('"Open Chest" still visible after boss — may not be auto-opened yet');
 
-    // === STEP 7: Enter Room 2 ===
-    console.log('\n=== Step 7: Enter Room 2 ===');
-    await clearModals(page);
-    const doorEntity = page.locator('.arena-entity.door-entity');
-    if (await doorEntity.count() > 0) {
-      await doorEntity.click({ force: true });
-    } else {
-      // Fallback: any "Enter" button
-      const enterBtn = page.locator('button:has-text("Enter")');
-      if (await enterBtn.count() > 0) {
-        await enterBtn.first().click({ force: true });
-      } else {
-        fail('Door entity not found — cannot enter Room 2');
-      }
-    }
+     // === STEP 7: Enter Room 2 ===
+     console.log('\n=== Step 7: Enter Room 2 ===');
+     await clearModals(page);
+     // door-entity div has role="button" when doorUnlocked=1; use JS click to reliably trigger React onClick
+     const doorClicked = await page.evaluate(() => {
+       const door = document.querySelector('[role="button"][aria-label="Enter Room 2"], .arena-entity.door-entity');
+       if (!door) return false;
+       door.click();
+       return true;
+     });
+     if (!doorClicked) {
+       fail('Door entity not found — cannot enter Room 2');
+     }
 
     // Wait for Room 2 to fully load (attack buttons must appear; text may be 'Room: 2' or 'Entering Room 2...')
     let r2Loaded = false;

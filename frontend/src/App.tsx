@@ -1669,6 +1669,9 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
             {/* Door at top of arena — room 1 only */}
              {(spec.currentRoom || 1) === 1 && (
              <div className="arena-entity door-entity" style={{ top: '8%', left: '50%', cursor: (spec.doorUnlocked ?? 0) === 1 ? 'pointer' : 'default' }}
+               role={(spec.doorUnlocked ?? 0) === 1 ? 'button' : undefined}
+               tabIndex={(spec.doorUnlocked ?? 0) === 1 ? 0 : undefined}
+               aria-label={(spec.doorUnlocked ?? 0) === 1 ? 'Enter Room 2' : undefined}
                onClick={() => {
                  console.log('[door] clicked, attackPhase:', attackPhase, 'doorUnlocked:', spec.doorUnlocked)
                  if (attackPhase) return

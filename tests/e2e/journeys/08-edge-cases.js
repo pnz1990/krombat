@@ -37,6 +37,7 @@ async function run() {
   console.log('🧪 Journey 8: Edge Cases & Error States\n');
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
+  page.setDefaultTimeout(120000);
   const ts = Date.now();
 
   const consoleErrors = [];
@@ -183,19 +184,22 @@ async function run() {
     if (won) {
       ok('Room 1 cleared');
       // Wait for post-boss sequence: treasure opens, door unlocks
-      for (let i = 0; i < 30; i++) {
+      for (let i = 0; i < 20; i++) {
         const body = await page.textContent('body');
         if (body.includes('Enter') || body.includes('Room 2')) break;
         await page.waitForTimeout(2000);
       }
-      // Click door to enter room 2
-      const doorBtn = page.locator('button:has-text("Enter"), .door-entity');
-      if (await doorBtn.count() > 0) {
-        await doorBtn.first().click({ force: true });
+      // Click door to enter room 2 — use JS click to reliably trigger React onClick
+      const doorClicked = await page.evaluate(() => {
+        const door = document.querySelector('[role="button"][aria-label="Enter Room 2"], .arena-entity.door-entity');
+        if (!door) return false;
+        door.click();
+        return true;
+      });
+      if (doorClicked) {
         // Wait for room 2 to fully load — kro reconciliation
-        for (let i = 0; i < 45; i++) {
+        for (let i = 0; i < 30; i++) {
           const body = await page.textContent('body');
-          // Status bar shows "Room: 2" (with colon); attack buttons confirm room is active
           const hasR2 = body.includes('Room 2') || body.includes('Room: 2') || body.includes('room 2');
           const atkCount = await page.locator('.arena-atk-btn.btn-primary').count();
           if ((hasR2 || i >= 3) && atkCount > 0) break;
@@ -203,7 +207,7 @@ async function run() {
         }
         const r2Text = await page.textContent('body');
         const r2AtkCount = await page.locator('.arena-atk-btn.btn-primary').count();
-        (r2Text.includes('2') || r2AtkCount > 0) ? ok('Room 2 loaded') : fail('Room 2 did not load');
+        (r2Text.includes('Room: 2') || r2AtkCount > 0) ? ok('Room 2 loaded') : fail('Room 2 did not load');
         // Check for stale victory via CSS class (event log may contain "VICTORY" text from boss kill)
         const victBanner = await page.locator('.victory-banner').count();
         victBanner === 0 ? ok('No victory banner in room 2') : fail('Victory banner showing in room 2');
