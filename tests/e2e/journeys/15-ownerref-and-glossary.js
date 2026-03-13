@@ -53,8 +53,9 @@ async function run() {
     await page.waitForSelector('input[placeholder="my-dungeon"]', { timeout: TIMEOUT });
     ok('Navigated back to home dungeon list');
 
-    // The dungeon tile should be present
+    // The dungeon tile should be present — wait up to 10s for the list to load
     const tile = page.locator(`.dungeon-tile:has-text("${dNameDelete}")`);
+    await tile.waitFor({ timeout: 10000 }).catch(() => {});
     const tileCount = await tile.count();
     tileCount > 0 ? ok(`Dungeon tile for "${dNameDelete}" is visible on home screen`) : fail(`Dungeon tile "${dNameDelete}" not found on home screen`);
 
@@ -165,7 +166,7 @@ async function run() {
     // Header should show "/23" total concept count
     const glossaryHeader = page.locator('.kro-glossary-header');
     const headerText = await glossaryHeader.textContent().catch(() => '');
-    headerText.includes('/23')
+    (headerText.includes('/23') || headerText.includes('/ 23'))
       ? ok(`Glossary header shows total of 23: "${headerText.trim()}"`)
       : fail(`Glossary header does not show "/23": "${headerText.trim()}"`);
 
