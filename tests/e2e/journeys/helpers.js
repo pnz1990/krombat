@@ -137,9 +137,28 @@ async function getBodyText(page) {
 }
 
 async function navigateHome(page, baseUrl) {
+  // Dismiss kro-cert-overlay (victory certificate) if present — it intercepts pointer events
+  for (let i = 0; i < 3; i++) {
+    const certOverlay = page.locator('.kro-cert-overlay');
+    if (await certOverlay.count() === 0) break;
+    await page.evaluate(() => {
+      const el = document.querySelector('.kro-cert-overlay');
+      if (el) el.click();
+    });
+    await page.waitForTimeout(600);
+  }
+  // If cert overlay is still blocking, navigate by URL directly
+  if (await page.locator('.kro-cert-overlay').count() > 0) {
+    await page.goto(baseUrl, { timeout: 15000 });
+    await page.waitForTimeout(2000);
+    return;
+  }
   const backBtn = page.locator('.back-btn');
   if (await backBtn.count() > 0) {
-    await backBtn.click();
+    await backBtn.click({ timeout: 5000 }).catch(async () => {
+      // Fallback to URL navigation if click fails (e.g. overlay still blocking)
+      await page.goto(baseUrl, { timeout: 15000 });
+    });
     await page.waitForTimeout(2000);
   } else {
     await page.goto(baseUrl, { timeout: 15000 });
@@ -153,6 +172,8 @@ async function deleteDungeon(page, name) {
   if (await tile.count() === 0) return false;
   const delBtn = tile.locator('.tile-delete-btn');
   if (await delBtn.count() === 0) return false;
+  // Accept the confirm() dialog that appears when deleting
+  page.once('dialog', dialog => dialog.accept().catch(() => {}));
   await delBtn.click();
   await page.waitForTimeout(2000);
   return true;

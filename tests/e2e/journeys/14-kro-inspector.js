@@ -141,18 +141,29 @@ async function run() {
 
     if (await closeBtn.count() > 0) {
       // Dismiss any InsightCard or modal overlay that may intercept pointer events
-      const insightDismiss = page.locator('.kro-insight-card.visible .kro-insight-dismiss');
-      if (await insightDismiss.count() > 0) {
-        await insightDismiss.first().click({ force: true }).catch(() => {});
-        await page.waitForTimeout(500);
+      for (let i = 0; i < 3; i++) {
+        const insightDismiss = page.locator('.kro-insight-card.visible .kro-insight-dismiss');
+        if (await insightDismiss.count() > 0) {
+          await insightDismiss.first().click({ force: true }).catch(() => {});
+          await page.waitForTimeout(400);
+        }
+        const modalOverlay = page.locator('.modal-overlay');
+        if (await modalOverlay.count() > 0) {
+          await page.keyboard.press('Escape').catch(() => {});
+          await page.evaluate(() => {
+            const el = document.querySelector('.modal-overlay');
+            if (el) el.click();
+          });
+          await page.waitForTimeout(400);
+        }
+        if (await page.locator('.kro-insight-card.visible').count() === 0 &&
+            await page.locator('.modal-overlay').count() === 0) break;
       }
-      const modalOverlay = page.locator('.modal-overlay');
-      if (await modalOverlay.count() > 0) {
-        await page.keyboard.press('Escape').catch(() => {});
-        await modalOverlay.first().click({ force: true, position: { x: 5, y: 5 } }).catch(() => {});
-        await page.waitForTimeout(400);
-      }
-      await closeBtn.click({ force: true });
+      // Use evaluate to bypass overlay z-index issues
+      await page.evaluate(() => {
+        const btn = document.querySelector('.kro-inspector-header button');
+        if (btn) btn.click();
+      });
       await page.waitForTimeout(400);
       const inspectorAfterClose = await page.locator('.kro-inspector').count();
       inspectorAfterClose === 0 ? ok('Inspector dismissed after clicking ✕') : fail('Inspector still visible after clicking ✕');
@@ -197,7 +208,26 @@ async function run() {
     // Close any open inspector first
     const closeBtn2 = page.locator('.kro-inspector-header button:has-text("✕")');
     if (await closeBtn2.count() > 0) {
-      await closeBtn2.click();
+      // Dismiss overlays before closing
+      for (let i = 0; i < 3; i++) {
+        const insightDismiss2 = page.locator('.kro-insight-card.visible .kro-insight-dismiss');
+        if (await insightDismiss2.count() > 0) {
+          await insightDismiss2.first().click({ force: true }).catch(() => {});
+          await page.waitForTimeout(300);
+        }
+        const mo2 = page.locator('.modal-overlay');
+        if (await mo2.count() > 0) {
+          await page.keyboard.press('Escape').catch(() => {});
+          await page.evaluate(() => { const el = document.querySelector('.modal-overlay'); if (el) el.click(); });
+          await page.waitForTimeout(300);
+        }
+        if (await page.locator('.kro-insight-card.visible').count() === 0 &&
+            await page.locator('.modal-overlay').count() === 0) break;
+      }
+      await page.evaluate(() => {
+        const btn = document.querySelector('.kro-inspector-header button');
+        if (btn) btn.click();
+      });
       await page.waitForTimeout(300);
     }
 

@@ -82,10 +82,10 @@ async function run() {
 
     const healBtnInit = page.locator('button:has-text("Heal")');
     (await healBtnInit.count()) > 0 ? ok('Heal button present') : fail('Heal button missing');
-    // At 120 HP the heal button should be disabled (threshold: HP >= 80)
+    // At 120 HP (full HP) the heal button should be disabled
     const initDisabled = await healBtnInit.isDisabled().catch(() => false);
     initDisabled === true
-      ? ok('Heal disabled at full HP (120 >= 80 threshold)')
+      ? ok('Heal disabled at full HP (120/120)')
       : fail('Heal should be disabled at full HP');
 
     (await page.locator('button:has-text("Taunt")').count()) === 0
@@ -182,16 +182,22 @@ async function run() {
       }
     }
 
-    // === STEP 7: Heal disabled at HP >= 80 ===
-    console.log('\n=== Step 7: Heal Disabled at High HP ===');
+    // === STEP 7: Heal disabled only at full HP (maxHeroHP = 120) ===
+    console.log('\n=== Step 7: Heal Disabled at Full HP ===');
     const hpNow = await getHeroHP(page);
-    if (hpNow !== null && hpNow >= 80) {
+    const maxHP = 120;
+    if (hpNow !== null && hpNow >= maxHP) {
       const disabledHigh = await page.locator('button:has-text("Heal")').isDisabled().catch(() => true);
       disabledHigh === true
-        ? ok(`Heal disabled at ${hpNow} HP (>= 80 threshold)`)
-        : fail(`Heal should be disabled at ${hpNow} HP`);
+        ? ok(`Heal disabled at full HP (${hpNow} >= ${maxHP})`)
+        : fail(`Heal should be disabled at full HP (${hpNow})`);
+    } else if (hpNow !== null && hpNow < maxHP) {
+      const disabledHigh = await page.locator('button:has-text("Heal")').isDisabled().catch(() => true);
+      disabledHigh === false
+        ? ok(`Heal enabled at ${hpNow} HP (below max ${maxHP})`)
+        : fail(`Heal should be enabled at ${hpNow} HP (below max ${maxHP})`);
     } else {
-      warn(`HP=${hpNow}, can't verify high-HP heal disabled`);
+      warn(`HP=${hpNow}, can't verify heal disabled state`);
     }
 
     // === STEP 8: Mana regen on monster kill ===

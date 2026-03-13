@@ -180,45 +180,45 @@ async function run() {
     await createDungeonUI(page, roomName, { monsters: 1, difficulty: 'easy', heroClass: 'warrior' });
     ok('Room transition dungeon created');
 
-    const won = await playToVictory(page);
-    if (won) {
-      ok('Room 1 cleared');
-      // Wait for post-boss sequence: treasure opens, door unlocks
-      for (let i = 0; i < 20; i++) {
-        const body = await page.textContent('body');
-        if (body.includes('Enter') || body.includes('Room 2')) break;
-        await page.waitForTimeout(2000);
-      }
-      // Click door to enter room 2 — use JS click to reliably trigger React onClick
-      const doorClicked = await page.evaluate(() => {
-        const door = document.querySelector('[role="button"][aria-label="Enter Room 2"], .arena-entity.door-entity');
-        if (!door) return false;
-        door.click();
-        return true;
-      });
-      if (doorClicked) {
-        // Wait for room 2 to fully load — kro reconciliation
-        for (let i = 0; i < 30; i++) {
-          const body = await page.textContent('body');
-          const hasR2 = body.includes('Room 2') || body.includes('Room: 2') || body.includes('room 2');
-          const atkCount = await page.locator('.arena-atk-btn.btn-primary').count();
-          if ((hasR2 || i >= 3) && atkCount > 0) break;
-          await page.waitForTimeout(2000);
-        }
-        const r2Text = await page.textContent('body');
-        const r2AtkCount = await page.locator('.arena-atk-btn.btn-primary').count();
-        (r2Text.includes('Room: 2') || r2AtkCount > 0) ? ok('Room 2 loaded') : fail('Room 2 did not load');
-        // Check for stale victory via CSS class (event log may contain "VICTORY" text from boss kill)
-        const victBanner = await page.locator('.victory-banner').count();
+     const won = await playToVictory(page);
+     if (won) {
+       ok('Room 1 cleared');
+       // Wait for post-boss sequence: treasure opens, door unlocks
+       for (let i = 0; i < 20; i++) {
+         const body = await page.textContent('body');
+         if (body.includes('Enter') || body.includes('Room 2')) break;
+         await page.waitForTimeout(2000);
+       }
+       // Extra wait: attackPhase from unlock-door must clear before clicking door
+       await page.waitForTimeout(4000);
+       // Click door — retry up to 3 times in case attackPhase briefly still set
+       let r2Loaded = false;
+       for (let attempt = 0; attempt < 3 && !r2Loaded; attempt++) {
+         if (attempt > 0) await page.waitForTimeout(3000);
+         await page.evaluate(() => {
+           const door = document.querySelector('[role="button"][aria-label="Enter Room 2"], .arena-entity.door-entity');
+           if (door) door.click();
+         });
+         // Wait for room 2 to fully load — kro reconciliation
+         for (let i = 0; i < 20; i++) {
+           const body = await page.textContent('body');
+           const hasR2 = body.includes('Room 2') || body.includes('Room: 2') || body.includes('room 2');
+           const atkCount = await page.locator('.arena-atk-btn.btn-primary').count();
+           if ((hasR2 && atkCount > 0) || (atkCount > 0 && i >= 3)) { r2Loaded = true; break; }
+           await page.waitForTimeout(2000);
+         }
+       }
+       const r2Text = await page.textContent('body');
+       const r2AtkCount = await page.locator('.arena-atk-btn.btn-primary').count();
+       (r2Text.includes('Room: 2') || r2AtkCount > 0) ? ok('Room 2 loaded') : fail('Room 2 did not load');
+       // Check for stale victory via CSS class (event log may contain "VICTORY" text from boss kill)
+       const victBanner = await page.locator('.victory-banner').count();
         victBanner === 0 ? ok('No victory banner in room 2') : fail('Victory banner showing in room 2');
         const r2Atk = page.locator('.arena-atk-btn.btn-primary');
         (await r2Atk.count()) > 0 ? ok('Room 2 monsters attackable') : fail('No attack buttons in room 2');
-      } else {
-        fail('Door not found after room 1 victory');
-      }
-    } else {
-      warn('Hero died before room 2 — cannot test room transition');
-    }
+     } else {
+       warn('Hero died before room 2 — cannot test room transition');
+     }
 
     // === Test 8: Defeat state — play until hero dies ===
     console.log('\n=== Test 8: Defeat State ===');

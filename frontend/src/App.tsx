@@ -1672,11 +1672,10 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
                role={(spec.doorUnlocked ?? 0) === 1 ? 'button' : undefined}
                tabIndex={(spec.doorUnlocked ?? 0) === 1 ? 0 : undefined}
                aria-label={(spec.doorUnlocked ?? 0) === 1 ? 'Enter Room 2' : undefined}
-               onClick={() => {
-                 console.log('[door] clicked, attackPhase:', attackPhase, 'doorUnlocked:', spec.doorUnlocked)
-                 if (attackPhase) return
-                 if ((spec.doorUnlocked ?? 0) === 1) onAttack('enter-room-2', 0)
-               }}>
+                onClick={() => {
+                  if (attackPhase) return
+                  if ((spec.doorUnlocked ?? 0) === 1) onAttack('enter-room-2', 0)
+                }}>
                {(() => {
                  const doorUnlocked = (spec.doorUnlocked ?? 0) === 1
                  const unlocking = (spec.treasureOpened ?? 0) === 1 && !doorUnlocked
