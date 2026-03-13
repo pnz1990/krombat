@@ -109,7 +109,7 @@ spec:
     # --- Monster CRs ---
     - id: monsterCRs
       forEach:
-        - idx: ${lists.range(size(schema.spec.monsterHP))}
+        - idx: "${has(schema.spec.monsterHP) ? lists.range(size(schema.spec.monsterHP)) : []}"
       template:
         apiVersion: game.k8s.example/v1alpha1
         kind: Monster
@@ -135,7 +135,7 @@ spec:
           hp: ${schema.spec.bossHP}
           maxHP: "${schema.spec.difficulty == 'easy' ? 200 : schema.spec.difficulty == 'hard' ? 800 : 400}"
           difficulty: ${schema.spec.difficulty}
-          monstersAlive: "${size(schema.spec.monsterHP.filter(hp, hp > 0))}"
+          monstersAlive: "${has(schema.spec.monsterHP) ? size(schema.spec.monsterHP.filter(hp, hp > 0)) : 0}"
 
     # --- Treasure CR ---
     - id: treasureCR
@@ -833,7 +833,7 @@ spec:
     - id: enterRoom2Resolve
       type: specPatch
       includeWhen:
-        - "${schema.spec.actionSeq > schema.spec.room2ProcessedSeq && schema.spec.lastAction == 'enter-room-2'}"
+        - "${schema.spec.currentRoom == 2 && schema.spec.actionSeq > schema.spec.room2ProcessedSeq}"
       patch:
         monsterHP: >-
           ${cel.bind(diff, schema.spec.difficulty,
@@ -844,7 +844,7 @@ spec:
               mod.startsWith('blessing') ? r2m * 9 / 10
               : mod.startsWith('curse') ? r2m * 11 / 10
               : r2m,
-              schema.spec.monsterHP.map(x, adj)
+              lists.range(schema.spec.monsters).map(i, adj)
             )))))}
 
         bossHP: >-
@@ -866,7 +866,7 @@ spec:
               mod.startsWith('blessing') ? r2m * 9 / 10
               : mod.startsWith('curse') ? r2m * 11 / 10
               : r2m,
-              schema.spec.monsterHP.map(x, adj)
+              lists.range(schema.spec.monsters).map(i, adj)
             )))))}
 
         room2BossHP: >-
@@ -880,7 +880,7 @@ spec:
             ))))}
 
         monsterTypes: >-
-          ${lists.range(size(schema.spec.monsterHP)).map(i, i % 2 == 0 ? 'troll' : 'ghoul')}
+          ${lists.range(schema.spec.monsters).map(i, i % 2 == 0 ? 'troll' : 'ghoul')}
 
         # --- Room 2 sentinel ---
         room2ProcessedSeq: "${schema.spec.actionSeq}"
