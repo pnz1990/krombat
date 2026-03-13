@@ -66,11 +66,14 @@ async function run() {
       delBtnCount > 0 ? ok('Delete button found on dungeon tile') : fail('Delete button (.tile-delete-btn) not found on tile');
 
       if (delBtnCount > 0) {
+        // Accept the confirm() dialog that appears when deleting
+        page.once('dialog', dialog => dialog.accept().catch(() => {}));
         await delBtn.click();
         // Wait for the ownerReferences InsightCard to appear — dungeon-deleted event triggers it.
-        // Poll because a previous InsightCard (from creation) may still be fading out.
+        // Poll because a previous InsightCard (from creation) may still be showing.
+        // Dismiss any non-ownerRef cards while waiting.
         let ownerCard = null;
-        for (let attempts = 0; attempts < 15; attempts++) {
+        for (let attempts = 0; attempts < 20; attempts++) {
           await page.waitForTimeout(1000);
           const cards = page.locator('.kro-insight-card');
           const cardCount2 = await cards.count();
@@ -79,6 +82,12 @@ async function run() {
             if (cardText2.includes('ownerReferences') || cardText2.includes('cascading')) {
               ownerCard = cardText2;
               break;
+            }
+            // Dismiss this card (it's a different insight) and keep waiting
+            const dismissBtnPoll = cards.first().locator('.kro-insight-dismiss');
+            if (await dismissBtnPoll.count() > 0) {
+              await dismissBtnPoll.click({ force: true }).catch(() => {});
+              await page.waitForTimeout(600);
             }
           }
         }
