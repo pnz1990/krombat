@@ -232,6 +232,136 @@ Next tasks may include the open feature requests:
 
 ---
 
+## Upstream kro Contribution Workflow
+
+This section documents the exact process for contributing to `kubernetes-sigs/kro`.
+Fork: `pnz1990/kro` at `/Users/rrroizma/Projects/kro-fork`
+
+### Overview
+
+1. Open an issue on upstream first — get maintainer buy-in before writing code
+2. Cut an isolated branch off upstream main — only the relevant files, no krombat-private code
+3. Open the PR — follow the strict formatting rules below
+4. Wait for EasyCLA + CI + maintainer review
+
+### Step-by-step
+
+```bash
+# 0. Sync fork main with upstream
+cd /Users/rrroizma/Projects/kro-fork
+git checkout main
+git fetch upstream   # upstream = https://github.com/kubernetes-sigs/kro
+git merge upstream/main
+git push origin main
+
+# 1. Create an isolated branch (one contribution per branch)
+git checkout -b <short-description>   # e.g. cel-bind-upstream
+# NO krombat-private files (lists.go, csv.go, specPatch, stateWrite, etc.)
+
+# 2. Make changes, run tests locally
+GOTOOLCHAIN=local go test ./pkg/cel/... 
+
+# 3. Commit — see commit message rules below
+git add <files>
+git commit -m "feat(scope): short description"
+
+# 4. Push and open PR
+git push origin <branch>
+gh pr create --repo kubernetes-sigs/kro \
+  --title "feat(scope): short description" \
+  --body "..."   # see PR body template below
+```
+
+### Commit message rules (enforced by k8s-ci-robot)
+
+- Format: `type(scope): description` — e.g. `feat(cel): add ext.Bindings() support`
+- **NO `#123` references anywhere in the commit message or body** — the bot rejects them with `do-not-merge/invalid-commit-message`. Put the issue link in the PR body instead (plain URL, not a keyword like `Fixes #123`)
+- Types: `feat`, `fix`, `refactor`, `test`, `docs`, `perf`
+- Keep subject line under 72 chars
+
+### Rewriting a bad commit message (non-interactively)
+
+If the bot flags `do-not-merge/invalid-commit-message`, reword without opening an editor:
+
+```bash
+# Create a script that edits the COMMIT_EDITMSG file in place
+cat > /tmp/fix-msg.sh << 'SCRIPT'
+#!/bin/bash
+sed -i '' '/^Fixes #/d' "$1"   # remove the offending line
+SCRIPT
+chmod +x /tmp/fix-msg.sh
+
+# Rebase: mark the bad commit as 'reword', use the script as the editor
+GIT_SEQUENCE_EDITOR="sed -i '' 's/^pick <sha>/reword <sha>/'" \
+GIT_EDITOR=/tmp/fix-msg.sh \
+git rebase -i <parent-sha>
+
+git push --force origin <branch>
+```
+
+### PR body template
+
+```
+## What
+
+Short description of the change.
+
+**1. `path/to/file.go`** — what changed and why
+
+**2. `path/to/other.go`** — what changed and why (if applicable)
+
+## Tests
+
+- `pkg/foo/bar_test.go` — TestName: what it covers
+```
+
+- **Do NOT use** `Fixes #N`, `Closes #N`, or any closing keyword — reference the issue as a plain URL or omit it
+- **Do NOT mention** krombat, game logic, dungeon, damage, etc.
+- Keep it factual and concise — see PR #1136 (TwoVarComprehensions) as a good style reference
+
+### CI checks (all must pass before merge)
+
+| Check | What it runs |
+|---|---|
+| `presubmits-unit-tests` | `go test ./...` |
+| `presubmits-integration-tests` | controller integration suite |
+| `presubmits-e2e-tests` | end-to-end against a real cluster |
+| `presubmits-build-image` | Docker build |
+| `presubmits-verify-lint` | golangci-lint |
+
+CI only runs after an org member posts `/ok-to-test` (required for first-time contributors).
+
+### EasyCLA
+
+CNCF requires a signed CLA before any PR can merge. The `linux-foundation-easycla` bot posts a sign link as a comment. Once signed, approval from LF can take minutes to hours — it is automatic after approval, nothing to chase.
+
+Sign at: https://easycla.lfx.linuxfoundation.org
+
+### What NOT to include in upstream PRs
+
+- `pkg/cel/library/lists.go` — krombat-private lists library
+- `pkg/cel/library/csv.go` — krombat-private CSV library
+- `specPatch` / `stateWrite` dispatch in `builder.go` — pending maintainer discussion
+- Any reference to the krombat game, game logic, or game-specific CEL patterns
+- The 3-arg `random.seededInt(min, max, seed)` signature changes — already upstream
+
+### Isolation check before opening a PR
+
+```bash
+# Verify only the intended files are changed vs upstream main
+git diff upstream/main --name-only
+```
+
+If anything outside the intended scope appears, do NOT open the PR — clean the branch first.
+
+### Key lessons learned
+
+- `cel.bind()` is a **parse-time macro** — it expands to `ComprehensionKind`, NOT `CallKind`. An `inspectCall` handler checking `fn == "bind"` is dead code and will never fire. The existing `inspectComprehension` handler already handles it via `AccuVar`.
+- Always run `GOTOOLCHAIN=local go test ./pkg/cel/...` before pushing — avoids surprises in CI
+- The `k8s-ci-robot` scans the full commit body, not just the subject line, for banned keywords
+
+---
+
 ## Infrastructure
 
 - Cluster: `krombat` in `us-west-2`, account `569190534191`
