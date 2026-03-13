@@ -31,9 +31,9 @@ Each dungeon instance gets its own Namespace for isolation and clean teardown.
 ## How It Works
 
 1. **Create a Dungeon** — specify a name, monster count (1–10), difficulty (easy/normal/hard), and hero class (warrior/mage/rogue)
-2. **kro reconciles** — dungeon-graph creates a Namespace, Hero CR, Monster CRs (one per monster, via forEach), Boss CR, Treasure CR, Modifier CR, and two computed ConfigMaps (`combatResult`, `actionResult`) — all from CEL expressions, no imperative code
-3. **Attack monsters** — the frontend submits a POST to the backend; the backend runs full combat math in Go (FNV-1a seeded dice on Attack CR UID, class abilities, modifiers, status effects), patches the Dungeon CR spec, and upserts an Attack CR — which kro reconciles into a `combatResult` ConfigMap the frontend reads for the dice roll display. Loot drops use a separate SHA-256 seed (`kroSeededRoll`) that matches kro's `random.seededString()` exactly, so the item name Go writes to `spec.lastLootDrop` is always identical to what kro materialises in the Loot CR
-4. **Use items** — same pattern via Action CR; the backend runs item/equip/room logic and upserts an Action CR
+2. **kro reconciles** — dungeon-graph creates a Namespace, Hero CR, Monster CRs (one per monster, via forEach), Boss CR, Treasure CR, Modifier CR, and a `gameConfig` ConfigMap — all wired together via CEL expressions. Several `specPatch` virtual nodes in dungeon-graph act as the game engine, writing combat results and state transitions back to the Dungeon CR spec.
+3. **Attack monsters** — the frontend submits a POST to the backend; the backend runs full combat math in Go (FNV-1a seeded dice on Attack CR UID, class abilities, modifiers, status effects), patches the Dungeon CR spec (`attackSeq`, `lastAttackTarget`, new HP values), and upserts an Attack CR — which signals kro to reconcile and fire the `combatResolve` specPatch node. Loot drops use a separate SHA-256 seed (`kroSeededRoll`) that matches kro's `random.seededString()` exactly, so the item name Go writes to `spec.lastLootDrop` is always identical to what kro materialises in the Loot CR
+4. **Use items** — same pattern via Action CR; the backend runs item/equip/room logic, patches spec, and upserts an Action CR that triggers the `actionResolve` specPatch node
 5. **Boss unlocks** — when all monster HP = 0, kro's CEL in `boss-graph` transitions `bossState` to `ready`; the Dungeon CR status aggregates this via `dungeon-graph` CEL
 6. **Defeat the boss** — boss has three phases driven by HP thresholds in `boss-graph` CEL (Phase 1 → Phase 2 ENRAGED → Phase 3 BERSERK), each with higher counter damage and special attack chance
 7. **Enter Room 2** — after the boss falls, treasure auto-opens, door auto-unlocks; clicking the door triggers `enter-room-2`, which resets to a harder set of monsters (trolls/ghouls) and a bat-boss
@@ -72,7 +72,7 @@ All nine ResourceGraphDefinitions live in `manifests/rgds/`:
 
 | RGD | File | What it creates |
 |---|---|---|
-| `dungeon-graph` | `dungeon-graph.yaml` | Namespace, Hero CR, Monster CRs (forEach), Boss CR, Treasure CR, Modifier CR, `gameConfig` CM, `combatResult` CM, `actionResult` CM |
+| `dungeon-graph` | `dungeon-graph.yaml` | Namespace, Hero CR, Monster CRs (forEach), Boss CR, Treasure CR, Modifier CR, `gameConfig` CM, plus `specPatch` virtual nodes for combat/action/DoT/ability resolution |
 | `hero-graph` | `hero-graph.yaml` | `heroState` ConfigMap (entityState, maxHP, damageModifier, defense, dodgeChance) |
 | `monster-graph` | `monster-graph.yaml` | `monsterState` ConfigMap; conditional Loot CR on kill (includeWhen: HP=0) |
 | `boss-graph` | `boss-graph.yaml` | `bossState` ConfigMap with multi-phase derivation; conditional Loot CR on kill |
@@ -85,14 +85,14 @@ All nine ResourceGraphDefinitions live in `manifests/rgds/`:
 ### Key kro patterns demonstrated
 
 - **RGD composition via CR chaining** — `dungeon-graph` spawns child CRs; each child is reconciled by its own RGD
-- **forEach dynamic fan-out** — Monster CRs created from the `monsterHP` array spec field
+- **forEach dynamic fan-out** — Monster CRs created from the `monsterHP` array spec field using a named loop variable (`idx`)
 - **includeWhen conditional resources** — Loot CRs only created when HP = 0; treasure Secret only when opened = 1; Modifier CR only when modifier ≠ "none"
 - **readyWhen readiness gates** — Modifier CR gates its readyWhen on `modifierType != ""`
+- **specPatch write-back** — `dungeon-graph` uses custom `specPatch` virtual nodes to write computed state (HP mutations, cooldowns, DoT ticks, loot drops) back into the Dungeon CR spec — turning kro into a stateful CEL state machine
 - **CEL state machines** — Boss phase (normal → ENRAGED → BERSERK → defeated) computed entirely in CEL from HP thresholds
 - **Deterministic randomness** — `random.seededString()` in `monster-graph` pre-rolls loot type/rarity at monster spawn; no imperative code
 - **Status aggregation** — `dungeon-graph` aggregates child CR statuses (livingMonsters, bossState, bossPhase, bossDamageMultiplier) via CEL `.filter()` and `.size()`
-- **CRD factory pattern** — `attack-graph` and `action-graph` are empty RGDs used purely to register CRDs; all logic lives in the Go backend
-- **externalRef** — Action/Attack CRs are watched as external refs to trigger dungeon reconciliation
+- **CRD factory pattern** — `attack-graph` and `action-graph` are empty RGDs used purely to register CRDs; all logic lives in the Go backend and dungeon-graph specPatch nodes
 
 ## Project Structure
 
@@ -469,7 +469,7 @@ BASE_URL=http://localhost:3000 node tests/e2e/journeys/20-leaderboard.js
 | 28 | Resume & Validation | Resume prompt, name validation, room1-cleared |
 | 29 | Ring + Amulet Combat | Passive bonuses verified in live combat |
 | 30 | Room 2 Boss Phases | Bat-boss ENRAGED/BERSERK |
-| 31 | Inspector: combat-cm | KroGraph Inspector deep-dive |
+| 31 | Inspector: specPatch nodes | KroGraph Inspector for combatResolve/actionResolve |
 | 32 | CEL Playground Live Eval | Round-trip through CelEvalHandler |
 
 ## License

@@ -80,7 +80,8 @@ spec:
     - id: heroCR
       template: # Hero CR resource ...
     - id: monsterCRs  # forEach fan-out!
-      forEach: lists.range(size(schema.spec.monsterHP))
+      forEach:
+        - idx: "\${lists.range(size(schema.spec.monsterHP))}"
       template: # ...`,
     learnMore: 'manifests/rgds/dungeon-graph.yaml',
   },
@@ -142,12 +143,12 @@ validation:
 This is resource chaining: each RGD handles one layer, and kro wires the outputs together.`,
     snippet: `# dungeon-graph status — reading from child CRs
 status:
-  maxHeroHP: \${heroCR.status.maxHP}
+  maxHeroHP: \${heroCR.status.?maxHP.orValue('100')}
   livingMonsters: >-
     \${size(monsterCRs.filter(m,
       m.status.?entityState.orValue('alive') == 'alive'))}
-  bossState: \${bossCR.status.entityState}
-  treasureState: \${treasureCR.status.treasureState}`,
+  bossState: \${bossCR.status.?entityState.orValue('pending')}
+  treasureState: \${treasureCR.status.?treasureState.orValue('unopened')}`,
     learnMore: 'manifests/rgds/dungeon-graph.yaml — status block',
   },
 
@@ -155,21 +156,24 @@ status:
     id: 'cel-basics',
     title: 'CEL — Common Expression Language',
     tagline: 'All game logic is pure CEL inside YAML. No controllers.',
-    body: `CEL (Common Expression Language) is the expression engine kro uses inside \${...} blocks. Every dice roll, HP transition, and state change in this game is a CEL expression evaluated at reconcile time — no custom controllers, no Go code for game logic.
-The damage you just dealt was computed by a CEL expression in the combatResult ConfigMap.`,
-    snippet: `# dungeon-graph — combatResult ConfigMap (damage computation)
-# CEL evaluates on every reconcile triggered by an Attack CR
-data:
-  diceRoll: >-
-    \${string(int(random.seededString(schema.spec.lastCombatLog,
-      'abcdefghijklmnopqrstuvwxyz0123456789', 8), 36) % 20 + 1)}
-  heroBaseDmg: >-
-    \${schema.spec.difficulty == 'easy'
-      ? string(int(diceRoll) + 2)
-      : schema.spec.difficulty == 'hard'
-        ? string(int(diceRoll) * 3 + 5)
-        : string(int(diceRoll) * 2 + 4)}`,
-    learnMore: 'manifests/rgds/dungeon-graph.yaml — combatResult ConfigMap',
+    body: `CEL (Common Expression Language) is the expression engine kro uses inside \${...} blocks. Every HP transition, state change, and status derivation in this game is a CEL expression evaluated at reconcile time — no custom controllers needed for game logic.
+The damage you just dealt was computed by CEL inside a specPatch node in dungeon-graph — the same node that also decrements HP, applies status effects, and rolls loot drops.`,
+    snippet: `# dungeon-graph — combatResolve specPatch node (damage computation)
+# CEL re-evaluates every time attackSeq advances past combatProcessedSeq
+- id: combatResolve
+  type: specPatch
+  includeWhen:
+    - "\${schema.spec.attackSeq > schema.spec.combatProcessedSeq
+        && schema.spec.lastAttackTarget != ''}"
+  patch:
+    # Dice roll seeded by lastAttackSeed for deterministic replay
+    monsterHP: >-
+      \${schema.spec.difficulty == 'easy'
+        ? lists.setIndex(schema.spec.monsterHP, idx,
+            schema.spec.monsterHP[idx] - (roll + 2))
+        : ...}
+    combatProcessedSeq: "\${schema.spec.attackSeq}"`,
+    learnMore: 'manifests/rgds/dungeon-graph.yaml — combatResolve specPatch node',
   },
 
   'cel-ternary': {
@@ -197,19 +201,25 @@ data:
     title: 'forEach — Dynamic Resource Fan-out',
     tagline: 'One spec field → N child resources, computed at reconcile time.',
     body: `The \`forEach\` directive in an RGD resource block creates one resource per item in a list.
-When you created this dungeon with 3 monsters, kro evaluated \`lists.range(size(schema.spec.monsterHP))\` to get [0, 1, 2] and created three Monster CRs automatically. Change \`monsters: 5\` and kro would create five.`,
+When you created this dungeon with 3 monsters, kro evaluated \`lists.range(size(schema.spec.monsterHP))\` to get [0, 1, 2] and created three Monster CRs automatically. Change \`monsters: 5\` and kro would create five.
+
+The loop variable is a named key in the forEach item map (here \`idx\`). Inside the template, \`idx\` holds the current index value.`,
     snippet: `# dungeon-graph — forEach creates one Monster CR per monsterHP entry
 resources:
   - id: monsterCRs
-    forEach: lists.range(size(schema.spec.monsterHP))
+    forEach:
+      - idx: >-
+          \${has(schema.spec.monsterHP)
+            ? lists.range(size(schema.spec.monsterHP))
+            : []}
     template:
       apiVersion: game.k8s.example/v1alpha1
       kind: Monster
       metadata:
-        name: \${schema.metadata.name + '-monster-' + string(item)}
+        name: \${schema.metadata.name + '-monster-' + string(idx)}
         namespace: \${schema.metadata.namespace}
       spec:
-        hp: \${schema.spec.monsterHP[item]}
+        hp: \${schema.spec.monsterHP[idx]}
         dungeonName: \${schema.metadata.name}`,
     learnMore: 'manifests/rgds/dungeon-graph.yaml — monsterCRs resource block',
   },
@@ -246,25 +256,27 @@ resources:
     id: 'readyWhen',
     title: 'readyWhen — Resource Readiness Gates',
     tagline: 'kro waits for dependencies before proceeding.',
-    body: `\`readyWhen\` is a condition on a resource or on a reference to a child CR. kro will not consider the parent resource ready until all \`readyWhen\` conditions on its children resolve to true.
-The dungeon modifier works this way: dungeon-graph has a \`readyWhen\` on the modifierCR that waits until modifier-graph has finished computing the modifier type. This prevents the dungeon from reporting a wrong state before the modifier is ready.`,
-    snippet: `# dungeon-graph — readyWhen gates on modifierCR
+    body: `\`readyWhen\` is a condition on a resource reference. kro will not consider a resource ready until all \`readyWhen\` conditions resolve to true. This prevents stale or incomplete state from propagating through the graph.
+The dungeon modifier works this way: dungeon-graph declares a \`readyWhen\` on the modifierCR that waits until modifier-graph has finished computing the modifier type. modifier-graph itself declares its \`modifierState\` ConfigMap ready only after the type field is populated.`,
+    snippet: `# dungeon-graph — readyWhen gates on modifierCR being ready
 resources:
   - id: modifierCR
     includeWhen:
       - "\${schema.spec.modifier != 'none'}"
     readyWhen:
-      - "\${self.status.?modifierType.orValue('') != ''}"
+      - "\${modifierCR.status.?modifierType.orValue('') != ''}"
     template:
       # ... Modifier CR
 
-# modifier-graph — resource declares itself ready
+# modifier-graph — ConfigMap declares itself ready
 resources:
   - id: modifierState
     readyWhen:
-      - "self.data.modifierType != ''"
+      - "\${modifierState.data.modifierType != ''}"
     template:
-      kind: ConfigMap`,
+      kind: ConfigMap
+      data:
+        modifierType: "\${schema.spec.modifierType}"`,
     learnMore: 'manifests/rgds/dungeon-graph.yaml and modifier-graph.yaml',
   },
 
@@ -330,9 +342,9 @@ resources:
       stringData:
         description: >-
           \${schema.spec.itemType == 'weapon'
-            ? 'A ' + schema.spec.rarity + ' weapon (+' + string(schema.spec.statValue) + ' damage)'
+            ? 'A ' + schema.spec.rarity + ' weapon (+' + string(schema.spec.stat) + ' damage)'
             : schema.spec.itemType == 'armor'
-              ? 'A ' + schema.spec.rarity + ' armor (+' + string(schema.spec.statValue) + '% defense)'
+              ? 'A ' + schema.spec.rarity + ' armor (+' + string(schema.spec.stat) + '% defense)'
               : '...'}`,
     learnMore: 'manifests/rgds/loot-graph.yaml and treasure-graph.yaml',
   },
@@ -342,7 +354,7 @@ resources:
     title: 'Empty RGD — CRD Factory Pattern',
     tagline: 'An RGD with resources:[] creates a CRD with no managed children.',
     body: `attack-graph and action-graph have \`resources: []\` — they manage no child resources at all. Their sole purpose is to define the Attack and Action custom resource types (CRDs).
-This is the "CRD factory" pattern: use kro to get a typed, validated CRD for free, without writing a controller. The actual logic lives in dungeon-graph's ConfigMaps (CEL expressions) and in the Go backend.`,
+This is the "CRD factory" pattern: use kro to get a typed, validated CRD for free, without writing a controller. The actual logic lives in dungeon-graph's specPatch nodes (CEL expressions that fire on spec changes) and in the Go backend.`,
     snippet: `# attack-graph — empty RGD, defines Attack CRD only
 apiVersion: kro.run/v1alpha1
 kind: ResourceGraphDefinition
@@ -352,13 +364,13 @@ spec:
   schema:
     apiVersion: game.k8s.example/v1alpha1
     kind: Attack
+    group: game.k8s.example
     spec:
       dungeonName: string | required=true
       target: string | required=true
       damage: integer | default=0
-  resources: []   # <-- no managed children
-  status:
-    state: "ready"  # static literal, not a CEL expression`,
+      seq: integer | default=0
+  resources: []   # <-- no managed children, no status`,
     learnMore: 'manifests/rgds/attack-graph.yaml and action-graph.yaml',
   },
 
@@ -366,26 +378,30 @@ spec:
     id: 'externalRef',
     title: 'externalRef — Watch External CRs to Trigger Reconcile',
     tagline: 'kro can watch CRs it does not own and re-reconcile when they change.',
-    body: `Every time you attack, the backend creates an Attack CR. The dungeon-graph RGD watches this Attack CR via \`externalRef\` and immediately re-reconciles the full Dungeon resource graph — recomputing CEL expressions, updating ConfigMaps, deriving new boss phase, and writing the combat result.
+    body: `Every time you attack, the backend creates an Attack CR (defined by the empty attack-graph RGD). The backend then also patches the Dungeon CR spec — incrementing \`attackSeq\` and setting \`lastAttackTarget\`. This spec change triggers dungeon-graph to reconcile immediately, firing the \`combatResolve\` specPatch node which computes all damage and HP mutations via CEL.
 
-This is how the entire combat engine works: not a Job, not a webhook, but a kro watch loop. When the Attack CR changes, kro re-runs all CEL in dungeon-graph and the result ConfigMap is updated within seconds.`,
-    snippet: `# dungeon-graph watches the Attack CR via externalRef
-# Any change to <dungeonName>-latest-attack triggers full reconcile
+\`externalRef\` is a kro feature that lets an RGD watch CRs it doesn't own. Once registered, any change to the watched CR triggers a full reconcile — the same watch → CEL eval → write cycle. It's a powerful pattern for multi-owner resource graphs.`,
+    snippet: `# dungeon-graph — specPatch fires when attackSeq advances
+# Backend writes attackSeq + lastAttackTarget → triggers reconcile
+- id: combatResolve
+  type: specPatch
+  includeWhen:
+    - "\${schema.spec.attackSeq > schema.spec.combatProcessedSeq
+        && schema.spec.lastAttackTarget != ''}"
+  patch:
+    monsterHP: "\${...CEL computes new HP array...}"
+    bossHP:    "\${...CEL computes new boss HP...}"
+    lastAttackTarget: ""
+    combatProcessedSeq: "\${schema.spec.attackSeq}"
+
+# externalRef pattern (watch any CR from another RGD):
 resources:
-  - id: combatResult
-    template:
-      apiVersion: v1
-      kind: ConfigMap
-      data:
-        # These CEL expressions re-evaluate on every Attack CR upsert:
-        diceRoll: >-
-          \${
-            schema.spec.difficulty == 'hard' ? string(
-              int('abcdef...'.indexOf(random.seededString(1, schema.spec.lastCombatLog + 'd1')) % 20)
-              + ... + 8
-            ) : ...
-          }`,
-    learnMore: 'manifests/rgds/dungeon-graph.yaml — combatResult ConfigMap',
+  - id: attackCR
+    type: externalRef
+    apiVersion: game.k8s.example/v1alpha1
+    kind: Attack
+    name: "\${schema.metadata.name + '-latest-attack'}"`,
+    learnMore: 'manifests/rgds/dungeon-graph.yaml — combatResolve specPatch node',
   },
 
   'status-conditions': {
@@ -491,16 +507,16 @@ Both patterns appear throughout the dungeon-graph RGD — in \`readyWhen\` condi
 When to use each:
 - **\`has()\`** — existence check only (returns bool)
 - **\`?.orValue()\`** — existence check + default value (returns the field or a default)`,
-    snippet: `# In boss-graph.yaml readyWhen
+    snippet: `# In dungeon-graph.yaml — readyWhen on modifierCR
 readyWhen:
-  - "self.status.?livingMonsters.orValue(1) == 0"
+  - "\${modifierCR.status.?modifierType.orValue('') != ''}"
 
 # Equivalent CEL using has():
-# has(self.status.livingMonsters) && self.status.livingMonsters == 0
+# has(modifierCR.status.modifierType) && modifierCR.status.modifierType != ''
 
 # In ValidatingAdmissionPolicy (same pattern, different context):
 # has(object.spec.tolerations) && object.spec.tolerations.exists(t, t.key == "gpu")`,
-    learnMore: 'manifests/rgds/boss-graph.yaml — readyWhen block',
+    learnMore: 'manifests/rgds/dungeon-graph.yaml — modifierCR readyWhen block',
   },
 
   'ownerReferences': {
@@ -585,10 +601,10 @@ schema.spec.bossHP > 0
 In Krombat, every time a monster dies, \`dungeon-graph\` runs this expression to update \`livingMonsters\`:
 
 \`\`\`
-monsterCRs.filter(m, int(m.status.currentHP) > 0).size()
+monsterCRs.filter(m, m.status.?entityState.orValue('alive') == 'alive').size()
 \`\`\`
 
-This walks every Monster CR in the dungeon namespace, picks the ones with HP > 0, and counts them — in a single CEL line, without any controller code.
+This walks every Monster CR, picks the ones whose \`entityState\` is still "alive", and counts them — in a single CEL line, without any controller code. The \`?.orValue()\` guard handles Monster CRs that haven't finished initializing yet.
 
 The four core macros are:
 - \`list.filter(x, predicate)\` — keep items where predicate is true
@@ -600,16 +616,12 @@ kro evaluates these macros against live Kubernetes objects during every reconcil
     snippet: `# dungeon-graph.yaml — livingMonsters aggregation
 status:
   livingMonsters: >-
-    \${monsterCRs.filter(m,
-        int(m.status.currentHP) > 0
-      ).size()}
-
-# boss-graph.yaml — gating on all monsters dead
-spec:
-  readyWhen:
-    monstersCleared: >-
-      \${int(schema.spec.monstersAlive) == 0}`,
-    learnMore: 'manifests/rgds/dungeon-graph.yaml (status.livingMonsters) and boss-graph.yaml (readyWhen)',
+    \${size(monsterCRs.filter(m,
+        m.status.?entityState.orValue('alive') == 'alive'
+      ))}
+  # ?.orValue('alive') guards against not-yet-ready Monster CRs
+  # entityState is set by monster-graph CEL: hp > 0 ? 'alive' : 'dead'`,
+    learnMore: 'manifests/rgds/dungeon-graph.yaml (status.livingMonsters) and monster-graph.yaml (entityState)',
   },
 
   'cel-string-ops': {
@@ -874,42 +886,49 @@ export interface KroAnnotation {
 export function kroAnnotate(cmd: string, yaml: string): KroAnnotation | null {
   if (cmd.includes('kubectl apply') && yaml.includes('kind: Dungeon')) {
     return {
-      what: 'kro reads dungeon-graph RGD and creates: Namespace, Hero CR, Monster CRs (forEach), Boss CR, Treasure CR, Modifier CR, combatResult ConfigMap, actionResult ConfigMap.',
+      what: 'kro reads dungeon-graph RGD and creates: Namespace, Hero CR, Monster CRs (forEach), Boss CR, Treasure CR, Modifier CR, gameConfig ConfigMap, and up to 8 specPatch nodes that act as the game engine.',
       rgd: 'dungeon-graph',
-      cel: `forEach: lists.range(size(schema.spec.monsterHP))
+      cel: `forEach:
+  - idx: "\${lists.range(size(schema.spec.monsterHP))}"
 # Creates one Monster CR per monsterHP entry`,
       concept: 'rgd',
     }
   }
   if (cmd.includes('kubectl apply') && yaml.includes('kind: Attack')) {
     return {
-      what: 'kro sees the Attack CR (via attack-graph empty RGD). dungeon-graph reconciles, re-evaluating the combatResult ConfigMap CEL to compute new HP values.',
-      rgd: 'attack-graph (empty RGD) + dungeon-graph (combatResult)',
-      cel: `# dungeon-graph combatResult ConfigMap
-diceRoll: "\${string(int(random.seededString(
-  schema.spec.lastCombatLog, 'abc...', 8), 36) % 20 + 1)}"
-heroBaseDmg: "\${difficulty == 'hard' ? roll*3+5 : roll*2+4}"`,
+      what: 'kro sees the Attack CR (defined by the empty attack-graph RGD). The backend also patches attackSeq + lastAttackTarget on the Dungeon CR, triggering dungeon-graph to reconcile and fire the combatResolve specPatch node — computing new HP values in CEL.',
+      rgd: 'attack-graph (empty RGD) + dungeon-graph (combatResolve specPatch)',
+      cel: `# dungeon-graph combatResolve specPatch
+- id: combatResolve
+  type: specPatch
+  includeWhen:
+    - "\${attackSeq > combatProcessedSeq && lastAttackTarget != ''}"
+  patch:
+    monsterHP: "\${...CEL computes new HP array...}"`,
       concept: 'cel-basics',
     }
   }
   if (cmd.includes('kubectl apply') && yaml.includes('kind: Action') && yaml.includes('equip')) {
     return {
-      what: 'kro sees the Action CR (action-graph empty RGD). dungeon-graph reconciles, re-evaluating the actionResult ConfigMap to compute new weaponBonus/armorBonus/etc.',
-      rgd: 'action-graph (empty RGD) + dungeon-graph (actionResult)',
-      cel: `# dungeon-graph actionResult ConfigMap
-weaponBonus: "\${action == 'equip-weapon-rare' ? '10'
-  : action == 'equip-weapon-epic' ? '20' : '5'}"`,
+      what: 'kro sees the Action CR (defined by the empty action-graph RGD). The backend also patches actionSeq + lastAction on the Dungeon CR, triggering dungeon-graph to reconcile and fire the actionResolve specPatch node — computing new equip bonuses via CEL.',
+      rgd: 'action-graph (empty RGD) + dungeon-graph (actionResolve specPatch)',
+      cel: `# dungeon-graph actionResolve specPatch
+- id: actionResolve
+  type: specPatch
+  patch:
+    weaponBonus: "\${action == 'equip-weapon-rare' ? 5
+      : action == 'equip-weapon-epic' ? 10 : 3}"`,
       concept: 'empty-rgd',
     }
   }
   if (cmd.includes('kubectl apply') && yaml.includes('kind: Action') && yaml.includes('use-')) {
     return {
-      what: 'Item use is also an Action CR. The actionResult ConfigMap CEL computes the new heroHP after applying the potion.',
-      rgd: 'action-graph (empty RGD) + dungeon-graph (actionResult)',
-      cel: `# actionResult — HP potion CEL
-newHeroHP: "\${action == 'use-hppotion-epic'
-  ? string(maxHeroHP)
-  : string(min(heroHP + healAmt, maxHeroHP))}"`,
+      what: 'Item use is also an Action CR. The actionResolve specPatch in dungeon-graph computes the new heroHP after applying the potion and writes it back to spec.',
+      rgd: 'action-graph (empty RGD) + dungeon-graph (actionResolve specPatch)',
+      cel: `# actionResolve specPatch — HP potion CEL
+heroHP: "\${lastAction == 'use-hppotion-epic'
+  ? maxHeroHP
+  : min(heroHP + healAmt, maxHeroHP)}"`,
       concept: 'empty-rgd',
     }
   }
@@ -1149,7 +1168,7 @@ export function CelTrace({ data, onLearnMore }: { data: CelTraceData; onLearnMor
       </button>
       {open && (
         <div className="cel-trace-body">
-          <div className="cel-trace-header">dungeon-graph → combatResult ConfigMap <span style={{ fontSize: 10, color: '#888', marginLeft: 6 }}>post-reconcile state</span></div>
+          <div className="cel-trace-header">dungeon-graph → combatResolve specPatch <span style={{ fontSize: 10, color: '#888', marginLeft: 6 }}>post-reconcile state</span></div>
           <table className="cel-trace-table">
             <thead>
               <tr>

@@ -317,31 +317,32 @@ export function buildGraph(cr: DungeonCR, reconciling: boolean): { nodes: GraphN
     edges.push({ from: 'modifier', to: 'modifier-cm', label: 'modifier-graph\nreadyWhen' })
   }
 
-  // combatResult ConfigMap
+  // specPatch nodes — virtual nodes in dungeon-graph that write back to spec
+  // (combat, action, DoT, taunt, cooldown, ring, room2 transitions)
   nodes.push({
     id: 'combat-cm',
-    label: 'combatResult',
-    kind: 'ConfigMap',
+    label: 'combatResolve',
+    kind: 'specPatch',
     state: reconciling ? 'reconciling' : 'ok',
     exists: true,
     concept: 'cel-basics',
-    detail: `dice: ${status?.diceFormula || '?'}`,
+    detail: reconciling ? 'CEL writing spec.monsterHP/bossHP' : `dice: ${status?.diceFormula || '?'}`,
     pulse: reconciling,
   })
-  edges.push({ from: 'dungeon', to: 'combat-cm', label: 'CEL' })
+  edges.push({ from: 'dungeon', to: 'combat-cm', label: 'specPatch' })
 
-  // actionResult ConfigMap
+  // actionResolve specPatch node
   nodes.push({
     id: 'action-cm',
-    label: 'actionResult',
-    kind: 'ConfigMap',
+    label: 'actionResolve',
+    kind: 'specPatch',
     state: reconciling ? 'reconciling' : 'ok',
     exists: true,
     concept: 'empty-rgd',
     detail: 'equip/use/door/room logic',
     pulse: reconciling,
   })
-  edges.push({ from: 'dungeon', to: 'action-cm', label: 'CEL' })
+  edges.push({ from: 'dungeon', to: 'action-cm', label: 'specPatch' })
 
   // gameConfig ConfigMap
   nodes.push({
@@ -363,10 +364,10 @@ export function buildGraph(cr: DungeonCR, reconciling: boolean): { nodes: GraphN
     state: reconciling ? 'reconciling' : 'locked',
     exists: reconciling,
     concept: 'empty-rgd',
-    detail: reconciling ? 'reconciling — attack-graph Job running' : 'resources:[] CRD factory',
+    detail: reconciling ? 'attack-graph CRD factory — triggers combatResolve' : 'resources:[] CRD factory',
     pulse: reconciling,
   })
-  edges.push({ from: 'dungeon', to: 'attack-cr', label: 'externalRef', dashed: !reconciling })
+  edges.push({ from: 'dungeon', to: 'attack-cr', label: 'spec patch', dashed: !reconciling })
 
   // Ephemeral Action CR — appears during reconcile (items/room/treasure), teaches empty-RGD
   nodes.push({
@@ -376,10 +377,10 @@ export function buildGraph(cr: DungeonCR, reconciling: boolean): { nodes: GraphN
     state: reconciling ? 'reconciling' : 'locked',
     exists: reconciling,
     concept: 'empty-rgd',
-    detail: reconciling ? 'reconciling — action-graph Job running' : 'resources:[] CRD factory',
+    detail: reconciling ? 'action-graph CRD factory — triggers actionResolve' : 'resources:[] CRD factory',
     pulse: reconciling,
   })
-  edges.push({ from: 'dungeon', to: 'action-cr', label: 'externalRef', dashed: !reconciling })
+  edges.push({ from: 'dungeon', to: 'action-cr', label: 'spec patch', dashed: !reconciling })
 
   return { nodes, edges }
 }
@@ -858,10 +859,8 @@ export function KroGraphPanel({ cr, prevCr, reconciling, onViewConcept }: KroGra
       'treasure-secret': 'treasuresecret',
       'modifier': 'modifier',
       'modifier-cm': 'modifiercm',     // Modifier state ConfigMap
-      'combat-cm': 'combatcm',         // Combat result ConfigMap
-      'combat-result': 'combatresult', // backward-compat alias
-      'action-cm': 'actioncm',         // Action state ConfigMap
-      // attack-cr / action-cr are Jobs — no persistent resource to fetch, skip
+      // combat-cm / action-cm are specPatch virtual nodes — no persistent K8s resource, skip
+      // attack-cr / action-cr are empty RGD CRs — no managed resources, skip
     }
 
     // Extract index from monster-N / monster-cm-N / loot-mN / loot-secret-mN node IDs
