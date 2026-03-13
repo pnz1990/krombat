@@ -364,6 +364,8 @@ If anything outside the intended scope appears, do NOT open the PR — clean the
 - New CEL library functions returning `types.NewRefValList` produce `[]ref.Val` from `.Value()`, not `[]interface{}` — test helpers must handle this case explicitly
 - Before proposing a new CEL function, check three sources for overlap: `cel-go/ext/lists.go`, `k8s.io/apiserver/pkg/cel/library/lists.go`, and kro's own `pkg/cel/library/`. All three are registered in `BaseDeclarations()`
 - Cherry-picking a commit that adds new files to a branch where those files don't exist triggers "modify/delete" conflicts — resolve by `git add`ing the new files and `git rm`ing any fork-private files (e.g. `kro-patched.md`) before `--continue`
+- **Always use `cel.TypeParamType("T")` for generic list/map functions, never `cel.DynType`** — `DynType` loses type information at compile time so the return type collapses to `list(dyn)` regardless of input. Use `maps.go` as the reference: `cel.MapType(cel.TypeParamType("K"), cel.TypeParamType("V"))`. Read the existing file in the same package end-to-end before writing any `CompileOptions`.
+- **Always add a `TestXxxTypeInference` test for every new CEL library function** that asserts `ast.OutputType().String()` equals the concrete type (e.g. `"list(int)"`). This is the only way to catch `DynType` regressions at test time — runtime tests pass either way.
 
 ---
 
