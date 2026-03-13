@@ -416,9 +416,9 @@ body {
   align-items: center;
   padding: 5px 10px;
   margin-bottom: 8px;
-  background: rgba(245, 197, 24, 0.1);
-  border: 1px solid #b8860b;
-  color: #f5c518;
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid #2563eb;
+  color: #60a5fa;
   font-size: 7px;
   border-radius: 2px;
 }
