@@ -276,6 +276,7 @@ export default function App() {
   const [bossPhaseFlash, setBossPhaseFlash] = useState<'enraged' | 'berserk' | null>(null)
 
   const [combatModal, setCombatModal] = useState<{ phase: 'rolling' | 'resolved'; formula: string; heroAction: string; enemyAction: string; spec: any; oldHP: number } | null>(null)
+  const pendingLootRef = useRef<string | null>(null)
 
   const handleAttack = async (target: string, damage: number) => {
     if (!selected || attackPhase || attackingRef.current) { console.log('[onAttack] early return: selected=', !!selected, 'attackPhase=', attackPhase, 'ref=', attackingRef.current); return }
@@ -391,11 +392,9 @@ export default function App() {
         else setCombatModal({ phase: 'resolved', formula: '', heroAction, enemyAction, spec: updated.spec, oldHP: detail?.spec.heroHP ?? 100 })
       }
 
-      // Loot drop — only check on combat actions (not items/equip)
+      // Loot drop — stash until combat modal is dismissed so it's a surprise
       if (!isItem && pollSucceeded && updated.spec.lastLootDrop) {
-        setLootDrop(updated.spec.lastLootDrop)
-        triggerInsight('loot-drop')
-        setTimeout(() => triggerInsight('loot-drop-string-ops'), 4000)
+        pendingLootRef.current = updated.spec.lastLootDrop
       }
       await new Promise(r => setTimeout(r, 100))
 
@@ -501,6 +500,7 @@ export default function App() {
       setAttackTarget(null)
       setFloatingDmg(null)
       attackingRef.current = false
+      pendingLootRef.current = null
     }
   }
 
@@ -510,6 +510,13 @@ export default function App() {
     setAnimPhase('idle')
     setAttackTarget(null)
     attackingRef.current = false
+    // Reveal loot now that the player has seen the combat result
+    if (pendingLootRef.current) {
+      setLootDrop(pendingLootRef.current)
+      triggerInsight('loot-drop')
+      setTimeout(() => triggerInsight('loot-drop-string-ops'), 4000)
+      pendingLootRef.current = null
+    }
   }
 
   const handleSelect = (ns: string, name: string) => {
