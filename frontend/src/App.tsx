@@ -1667,24 +1667,24 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
             ))}
 
             {/* Door at top of arena — room 1 only */}
-            {(spec.currentRoom || 1) === 1 && (
-            <div className="arena-entity door-entity" style={{ top: '8%', left: '50%' }}>
-              {(() => {
-                const doorUnlocked = (spec.doorUnlocked ?? 0) === 1
-                const unlocking = (spec.treasureOpened ?? 0) === 1 && !doorUnlocked
-                return <>
-                  <img src={`/sprites/dungeon/door-${doorUnlocked ? 'opened' : 'closed'}.png`}
-                    alt="door" style={{ width: 64, height: 64, imageRendering: 'pixelated' as any, cursor: doorUnlocked ? 'pointer' : 'default', filter: doorUnlocked ? 'drop-shadow(0 0 6px #f5c518)' : 'none' }}
-                    onClick={() => {
-                      if (attackPhase) return
-                      if (doorUnlocked) onAttack('enter-room-2', 0)
-                    }} />
-                  {unlocking && <div style={{ fontSize: 7, color: '#aaa', textAlign: 'center', marginTop: 2 }}>Unlocking...</div>}
-                  {doorUnlocked && <div style={{ fontSize: 7, color: 'var(--gold)', textAlign: 'center', marginTop: 2 }}>🚪 Enter</div>}
-                </>
-              })()}
-            </div>
-            )}
+             {(spec.currentRoom || 1) === 1 && (
+             <div className="arena-entity door-entity" style={{ top: '8%', left: '50%', cursor: (spec.doorUnlocked ?? 0) === 1 ? 'pointer' : 'default' }}
+               onClick={() => {
+                 if (attackPhase) return
+                 if ((spec.doorUnlocked ?? 0) === 1) onAttack('enter-room-2', 0)
+               }}>
+               {(() => {
+                 const doorUnlocked = (spec.doorUnlocked ?? 0) === 1
+                 const unlocking = (spec.treasureOpened ?? 0) === 1 && !doorUnlocked
+                 return <>
+                   <img src={`/sprites/dungeon/door-${doorUnlocked ? 'opened' : 'closed'}.png`}
+                     alt="door" style={{ width: 64, height: 64, imageRendering: 'pixelated' as any, filter: doorUnlocked ? 'drop-shadow(0 0 6px #f5c518)' : 'none' }} />
+                   {unlocking && <div style={{ fontSize: 7, color: '#aaa', textAlign: 'center', marginTop: 2 }}>Unlocking...</div>}
+                   {doorUnlocked && <div style={{ fontSize: 7, color: 'var(--gold)', textAlign: 'center', marginTop: 2 }}>🚪 Enter</div>}
+                 </>
+               })()}
+             </div>
+             )}
 
             {/* Treasure chest — appears after boss defeated in room 1, auto-opens */}
             {(spec.currentRoom || 1) === 1 && (spec.bossHP <= 0 && allMonstersDead) && (
