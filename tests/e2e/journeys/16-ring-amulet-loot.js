@@ -22,9 +22,34 @@ async function getBodyText(page) { return page.textContent('body'); }
 
 // Open the cheat modal by: click Help button → type "999" → wait for cheat modal
 async function openCheatModal(page) {
+  // Dismiss any overlays blocking the Help button
+  for (let i = 0; i < 5; i++) {
+    const certOverlay = page.locator('.kro-cert-overlay');
+    if (await certOverlay.count() > 0) {
+      await page.evaluate(() => { const el = document.querySelector('.kro-cert-overlay'); if (el) el.click(); }).catch(() => {});
+      await page.waitForTimeout(500);
+    }
+    const combatOverlay = page.locator('.modal-overlay');
+    if (await combatOverlay.count() > 0) {
+      await page.keyboard.press('Escape').catch(() => {});
+      await page.evaluate(() => { const el = document.querySelector('.modal-overlay'); if (el) el.click(); }).catch(() => {});
+      await page.waitForTimeout(400);
+    }
+    const insightDismiss = page.locator('.kro-insight-card.visible .kro-insight-dismiss');
+    if (await insightDismiss.count() > 0) {
+      await insightDismiss.first().click({ force: true }).catch(() => {});
+      await page.waitForTimeout(400);
+    }
+    if (await page.locator('.modal-overlay').count() === 0 &&
+        await page.locator('.kro-cert-overlay').count() === 0) break;
+  }
   const helpBtn = page.locator('button[aria-label="Help"]');
   if (await helpBtn.count() === 0) return false;
-  await helpBtn.click();
+  // Use evaluate click to bypass any invisible overlays
+  await page.evaluate(() => {
+    const btn = document.querySelector('button[aria-label="Help"]');
+    if (btn) btn.click();
+  });
   await page.waitForTimeout(500);
   // Type "999" to unlock cheat mode (HelpModal keydown handler)
   await page.keyboard.type('999');
@@ -69,19 +94,23 @@ async function farmForRingOrAmulet(page, maxRounds) {
     }
 
     await waitForCombatResult(page);
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(500).catch(() => {});
+
+    // Break if game is over
+    const bodyNow = await page.textContent('body').catch(() => '');
+    if (bodyNow.includes('DEFEAT') || bodyNow.includes('VICTORY') || bodyNow.includes('has fallen')) break;
 
     // Check loot popup before dismissing
     const gotIt = page.locator('button:has-text("Got it!")');
     if (await gotIt.count() > 0) {
       const modalText = await page.textContent('.modal').catch(() => '');
       await gotIt.click().catch(() => {});
-      await page.waitForTimeout(500);
+      await page.waitForTimeout(500).catch(() => {});
       if (/ring/i.test(modalText) || /amulet/i.test(modalText)) {
         return modalText;
       }
     }
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(1000).catch(() => {});
   }
   return null;
 }
@@ -119,6 +148,10 @@ async function run() {
     } else {
       warn('No ring or amulet dropped in first 4 kills (RNG — statistically possible); proceeding to cheat-equip path');
     }
+
+    // Drain any leftover combat modal / loot popup before proceeding
+    await waitForCombatResult(page, 5000).catch(() => {});
+    await page.waitForTimeout(1000);
 
     // === Step 2: Equip ring via Cheat Modal ===
     console.log('\n=== Step 2: Equip Ring via Cheat Modal ===');

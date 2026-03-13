@@ -43,9 +43,28 @@ async function clickGraphNode(page, labelPrefix) {
 }
 
 async function closeInspector(page) {
+  // Dismiss InsightCards or modal overlays before clicking close
+  for (let i = 0; i < 3; i++) {
+    const insightDismiss = page.locator('.kro-insight-card.visible .kro-insight-dismiss');
+    if (await insightDismiss.count() > 0) {
+      await insightDismiss.first().click({ force: true }).catch(() => {});
+      await page.waitForTimeout(400);
+    }
+    const mo = page.locator('.modal-overlay:not(.combat-overlay)');
+    if (await mo.count() > 0) {
+      await page.keyboard.press('Escape').catch(() => {});
+      await page.evaluate(() => { const el = document.querySelector('.modal-overlay'); if (el) el.click(); }).catch(() => {});
+      await page.waitForTimeout(300);
+    }
+    if (await page.locator('.kro-insight-card.visible').count() === 0 &&
+        await page.locator('.modal-overlay:not(.combat-overlay)').count() === 0) break;
+  }
   const btn = page.locator('.kro-inspector-header button:has-text("✕")');
   if (await btn.count() > 0) {
-    await btn.click();
+    await page.evaluate(() => {
+      const b = document.querySelector('.kro-inspector-header button');
+      if (b) b.click();
+    });
     await page.waitForTimeout(300);
   }
 }

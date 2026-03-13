@@ -165,7 +165,7 @@ async function run() {
       if (body.includes('GAME OVER')) { warn('Hero died during boss fight'); break; }
 
       // Check for Room 1 Cleared overlay
-      const clearedOverlay = page.locator('.arena-room1-cleared-text, text=/ROOM CLEARED/');
+      const clearedOverlay = page.locator('.arena-room1-cleared-text').or(page.getByText('ROOM CLEARED', { exact: false }));
       if (await clearedOverlay.count() > 0 && !room1ClearedSeen) {
         room1ClearedSeen = true;
         const overlayText = await clearedOverlay.first().textContent();
