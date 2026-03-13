@@ -278,7 +278,7 @@ export default function App() {
   const [combatModal, setCombatModal] = useState<{ phase: 'rolling' | 'resolved'; formula: string; heroAction: string; enemyAction: string; spec: any; oldHP: number } | null>(null)
 
   const handleAttack = async (target: string, damage: number) => {
-    if (!selected || attackPhase || attackingRef.current) return
+    if (!selected || attackPhase || attackingRef.current) { console.log('[onAttack] early return: selected=', !!selected, 'attackPhase=', attackPhase, 'ref=', attackingRef.current); return }
     attackingRef.current = true
     // Prevent attacking dead targets
     if (detail?.spec) {
@@ -1670,6 +1670,7 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
              {(spec.currentRoom || 1) === 1 && (
              <div className="arena-entity door-entity" style={{ top: '8%', left: '50%', cursor: (spec.doorUnlocked ?? 0) === 1 ? 'pointer' : 'default' }}
                onClick={() => {
+                 console.log('[door] clicked, attackPhase:', attackPhase, 'doorUnlocked:', spec.doorUnlocked)
                  if (attackPhase) return
                  if ((spec.doorUnlocked ?? 0) === 1) onAttack('enter-room-2', 0)
                }}>
