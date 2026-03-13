@@ -339,11 +339,12 @@ Sign at: https://easycla.lfx.linuxfoundation.org
 
 ### What NOT to include in upstream PRs
 
-- `pkg/cel/library/lists.go` — krombat-private lists library
 - `pkg/cel/library/csv.go` — krombat-private CSV library
 - `specPatch` / `stateWrite` dispatch in `builder.go` — pending maintainer discussion
 - Any reference to the krombat game, game logic, or game-specific CEL patterns
 - The 3-arg `random.seededInt(min, max, seed)` signature changes — already upstream
+- `ext.Bindings()` / `cel.bind()` — **already merged upstream** (PR #1145)
+- `lists.setIndex`, `lists.insertAt`, `lists.removeAt` — **in review upstream** (PR #1148)
 
 ### Isolation check before opening a PR
 
