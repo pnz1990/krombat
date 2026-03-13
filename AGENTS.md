@@ -359,6 +359,10 @@ If anything outside the intended scope appears, do NOT open the PR — clean the
 - `cel.bind()` is a **parse-time macro** — it expands to `ComprehensionKind`, NOT `CallKind`. An `inspectCall` handler checking `fn == "bind"` is dead code and will never fire. The existing `inspectComprehension` handler already handles it via `AccuVar`.
 - Always run `GOTOOLCHAIN=local go test ./pkg/cel/...` before pushing — avoids surprises in CI
 - The `k8s-ci-robot` scans the full commit body, not just the subject line, for banned keywords
+- Once EasyCLA is signed (PR #1145), subsequent PRs from the same GitHub account get `cncf-cla: yes` automatically — no need to re-sign
+- New CEL library functions returning `types.NewRefValList` produce `[]ref.Val` from `.Value()`, not `[]interface{}` — test helpers must handle this case explicitly
+- Before proposing a new CEL function, check three sources for overlap: `cel-go/ext/lists.go`, `k8s.io/apiserver/pkg/cel/library/lists.go`, and kro's own `pkg/cel/library/`. All three are registered in `BaseDeclarations()`
+- Cherry-picking a commit that adds new files to a branch where those files don't exist triggers "modify/delete" conflicts — resolve by `git add`ing the new files and `git rm`ing any fork-private files (e.g. `kro-patched.md`) before `--continue`
 
 ---
 
