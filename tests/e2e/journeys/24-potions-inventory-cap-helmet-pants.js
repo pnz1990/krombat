@@ -48,7 +48,16 @@ async function run() {
     console.log('\n  [Equip helmet via cheat modal]');
     const helpBtn = page.locator('.help-btn');
     if (await helpBtn.count() > 0) {
-      await helpBtn.click();
+      // Dismiss any overlays before clicking
+      for (let i = 0; i < 3; i++) {
+        const mo = page.locator('.modal-overlay:not(.combat-overlay)');
+        if (await mo.count() > 0) {
+          await page.keyboard.press('Escape').catch(() => {});
+          await page.evaluate(() => { const el = document.querySelector('.modal-overlay'); if (el) el.click(); }).catch(() => {});
+          await page.waitForTimeout(300);
+        } else break;
+      }
+      await page.evaluate(() => { const btn = document.querySelector('.help-btn'); if (btn) btn.click(); });
       await page.waitForTimeout(500);
 
       const cheatBtn = page.locator('button:has-text("Cheat")');
@@ -206,9 +215,18 @@ async function run() {
     // Open cheat modal repeatedly to fill inventory
     let invFull = false;
     for (let attempt = 0; attempt < 3 && !invFull; attempt++) {
+      // Dismiss any overlays before clicking help button
+      for (let i = 0; i < 3; i++) {
+        const mo = page.locator('.modal-overlay:not(.combat-overlay)');
+        if (await mo.count() > 0) {
+          await page.keyboard.press('Escape').catch(() => {});
+          await page.evaluate(() => { const el = document.querySelector('.modal-overlay'); if (el) el.click(); }).catch(() => {});
+          await page.waitForTimeout(300);
+        } else break;
+      }
       const helpBtn2 = page.locator('.help-btn');
       if (await helpBtn2.count() > 0) {
-        await helpBtn2.click();
+        await page.evaluate(() => { const btn = document.querySelector('.help-btn'); if (btn) btn.click(); });
         await page.waitForTimeout(300);
         const cheatBtn2 = page.locator('button:has-text("Cheat")');
         if (await cheatBtn2.count() > 0) {

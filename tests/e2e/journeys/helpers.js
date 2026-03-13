@@ -78,26 +78,35 @@ async function useBackpackItem(page, itemText) {
 async function waitForCombatResult(page, maxWait = 90000) {
   const start = Date.now();
   while (Date.now() - start < maxWait) {
+    // Bail if page is closed
+    if (page.isClosed()) return null;
+    // Dismiss kro-cert-overlay (victory certificate) — blocks all pointer events
+    const certOverlay = page.locator('.kro-cert-overlay');
+    if (await certOverlay.count() > 0) {
+      await page.evaluate(() => { const el = document.querySelector('.kro-cert-overlay'); if (el) el.click(); }).catch(() => {});
+      await page.waitForTimeout(500).catch(() => {});
+      continue;
+    }
     // Dismiss InsightCards — they intercept pointer events and block Continue/Got it! buttons
     const insightClose = page.locator('.kro-insight-card.visible .kro-insight-dismiss');
     if (await insightClose.count() > 0) {
       await insightClose.first().click({ force: true }).catch(() => {});
-      await page.waitForTimeout(500);
+      await page.waitForTimeout(500).catch(() => {});
       continue;
     }
     // Dismiss modal overlays that block buttons (concept modals, YAML modals)
-    // Clicking the overlay background closes most modals; Escape as fallback.
-    const modalOverlay = page.locator('.modal-overlay');
+    // NOTE: .combat-overlay does NOT close on overlay click — only Continue button closes it
+    const modalOverlay = page.locator('.modal-overlay:not(.combat-overlay)');
     if (await modalOverlay.count() > 0) {
       await page.keyboard.press('Escape').catch(() => {});
       await modalOverlay.first().click({ force: true, position: { x: 5, y: 5 } }).catch(() => {});
-      await page.waitForTimeout(300);
+      await page.waitForTimeout(300).catch(() => {});
     }
     const cb = page.locator('button:has-text("Continue")');
     if (await cb.count() > 0) {
       const mt = await page.textContent('.combat-modal').catch(() => '');
       await cb.click({ force: true, timeout: 5000 }).catch(() => {});
-      await page.waitForTimeout(500);
+      await page.waitForTimeout(500).catch(() => {});
       return mt;
     }
     // Loot popup (only shows after combat modal is dismissed now)
@@ -105,10 +114,10 @@ async function waitForCombatResult(page, maxWait = 90000) {
     if (await gotIt.count() > 0) {
       const lt = await page.textContent('.modal').catch(() => '');
       await gotIt.click({ force: true, timeout: 5000 }).catch(() => {});
-      await page.waitForTimeout(500);
+      await page.waitForTimeout(500).catch(() => {});
       return lt;
     }
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(2000).catch(() => {});
   }
   return null; // Timed out
 }
