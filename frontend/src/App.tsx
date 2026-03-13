@@ -1341,7 +1341,9 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
     return 'phase1'
   })()
   const gameOver = isDefeated || (spec.bossHP <= 0 && allMonstersDead)
-  const isVictory = gameOver && !isDefeated && (spec.currentRoom || 1) === 2
+  // room2BossHP > 0 guards against the brief kro reconciliation window where currentRoom=2
+  // but enterRoom2Resolve hasn't fired yet (monsterHP/bossHP still show Room 1 cleared state)
+  const isVictory = gameOver && !isDefeated && (spec.currentRoom || 1) === 2 && (spec.room2BossHP || 0) > 0
   const [showCertificate, setShowCertificate] = useState(false)
   const [showDungeonHamburger, setShowDungeonHamburger] = useState(false)
   const [showPlayground, setShowPlayground] = useState(false)
@@ -1540,7 +1542,7 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
         </div>
       )}
 
-      {gameOver && !isDefeated && (spec.currentRoom || 1) === 2 && (
+      {gameOver && !isDefeated && (spec.currentRoom || 1) === 2 && (spec.room2BossHP || 0) > 0 && (
         <div className="victory-banner">
           <h2><PixelIcon name="crown" size={18} /> VICTORY! <PixelIcon name="crown" size={18} /></h2>
           <p className="loot">The dungeon has been conquered!</p>
