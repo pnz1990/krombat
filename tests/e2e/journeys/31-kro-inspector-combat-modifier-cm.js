@@ -1,13 +1,17 @@
-// Journey 31: KroGraph Inspector — combat-cm and modifier-cm deep-dive
+// Journey 31: KroGraph Inspector — gameConfig-cm and modifier-cm deep-dive
 // UI-ONLY: no kubectl, no direct fetch/api, no execSync
 //
-// Covers the untested Inspector flows for combatResult (combat-cm) and
+// Covers the Inspector flows for gameConfig (gameconfig-cm) and
 // modifierState (modifier-cm) ConfigMap nodes, which contain CEL-computed
 // fields and are the most educational in the kro teaching layer.
 //
-// combat-cm: always present; shows dice formula, last combat result data
+// gameconfig-cm: always present; shows dice formula, HP/counter tables
 // modifier-cm: present only when dungeon has a modifier (includeWhen guard)
 //              — tested conditionally; warns if no modifier was assigned.
+//
+// NOTE: combatResolve and actionResolve are virtual specPatch nodes with no
+// persistent K8s resource — the Inspector skips them by design. gameConfig is
+// the closest real ConfigMap that shows kro CEL output for every dungeon.
 const { chromium } = require('playwright');
 const { createDungeonUI, navigateHome, deleteDungeon } = require('./helpers');
 
@@ -79,7 +83,7 @@ async function waitForInspectorReady(page) {
 }
 
 async function run() {
-  console.log('Journey 31: KroGraph Inspector — combat-cm and modifier-cm\n');
+  console.log('Journey 31: KroGraph Inspector — gameConfig-cm and modifier-cm\n');
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
   const dName = `j31-${Date.now()}`;
@@ -96,7 +100,7 @@ async function run() {
     const loaded = await createDungeonUI(page, dName, { monsters: 2, difficulty: 'easy', heroClass: 'warrior' });
     loaded ? ok('Dungeon created and game view loaded') : fail('Dungeon view did not load');
 
-    // Allow initial reconcile to settle so combat-cm is populated
+    // Allow initial reconcile to settle so gameconfig-cm is populated
     await page.waitForTimeout(3000);
 
     // ── Switch to kro Graph tab ───────────────────────────────────────────────
@@ -114,52 +118,55 @@ async function run() {
     await svg.waitFor({ timeout: TIMEOUT }).catch(() => {});
     (await svg.count() > 0) ? ok('Graph SVG rendered') : fail('Graph SVG not found');
 
-    // ── Verify combatResult node is present in graph ──────────────────────────
-    console.log('\n  [combatResult node presence]');
+    // ── Verify combatResolve and gameConfig nodes are present in graph ────────
+    console.log('\n  [Node presence check]');
     const allNodes = svg.locator('g[role="button"]');
     const nodeCount = await allNodes.count();
     let combatNodeFound = false;
+    let gameConfigNodeFound = false;
     let modifierNodeFound = false;
     for (let i = 0; i < nodeCount; i++) {
       const label = await allNodes.nth(i).getAttribute('aria-label').catch(() => '');
-      if (label && label.includes('combatResult')) combatNodeFound = true;
+      if (label && label.includes('combatResolve')) combatNodeFound = true;
+      if (label && label.includes('gameConfig')) gameConfigNodeFound = true;
       if (label && label.includes('modifierState')) modifierNodeFound = true;
     }
     combatNodeFound
-      ? ok('combatResult (combat-cm) node found in KroGraph')
-      : fail('combatResult node not found in KroGraph');
+      ? ok('combatResolve (specPatch) node found in KroGraph')
+      : fail('combatResolve node not found in KroGraph');
+    gameConfigNodeFound
+      ? ok('gameConfig (ConfigMap) node found in KroGraph')
+      : fail('gameConfig node not found in KroGraph');
     modifierNodeFound
       ? ok('modifierState (modifier-cm) node found in KroGraph (modifier is active)')
       : warn('modifierState node not visible — dungeon has no modifier (20% chance, statistically expected)');
 
-    // ── Click combatResult node — Inspector opens ─────────────────────────────
-    console.log('\n  [Click combatResult node — Inspector]');
-    const combatNodeLabel = await clickGraphNode(page, 'combatResult');
-    combatNodeLabel
-      ? ok(`Clicked combatResult node (aria-label: "${combatNodeLabel}")`)
-      : fail('combatResult node not clickable');
+    // ── Click gameConfig node — Inspector opens ───────────────────────────────
+    // gameConfig is the gameconfig-cm ConfigMap — always present, always has CEL data
+    console.log('\n  [Click gameConfig node — Inspector]');
+    const gameConfigNodeLabel = await clickGraphNode(page, 'gameConfig');
+    gameConfigNodeLabel
+      ? ok(`Clicked gameConfig node (aria-label: "${gameConfigNodeLabel}")`)
+      : fail('gameConfig node not clickable');
 
     await page.waitForTimeout(500);
     const inspector = page.locator('.kro-inspector');
     await inspector.waitFor({ timeout: TIMEOUT }).catch(() => {});
     (await inspector.count() > 0)
-      ? ok('.kro-inspector panel appeared after clicking combatResult node')
-      : fail('.kro-inspector did not open for combatResult node');
+      ? ok('.kro-inspector panel appeared after clicking gameConfig node')
+      : fail('.kro-inspector did not open for gameConfig node');
 
-    // ── Inspector title and kubectl command for combat-cm ─────────────────────
-    console.log('\n  [Inspector title + kubectl for combat-cm]');
+    // ── Inspector title and kubectl command for gameconfig-cm ─────────────────
+    console.log('\n  [Inspector title + kubectl for gameconfig-cm]');
     const titleText = await page.locator('.kro-inspector-title').textContent().catch(() => '');
-    titleText.includes('combatResult') || titleText.includes('Inspector')
+    titleText.includes('gameConfig') || titleText.includes('Inspector')
       ? ok(`Inspector title: "${titleText.trim()}"`)
       : fail(`Inspector title unexpected: "${titleText}"`);
 
     const kubectlText = await page.locator('.kro-inspector-kubectl').textContent().catch(() => '');
     kubectlText.includes('kubectl get')
-      ? ok('kubectl command present for combatResult inspector')
-      : fail('kubectl command missing for combatResult inspector');
-    kubectlText.toLowerCase().includes('configmap')
-      ? ok('kubectl command targets ConfigMap kind for combat-cm')
-      : fail(`kubectl command should target ConfigMap, got: "${kubectlText.trim()}"`);
+      ? ok('kubectl command present for gameConfig inspector')
+      : fail('kubectl command missing for gameConfig inspector');
     kubectlText.includes(dName)
       ? ok(`kubectl command references dungeon name "${dName}"`)
       : fail(`kubectl command missing dungeon name in: "${kubectlText.trim()}"`);
@@ -167,8 +174,8 @@ async function run() {
       ? ok('kubectl command includes -o yaml flag')
       : fail('kubectl command missing -o yaml flag');
 
-    // ── Inspector YAML for combat-cm (CEL-computed fields) ────────────────────
-    console.log('\n  [Inspector YAML — combat-cm CEL fields]');
+    // ── Inspector YAML for gameconfig-cm (CEL-computed fields) ───────────────
+    console.log('\n  [Inspector YAML — gameconfig-cm CEL fields]');
     await waitForInspectorReady(page);
 
     const yamlEl = page.locator('.kro-inspector-yaml');
@@ -177,27 +184,27 @@ async function run() {
     if (await yamlEl.count() > 0) {
       const yamlText = await yamlEl.textContent().catch(() => '');
       yamlText.length > 0
-        ? ok(`combat-cm YAML content present (${yamlText.length} chars)`)
-        : fail('combat-cm YAML element is empty');
+        ? ok(`gameconfig-cm YAML content present (${yamlText.length} chars)`)
+        : fail('gameconfig-cm YAML element is empty');
 
       // ConfigMap YAML should contain apiVersion, kind, data
       yamlText.includes('apiVersion') || yamlText.includes('kind') || yamlText.includes('data')
-        ? ok('combat-cm YAML contains Kubernetes ConfigMap fields')
-        : warn(`combat-cm YAML doesn't look like K8s resource: "${yamlText.slice(0, 80)}"`);
+        ? ok('gameconfig-cm YAML contains Kubernetes ConfigMap fields')
+        : warn(`gameconfig-cm YAML doesn't look like K8s resource: "${yamlText.slice(0, 80)}"`);
 
-      // combat-cm should have CEL-computed fields in data section
-      // At minimum: the combat-result ConfigMap should mention dice or HP values
+      // gameconfig-cm should have CEL-computed fields: dice formula, HP, counters
       const hasGameData = yamlText.includes('dice') || yamlText.includes('HP') ||
-                          yamlText.includes('heroHP') || yamlText.includes('result') ||
-                          yamlText.includes('damage') || yamlText.includes('combat');
+                          yamlText.includes('maxHP') || yamlText.includes('counter') ||
+                          yamlText.includes('formula') || yamlText.includes('warrior') ||
+                          yamlText.includes('easy') || yamlText.includes('normal');
       hasGameData
-        ? ok('combat-cm YAML contains CEL-computed game data fields')
-        : warn('Expected dice/HP/result fields in combat-cm ConfigMap — may not be populated yet');
+        ? ok('gameconfig-cm YAML contains CEL-computed game config data')
+        : warn('Expected dice/HP/counter fields in gameconfig-cm ConfigMap — may not be populated yet');
 
     } else if (await emptyEl.count() > 0) {
-      warn('combat-cm Inspector shows "resource not available" — configmap may not exist yet (cluster cold)');
+      warn('gameconfig-cm Inspector shows "resource not available" — configmap may not exist yet (cluster cold)');
     } else {
-      fail('combat-cm Inspector shows neither YAML content nor loading/empty state');
+      fail('gameconfig-cm Inspector shows neither YAML content nor loading/empty state');
     }
 
     // ── Close inspector ───────────────────────────────────────────────────────
@@ -229,11 +236,11 @@ async function run() {
         ? ok(`modifier-cm Inspector title: "${modTitleText.trim()}"`)
         : fail(`modifier-cm Inspector title unexpected: "${modTitleText}"`);
 
-      // kubectl command should target ConfigMap
+      // kubectl command should reference the dungeon
       const modKubectl = await page.locator('.kro-inspector-kubectl').textContent().catch(() => '');
-      modKubectl.toLowerCase().includes('configmap')
-        ? ok('kubectl command targets ConfigMap kind for modifier-cm')
-        : fail(`modifier-cm kubectl not ConfigMap: "${modKubectl.trim()}"`);
+      modKubectl.includes(dName)
+        ? ok(`modifier-cm kubectl references dungeon name "${dName}"`)
+        : fail(`modifier-cm kubectl missing dungeon name: "${modKubectl.trim()}"`);
 
       // YAML content check
       await waitForInspectorReady(page);
@@ -260,21 +267,21 @@ async function run() {
       await closeInspector(page);
       ok('modifier-cm Inspector flow complete');
     } else {
-      warn('modifier-cm test skipped — no modifier on this dungeon (testing combat-cm only)');
-      ok('Journey 31 core test (combat-cm) complete; modifier-cm skipped due to no modifier');
+      warn('modifier-cm test skipped — no modifier on this dungeon (testing gameconfig-cm only)');
+      ok('Journey 31 core test (gameconfig-cm) complete; modifier-cm skipped due to no modifier');
     }
 
     // ── Switching between nodes updates Inspector content ─────────────────────
     console.log('\n  [Node switching — Inspector updates correctly]');
-    // Click combatResult again, then click Dungeon node, verify Inspector updates
-    const combatLabel2 = await clickGraphNode(page, 'combatResult');
-    combatLabel2 ? ok('Re-clicked combatResult node') : warn('combatResult node not re-clickable');
+    // Click gameConfig again, then click Dungeon node, verify Inspector updates
+    const gameConfigLabel2 = await clickGraphNode(page, 'gameConfig');
+    gameConfigLabel2 ? ok('Re-clicked gameConfig node') : warn('gameConfig node not re-clickable');
     await page.waitForTimeout(400);
 
-    const combatTitle = await page.locator('.kro-inspector-title').textContent().catch(() => '');
-    combatTitle.includes('combatResult') || combatTitle.includes('Inspector')
-      ? ok(`Inspector shows combatResult after re-click: "${combatTitle.trim()}"`)
-      : warn(`Inspector title after re-click: "${combatTitle.trim()}"`);
+    const gameConfigTitle = await page.locator('.kro-inspector-title').textContent().catch(() => '');
+    gameConfigTitle.includes('gameConfig') || gameConfigTitle.includes('Inspector')
+      ? ok(`Inspector shows gameConfig after re-click: "${gameConfigTitle.trim()}"`)
+      : warn(`Inspector title after re-click: "${gameConfigTitle.trim()}"`);
 
     // Switch to Dungeon CR node — inspector should update
     const dungeonLabel = await clickGraphNode(page, 'Dungeon');
@@ -283,7 +290,7 @@ async function run() {
       const dungeonTitle = await page.locator('.kro-inspector-title').textContent().catch(() => '');
       dungeonTitle.includes('Dungeon') || dungeonTitle.includes('Inspector')
         ? ok(`Inspector updated to Dungeon CR node: "${dungeonTitle.trim()}"`)
-        : fail(`Inspector did not update when switching from combatResult to Dungeon: "${dungeonTitle}"`);
+        : fail(`Inspector did not update when switching from gameConfig to Dungeon: "${dungeonTitle}"`);
     } else {
       warn('Could not click Dungeon node for switch test');
     }
