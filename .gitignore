@@ -42,6 +42,7 @@ vendor/
 *.tfstate.*
 .terraform/
 .terraform.lock.hcl
+tfplan
 
 # Build artifacts
 dist/
