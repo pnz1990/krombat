@@ -49,7 +49,7 @@ export function Sprite({ spriteType, action, size = 64, flip = false }: SpritePr
   const [frameIdx, setFrameIdx] = useState(0)
   const intervalRef = useRef<ReturnType<typeof setInterval>>(undefined)
 
-  if (!FRAME_COUNT[spriteType]) return <div style={{ width: size, height: size, fontSize: size * 0.6, textAlign: 'center' }}>👹</div>
+  if (!FRAME_COUNT[spriteType]) return <div style={{ width: size, height: size, fontSize: size * 0.4, textAlign: 'center', lineHeight: `${size}px`, color: '#e94560', fontFamily: 'monospace' }}>?</div>
 
   const isBoss = spriteType === 'dragon' || spriteType === 'bat-boss'
   const isMonster = spriteType === 'goblin' || spriteType === 'skeleton' || spriteType === 'troll' || spriteType === 'ghoul'
@@ -130,8 +130,8 @@ const ITEM_STRIP: Record<string, { frames: number; frameW: number; frameH: numbe
   armor:     { frames: 6, frameW: 848, frameH: 832, file: '/sprites/items/armor.png' },
 }
 
-// Map item type+rarity to strip and index, or direct file path, or emoji
-type ItemMapEntry = { strip: string; index: number; file?: never; emoji?: never } | { file: string; strip?: never; index?: never; emoji?: never } | { emoji: string; strip?: never; index?: never; file?: never }
+// Map item type+rarity to strip and index, or direct file path
+type ItemMapEntry = { strip: string; index: number; file?: never } | { file: string; strip?: never; index?: never }
 const ITEM_MAP: Record<string, ItemMapEntry> = {
   'weapon-common':     { strip: 'weapons', index: 0 },
   'weapon-rare':       { strip: 'weapons', index: 1 },
@@ -157,12 +157,12 @@ const ITEM_MAP: Record<string, ItemMapEntry> = {
   'boots-common':      { file: '/sprites/items/boots/1.png' },
   'boots-rare':        { file: '/sprites/items/boots/2.png' },
   'boots-epic':        { file: '/sprites/items/boots/3.png' },
-  'ring-common':       { emoji: '💍' },
-  'ring-rare':         { emoji: '💍' },
-  'ring-epic':         { emoji: '💍' },
-  'amulet-common':     { emoji: '📿' },
-  'amulet-rare':       { emoji: '📿' },
-  'amulet-epic':       { emoji: '📿' },
+  'ring-common':       { file: '/sprites/items/ring/1.png' },
+  'ring-rare':         { file: '/sprites/items/ring/2.png' },
+  'ring-epic':         { file: '/sprites/items/ring/3.png' },
+  'amulet-common':     { file: '/sprites/items/amulet/1.png' },
+  'amulet-rare':       { file: '/sprites/items/amulet/2.png' },
+  'amulet-epic':       { file: '/sprites/items/amulet/3.png' },
 }
 
 const MODIFIER_MAP: Record<string, { file: string }> = {
@@ -175,13 +175,8 @@ const MODIFIER_MAP: Record<string, { file: string }> = {
 }
 
 export function ItemSprite({ id, size = 24 }: { id: string; size?: number }) {
-  const mapping: { strip?: string; index?: number; file?: string; emoji?: string } | undefined = ITEM_MAP[id] || MODIFIER_MAP[id]
-  if (!mapping) return <span style={{ fontSize: size * 0.6 }}>📦</span>
-
-  // Emoji-based (no sprite file available)
-  if ('emoji' in mapping && mapping.emoji) {
-    return <span style={{ fontSize: size * 0.75, lineHeight: 1, display: 'inline-block', verticalAlign: 'middle' }}>{mapping.emoji}</span>
-  }
+  const mapping: { strip?: string; index?: number; file?: string } | undefined = ITEM_MAP[id] || MODIFIER_MAP[id]
+  if (!mapping) return <span style={{ fontSize: size * 0.6, fontFamily: 'monospace' }}>?</span>
 
   // Individual image file
   if (mapping.file) {
@@ -190,7 +185,7 @@ export function ItemSprite({ id, size = 24 }: { id: string; size?: number }) {
 
   // Strip-based
   const strip = ITEM_STRIP[mapping.strip ?? '']
-  if (!strip) return <span style={{ fontSize: size * 0.6 }}>📦</span>
+  if (!strip) return <span style={{ fontSize: size * 0.6, fontFamily: 'monospace' }}>?</span>
   const scale = size / strip.frameH
   return (
     <div style={{

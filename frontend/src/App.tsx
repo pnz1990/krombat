@@ -32,14 +32,14 @@ function computeAchievements(spec: any, maxHeroHP: number) {
   const equippedCount = [spec.weaponBonus, spec.armorBonus, spec.shieldBonus, spec.helmetBonus, spec.pantsBonus, spec.bootsBonus, spec.ringBonus, spec.amuletBonus].filter(v => (v ?? 0) > 0).length
 
   return [
-    { id: 'speedrun', name: 'Speedrunner', icon: '⚡', earned: turns <= 30, desc: `Won in ${turns} turns (≤30 needed)` },
-    { id: 'deathless', name: 'Untouchable', icon: '🛡', earned: heroHP >= Math.floor(maxHeroHP * 0.8), desc: `Finished with ${heroHP}/${maxHeroHP} HP (80% needed)` },
-    { id: 'pacifist', name: 'Potionist', icon: '🧪', earned: weaponBonus === 0, desc: 'Won without equipping a weapon' },
-    { id: 'warrior-win', name: 'War Chief', icon: '⚔', earned: heroClass === 'warrior', desc: 'Won as Warrior' },
-    { id: 'mage-win', name: 'Archmage', icon: '✨', earned: heroClass === 'mage', desc: 'Won as Mage' },
-    { id: 'rogue-win', name: 'Shadow', icon: '🗡', earned: heroClass === 'rogue', desc: 'Won as Rogue' },
-    { id: 'hard-win', name: 'Nightmare', icon: '💀', earned: difficulty === 'hard', desc: 'Won on Hard difficulty' },
-    { id: 'collector', name: 'Hoarder', icon: '🎒', earned: equippedCount >= 5, desc: `Won with ${equippedCount}/5 items equipped` },
+    { id: 'speedrun', name: 'Speedrunner', icon: 'lightning', earned: turns <= 30, desc: `Won in ${turns} turns (≤30 needed)` },
+    { id: 'deathless', name: 'Untouchable', icon: 'shield', earned: heroHP >= Math.floor(maxHeroHP * 0.8), desc: `Finished with ${heroHP}/${maxHeroHP} HP (80% needed)` },
+    { id: 'pacifist', name: 'Potionist', icon: 'potion', earned: weaponBonus === 0, desc: 'Won without equipping a weapon' },
+    { id: 'warrior-win', name: 'War Chief', icon: 'sword', earned: heroClass === 'warrior', desc: 'Won as Warrior' },
+    { id: 'mage-win', name: 'Archmage', icon: 'mana', earned: heroClass === 'mage', desc: 'Won as Mage' },
+    { id: 'rogue-win', name: 'Shadow', icon: 'dagger', earned: heroClass === 'rogue', desc: 'Won as Rogue' },
+    { id: 'hard-win', name: 'Nightmare', icon: 'skull', earned: difficulty === 'hard', desc: 'Won on Hard difficulty' },
+    { id: 'collector', name: 'Hoarder', icon: 'chest', earned: equippedCount >= 5, desc: `Won with ${equippedCount}/5 items equipped` },
   ]
 }
 
@@ -53,7 +53,7 @@ function AchievementBadges({ achievements }: { achievements: ReturnType<typeof c
         {achievements.map(a => (
           <div key={a.id} className={`achievement-badge${a.earned ? ' earned' : ''}`} title={a.desc}
             aria-label={`achievement: ${a.name}${a.earned ? ' earned' : ''}`}>
-            <span className="achievement-icon">{a.icon}</span>
+            <span className="achievement-icon"><PixelIcon name={a.icon} size={12} /></span>
             <span className="achievement-name">{a.name}</span>
           </div>
         ))}
@@ -400,7 +400,7 @@ export default function App() {
 
       // Read combat log from Dungeon CR — skip "already dead" non-events
       if (pollSucceeded && heroAction && !heroAction.includes('already dead') && !heroAction.includes('already defeated')) {
-        const icon = heroAction.includes('heals') ? '💚' : heroAction.includes('Taunt') ? '🛡️' : heroAction.includes('Backstab') ? '🗡️' : heroAction.includes('STUNNED') ? '🟡' : '⚔️'
+        const icon = heroAction.includes('heals') ? 'heal' : heroAction.includes('Taunt') ? 'shield' : heroAction.includes('Backstab') ? 'dagger' : heroAction.includes('STUNNED') ? 'lightning' : 'sword'
         // Try to parse rich combat log
         let logParsed: any = null
         try { logParsed = JSON.parse(updated.spec.lastCombatLog || '{}') } catch {}
@@ -419,15 +419,15 @@ export default function App() {
         } else {
           addEvent(icon, heroAction)
         }
-        if (heroAction.includes('Dropped')) addEvent('🎁', heroAction.split('Dropped')[1]?.trim() || 'Loot dropped!')
+        if (heroAction.includes('Dropped')) addEvent('chest', heroAction.split('Dropped')[1]?.trim() || 'Loot dropped!')
         // Kill
         if (heroAction.includes('-> 0)')) {
           const target = heroAction.match(/damage to (\S+)/)?.[1] || 'enemy'
-          addEvent('💀', `${target} slain!`)
+          addEvent('skull', `${target} slain!`)
         }
       }
       if (pollSucceeded && enemyAction) {
-        const eIcon = enemyAction.includes('POISON') ? '🟢' : enemyAction.includes('BURN') ? '🔴' : enemyAction.includes('STUN') ? '🟡' : enemyAction.includes('defeated') ? '👑' : '💀'
+        const eIcon = enemyAction.includes('POISON') ? 'poison' : enemyAction.includes('BURN') ? 'fire' : enemyAction.includes('STUN') ? 'lightning' : enemyAction.includes('defeated') ? 'crown' : 'skull'
         addEvent(eIcon, enemyAction)
       }
       // State change events (only if poll succeeded and state actually changed)
@@ -436,24 +436,24 @@ export default function App() {
         const newBossHP = updated.spec.bossHP ?? 1
         const prevAllDead = (detail?.spec.monsterHP || []).every((hp: number) => hp <= 0)
         const nowAllDead = (updated.spec.monsterHP || []).every((hp: number) => hp <= 0)
-        if (nowAllDead && !prevAllDead) { addEvent('🐉', 'Boss unlocked! All monsters slain!'); triggerInsight('boss-ready'); triggerInsight('all-monsters-dead') }
-        if (newBossHP <= 0 && prevBossHP > 0) { addEvent('🏆', 'VICTORY! Boss defeated!'); triggerInsight('boss-killed') }
+        if (nowAllDead && !prevAllDead) { addEvent('dragon', 'Boss unlocked! All monsters slain!'); triggerInsight('boss-ready'); triggerInsight('all-monsters-dead') }
+        if (newBossHP <= 0 && prevBossHP > 0) { addEvent('crown', 'VICTORY! Boss defeated!'); triggerInsight('boss-killed') }
         // Boss phase transitions
         const prevMaxBossHP = Number(detail?.status?.maxBossHP) || (prevBossHP > 0 ? prevBossHP : 1)
         const newMaxBossHP = Number(updated.status?.maxBossHP) || prevMaxBossHP
         const prevPct = newMaxBossHP > 0 ? (prevBossHP / newMaxBossHP) * 100 : 100
         const newPct = newMaxBossHP > 0 ? (newBossHP / newMaxBossHP) * 100 : 100
         if (prevPct > 50 && newPct <= 50 && newBossHP > 0) {
-          addEvent('🔥', '⚠️ The boss becomes ENRAGED! (Phase 2: ×1.5 damage)')
+          addEvent('fire', 'The boss becomes ENRAGED! (Phase 2: x1.5 damage)')
           setBossPhaseFlash('enraged')
           setTimeout(() => setBossPhaseFlash(null), 1500)
         }
         if (prevPct > 25 && newPct <= 25 && newBossHP > 0) {
-          addEvent('💀', '💀 BERSERK MODE! Boss attacks with fury! (Phase 3: ×2.0 damage)')
+          addEvent('skull', 'BERSERK MODE! Boss attacks with fury! (Phase 3: x2.0 damage)')
           setBossPhaseFlash('berserk')
           setTimeout(() => setBossPhaseFlash(null), 1500)
         }
-        if ((updated.spec.heroHP ?? 100) <= 0 && (detail?.spec.heroHP ?? 100) > 0) addEvent('💀', 'Hero has fallen...')
+        if ((updated.spec.heroHP ?? 100) <= 0 && (detail?.spec.heroHP ?? 100) > 0) addEvent('skull', 'Hero has fallen...')
         // DoT floating damage on hero
         const prevHeroHP = detail?.spec.heroHP ?? 100
         const newHeroHP = updated.spec.heroHP ?? 100
@@ -730,7 +730,7 @@ function CreateForm({ onCreate }: { onCreate: (n: string, m: number, d: string, 
       </div>
       <div><label>Hero Class</label>
         <select value={heroClass} onChange={e => setHeroClass(e.target.value)}>
-          <option value="warrior">⚔️ Warrior</option><option value="mage">🔮 Mage</option><option value="rogue">🗡️ Rogue</option>
+          <option value="warrior">Warrior</option><option value="mage">Mage</option><option value="rogue">Rogue</option>
         </select>
       </div>
       <button className="btn btn-gold" disabled={!canCreate} onClick={() => { if (canCreate) { onCreate(name, monsters, difficulty, heroClass); setName('') } }}>
@@ -766,13 +766,13 @@ function DungeonList({ dungeons, onSelect, onDelete, deleting, lastDungeon }: {
           <div className="stats">
             <span className={`tag tag-${d.difficulty}`}>{d.difficulty}</span>
             {d.runCount != null && d.runCount > 0 && (
-              <span className="tag ng-plus-badge" title={`New Game+ run #${d.runCount}`}>⭐ NG+{d.runCount}</span>
+              <span className="tag ng-plus-badge" title={`New Game+ run #${d.runCount}`}>NG+{d.runCount}</span>
             )}
             <span>Monsters: {d.livingMonsters ?? '?'}</span>
             <span>Boss: {d.bossState === 'pending' ? 'Locked' : d.bossState === 'ready' ? 'Ready' : d.bossState === 'defeated' ? 'Defeated' : d.bossState ?? '?'}</span>
             {d.modifier && d.modifier !== 'none' && (
               <span className={`tag tag-modifier-${d.modifier.startsWith('curse') ? 'curse' : 'blessing'}`} title={d.modifier}>
-                {d.modifier.startsWith('curse') ? '⚠' : '✦'} {d.modifier.replace(/^(curse|blessing)-/, '')}
+                {d.modifier.startsWith('curse') ? '[!]' : '+'} {d.modifier.replace(/^(curse|blessing)-/, '')}
               </span>
             )}
             {d.victory && <span className="victory">VICTORY!</span>}
@@ -800,7 +800,7 @@ const OUTCOME_COLOR: Record<string, string> = {
   'room1-cleared': '#00ff41',
   'in-progress': '#888',
 }
-const CLASS_ICON: Record<string, string> = { warrior: '⚔️', mage: '🔮', rogue: '🗡️' }
+const CLASS_ICON: Record<string, string> = { warrior: 'sword', mage: 'mana', rogue: 'dagger' }
 
 function LeaderboardPanel({ entries, loading, onClose }: {
   entries: LeaderboardEntry[]; loading: boolean; onClose: () => void
@@ -836,7 +836,7 @@ function LeaderboardPanel({ entries, loading, onClose }: {
                 <tr key={`${e.timestamp}-${e.dungeonName}`} className={`lb-row lb-${e.outcome}`}>
                   <td className="lb-rank">{i + 1}</td>
                   <td className="lb-name">{e.dungeonName}</td>
-                  <td>{CLASS_ICON[e.heroClass] ?? e.heroClass}</td>
+                  <td><PixelIcon name={CLASS_ICON[e.heroClass] ?? 'sword'} size={10} /></td>
                   <td><span className={`tag tag-${e.difficulty}`}>{e.difficulty}</span></td>
                   <td style={{ color: OUTCOME_COLOR[e.outcome] ?? '#888', fontWeight: 'bold' }}>
                     {OUTCOME_ICON[e.outcome] ?? e.outcome}
@@ -981,7 +981,7 @@ function EventLogTabs({ events, k8sLog, kroUnlocked, onViewKroConcept, dungeonNs
           {events.length === 0 && <div className="event-entry">Waiting for events...</div>}
           {events.map((e, i) => (
             <div key={i} className="event-entry">
-              <span className="event-icon">{e.action}</span>
+              <span className="event-icon"><PixelIcon name={e.action} size={10} /></span>
               <span className="event-msg">{e.name}</span>
             </div>
           ))}
@@ -1062,7 +1062,7 @@ function CheatModal({ onClose, onAction }: { onClose: () => void; onAction: (tar
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal help-modal" role="dialog" aria-modal="true" aria-label="Cheat mode" onClick={e => e.stopPropagation()} style={{ maxWidth: 500 }}>
-        <h2 style={{ color: '#e94560', fontSize: 12, marginBottom: 8 }}>🔧 CHEAT MODE</h2>
+        <h2 style={{ color: '#e94560', fontSize: 12, marginBottom: 8 }}><PixelIcon name="damage" size={10} /> CHEAT MODE</h2>
         <p style={{ fontSize: 7, color: '#666', marginBottom: 12 }}>Items are added to inventory then used/equipped via Attack CR pipeline.</p>
         {sections.map(s => (
           <div key={s.title} style={{ marginBottom: 8 }}>
@@ -1121,9 +1121,9 @@ function DungeonMiniMap({ spec }: { spec: any }) {
     return '#333'
   }
   const stateLabel = (s: string, n: number) => {
-    if (s === 'cleared') return `R${n} ✓`
-    if (s === 'boss-active') return `R${n} ⚔`
-    if (s === 'locked') return `R${n} 🔒`
+    if (s === 'cleared') return `R${n} [ok]`
+    if (s === 'boss-active') return `R${n} [!]`
+    if (s === 'locked') return `R${n} [L]`
     return `R${n}`
   }
 
@@ -1132,7 +1132,7 @@ function DungeonMiniMap({ spec }: { spec: any }) {
       <div className="minimap-room" style={{ borderColor: stateColor(r1State), color: stateColor(r1State) }}>
         {stateLabel(r1State, 1)}
         {r1State === 'cleared' && treasureOpened === 0 && (
-          <span className="minimap-icon" title="Treasure available">💎</span>
+          <span className="minimap-icon" title="Treasure available"><PixelIcon name="chest" size={10} /></span>
         )}
       </div>
       <div className="minimap-connector" style={{ background: r2State !== 'locked' ? '#f5c518' : '#333' }}>
@@ -1221,11 +1221,11 @@ function HelpModal({ onClose, onCheat }: { onClose: () => void; onCheat: () => v
             <tr><td><PixelIcon name="sword" size={10} /> Weapon</td><td>+5 dmg (3 uses)</td><td>+10 dmg (3 uses)</td><td>+20 dmg (3 uses)</td></tr>
             <tr><td><PixelIcon name="shield" size={10} /> Armor</td><td>+10% def</td><td>+20% def</td><td>+30% def</td></tr>
             <tr><td><PixelIcon name="shield" size={10} /> Shield</td><td>10% block</td><td>15% block</td><td>25% block</td></tr>
-            <tr><td>🪖 Helmet</td><td>+5% crit</td><td>+10% crit</td><td>+15% crit</td></tr>
-            <tr><td>👖 Pants</td><td>+5% dodge</td><td>+10% dodge</td><td>+15% dodge</td></tr>
-            <tr><td>👢 Boots</td><td>20% resist</td><td>40% resist</td><td>60% resist</td></tr>
-            <tr><td>💍 Ring</td><td>+5 HP/round</td><td>+8 HP/round</td><td>+12 HP/round</td></tr>
-            <tr><td>📿 Amulet</td><td>+10% dmg</td><td>+20% dmg</td><td>+30% dmg</td></tr>
+            <tr><td><PixelIcon name="helmet" size={10} /> Helmet</td><td>+5% crit</td><td>+10% crit</td><td>+15% crit</td></tr>
+            <tr><td><PixelIcon name="pants" size={10} /> Pants</td><td>+5% dodge</td><td>+10% dodge</td><td>+15% dodge</td></tr>
+            <tr><td><PixelIcon name="boots" size={10} /> Boots</td><td>20% resist</td><td>40% resist</td><td>60% resist</td></tr>
+            <tr><td><PixelIcon name="ring" size={10} /> Ring</td><td>+5 HP/round</td><td>+8 HP/round</td><td>+12 HP/round</td></tr>
+            <tr><td><PixelIcon name="amulet" size={10} /> Amulet</td><td>+10% dmg</td><td>+20% dmg</td><td>+30% dmg</td></tr>
             <tr><td><PixelIcon name="heart" size={10} /> HP Potion</td><td>+20 HP</td><td>+40 HP</td><td>Full heal</td></tr>
             <tr><td><PixelIcon name="mana" size={10} /> Mana Potion</td><td>+2 mana</td><td>+3 mana</td><td>+8 mana (Mage only)</td></tr>
           </tbody>
@@ -1275,7 +1275,7 @@ function HelpModal({ onClose, onCheat }: { onClose: () => void; onCheat: () => v
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal help-modal" role="dialog" aria-modal="true" aria-label={`Help: ${pages[page].title}`} onClick={e => e.stopPropagation()}>
-        <h2 style={{ color: 'var(--gold)', fontSize: 12, marginBottom: 4 }}>📖 {pages[page].title}</h2>
+        <h2 style={{ color: 'var(--gold)', fontSize: 12, marginBottom: 4 }}><PixelIcon name="book" size={10} /> {pages[page].title}</h2>
         <div className="help-page-indicator">{page + 1} / {pages.length}</div>
         <div className="help-section">{pages[page].content}</div>
         <div className="help-nav">
@@ -1427,18 +1427,18 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
   }, [spec.bossHP, allMonstersDead, spec.treasureOpened, spec.doorUnlocked, attackPhase])
 
   // Build turn order for display
-  const turnOrder: { id: string; label: string; alive: boolean }[] = [{ id: 'hero', label: '🛡️ Hero', alive: !isDefeated }]
+  const turnOrder: { id: string; label: string; alive: boolean }[] = [{ id: 'hero', label: 'Hero', alive: !isDefeated }]
   ;(spec.monsterHP || []).forEach((hp, i) => {
-    turnOrder.push({ id: `monster-${i}`, label: `👹 M${i}`, alive: hp > 0 })
+    turnOrder.push({ id: `monster-${i}`, label: `M${i}`, alive: hp > 0 })
   })
   if (bossState !== 'pending') {
-    turnOrder.push({ id: 'boss', label: '🐉 Boss', alive: bossState === 'ready' })
+    turnOrder.push({ id: 'boss', label: 'Boss', alive: bossState === 'ready' })
   }
 
   return (
     <div>
        <div className="dungeon-header">
-         <h2><PixelIcon name="sword" size={14} /> {dungeonName}{spec.runCount != null && spec.runCount > 0 ? <span className="ng-plus-badge" style={{ fontSize: '6px', marginLeft: 6 }}>⭐NG+{spec.runCount}</span> : null}</h2>
+         <h2><PixelIcon name="sword" size={14} /> {dungeonName}{spec.runCount != null && spec.runCount > 0 ? <span className="ng-plus-badge" style={{ fontSize: '6px', marginLeft: 6 }}>NG+{spec.runCount}</span> : null}</h2>
          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
            <button className="help-btn" aria-label="Help" onClick={onToggleHelp}>?</button>
             <div style={{ position: 'relative' }} onMouseLeave={() => setShowDungeonHamburger(false)}>
@@ -1540,10 +1540,10 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
             <span>Hero: <span style={{ color: 'var(--gold)' }}>{spec.heroClass ?? 'warrior'}</span></span>
             <span>Difficulty: <span style={{ color: 'var(--gold)' }}>{spec.difficulty}</span></span>
             <span>Room: <span style={{ color: 'var(--gold)' }}>{spec.currentRoom ?? 1}</span></span>
-            {spec.weaponBonus ? <span>⚔ Weapon +{spec.weaponBonus}</span> : null}
-            {spec.armorBonus ? <span>🛡 Armor {spec.armorBonus}%</span> : null}
-            {spec.ringBonus ? <span>💍 Ring +{spec.ringBonus}/turn</span> : null}
-            {spec.amuletBonus ? <span>📿 Amulet +{spec.amuletBonus}%dmg</span> : null}
+            {spec.weaponBonus ? <span><PixelIcon name="sword" size={8} /> Weapon +{spec.weaponBonus}</span> : null}
+            {spec.armorBonus ? <span><PixelIcon name="shield" size={8} /> Armor {spec.armorBonus}%</span> : null}
+            {spec.ringBonus ? <span><PixelIcon name="ring" size={8} /> Ring +{spec.ringBonus}/turn</span> : null}
+            {spec.amuletBonus ? <span><PixelIcon name="amulet" size={8} /> Amulet +{spec.amuletBonus}%dmg</span> : null}
           </div>
           <div style={{ marginTop: 8 }}>
             <button className="btn" style={{ fontSize: 7 }} onClick={onBack}>← New Dungeon</button>
@@ -1559,12 +1559,12 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
             <span>Turns: <span style={{ color: 'var(--gold)' }}>{spec.attackSeq ?? 0}</span></span>
             <span>Hero: <span style={{ color: 'var(--gold)' }}>{spec.heroClass ?? 'warrior'}</span></span>
             <span>Difficulty: <span style={{ color: 'var(--gold)' }}>{spec.difficulty}</span></span>
-            {spec.weaponBonus ? <span>⚔ Weapon +{spec.weaponBonus}</span> : null}
-            {spec.armorBonus ? <span>🛡 Armor {spec.armorBonus}%</span> : null}
-            {spec.helmetBonus ? <span>⛑ Helmet +{spec.helmetBonus}%crit</span> : null}
-            {spec.pantsBonus ? <span>👖 Pants +{spec.pantsBonus}%dodge</span> : null}
-            {spec.ringBonus ? <span>💍 Ring +{spec.ringBonus}/turn</span> : null}
-            {spec.amuletBonus ? <span>📿 Amulet +{spec.amuletBonus}%dmg</span> : null}
+            {spec.weaponBonus ? <span><PixelIcon name="sword" size={8} /> Weapon +{spec.weaponBonus}</span> : null}
+            {spec.armorBonus ? <span><PixelIcon name="shield" size={8} /> Armor {spec.armorBonus}%</span> : null}
+            {spec.helmetBonus ? <span><PixelIcon name="helmet" size={8} /> Helmet +{spec.helmetBonus}%crit</span> : null}
+            {spec.pantsBonus ? <span><PixelIcon name="pants" size={8} /> Pants +{spec.pantsBonus}%dodge</span> : null}
+            {spec.ringBonus ? <span><PixelIcon name="ring" size={8} /> Ring +{spec.ringBonus}/turn</span> : null}
+            {spec.amuletBonus ? <span><PixelIcon name="amulet" size={8} /> Amulet +{spec.amuletBonus}%dmg</span> : null}
           </div>
           <AchievementBadges achievements={computeAchievements(spec, spec.heroClass === 'mage' ? 120 : spec.heroClass === 'rogue' ? 150 : 200)} />
           <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 8 }}>
@@ -1573,7 +1573,7 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
             </button>
             {onNewGamePlus && (
               <button className="btn btn-gold" style={{ fontSize: 7, borderColor: '#00ff41', color: '#00ff41', background: 'rgba(0,255,65,0.08)' }} onClick={onNewGamePlus}>
-                ⭐ New Game+
+                <PixelIcon name="star" size={10} /> New Game+
               </button>
             )}
             <button className="btn" style={{ fontSize: 7 }} onClick={onBack}>
@@ -1694,7 +1694,7 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
                    <img src={`/sprites/dungeon/door-${doorUnlocked ? 'opened' : 'closed'}.png`}
                      alt="door" style={{ width: 64, height: 64, imageRendering: 'pixelated' as any, filter: doorUnlocked ? 'drop-shadow(0 0 6px #f5c518)' : 'none' }} />
                    {unlocking && <div style={{ fontSize: 7, color: '#aaa', textAlign: 'center', marginTop: 2 }}>Unlocking...</div>}
-                   {doorUnlocked && <div style={{ fontSize: 7, color: 'var(--gold)', textAlign: 'center', marginTop: 2 }}>🚪 Enter</div>}
+                   {doorUnlocked && <div style={{ fontSize: 7, color: 'var(--gold)', textAlign: 'center', marginTop: 2 }}>Enter</div>}
                  </>
                })()}
              </div>
@@ -1707,7 +1707,7 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
                   alt="chest" style={{ width: 56, height: 56, imageRendering: 'pixelated' as any, filter: (spec.treasureOpened ?? 0) === 0 ? 'drop-shadow(0 0 4px gold)' : 'none' }} />
                 {(spec.treasureOpened ?? 0) === 0 && <div style={{ fontSize: 7, color: '#aaa', textAlign: 'center', marginTop: 2 }}>Opening...</div>}
                 {(spec.treasureOpened ?? 0) === 1 && status?.loot && (
-                  <div style={{ fontSize: 7, color: 'var(--gold)', textAlign: 'center', marginTop: 4, textShadow: '1px 1px 2px #000' }}>🔑 {status.loot}</div>
+                  <div style={{ fontSize: 7, color: 'var(--gold)', textAlign: 'center', marginTop: 4, textShadow: '1px 1px 2px #000' }}><PixelIcon name="key" size={8} /> {status.loot}</div>
                 )}
               </div>
             )}
@@ -1732,12 +1732,12 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
                   {floatingDmg?.target?.includes('boss') && <div className="floating-dmg" style={{ color: '#e94560' }}>{floatingDmg.amount}</div>}
                   {bossPhaseFlash && (
                     <div className={`boss-phase-flash-overlay ${bossPhaseFlash}`}>
-                      {bossPhaseFlash === 'enraged' ? '🔥 ENRAGED!' : '💀 BERSERK!'}
+                      {bossPhaseFlash === 'enraged' ? 'ENRAGED!' : 'BERSERK!'}
                     </div>
                   )}
                   {bossState === 'ready' && bossPhase !== 'phase1' && (
                     <div className={`boss-phase-badge ${bossPhase}`}>
-                      {bossPhase === 'phase2' ? '🔥 ENRAGED' : '💀 BERSERK'}
+                      {bossPhase === 'phase2' ? 'ENRAGED' : 'BERSERK'}
                     </div>
                   )}
                   <Sprite spriteType={(spec.currentRoom || 1) === 2 ? 'bat-boss' : 'dragon'} action={bAction} size={144} />
@@ -1747,7 +1747,7 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
                     <div className="arena-name">Boss · {spec.bossHP}/{maxBossHP}</div>
                     {bossState === 'ready' && !gameOver && !attackPhase && (
                       <div className="arena-actions">
-                        <button className="btn btn-primary arena-atk-btn" onClick={() => onAttack(bossName, 0)}>🎲 {status?.diceFormula || '2d12+6'}</button>
+                        <button className="btn btn-primary arena-atk-btn" onClick={() => onAttack(bossName, 0)}><PixelIcon name="dice" size={8} /> {status?.diceFormula || '2d12+6'}</button>
                         {spec.heroClass === 'rogue' && (spec.backstabCooldown ?? 0) === 0 && (
                           <button className="btn btn-ability arena-atk-btn" onClick={() => onAttack(bossName + '-backstab', 0)}>Backstab</button>
                         )}
@@ -1793,7 +1793,7 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
                     <div className="arena-name">{mDisplayName} · {hp}/{maxMonsterHP}</div>
                     {state === 'alive' && !gameOver && !attackPhase && (
                       <div className="arena-actions">
-                        <button className="btn btn-primary arena-atk-btn" onClick={() => onAttack(mName, 0)}>🎲 {status?.diceFormula || '2d12+6'}</button>
+                        <button className="btn btn-primary arena-atk-btn" onClick={() => onAttack(mName, 0)}><PixelIcon name="dice" size={8} /> {status?.diceFormula || '2d12+6'}</button>
                         {spec.heroClass === 'rogue' && (spec.backstabCooldown ?? 0) === 0 && (
                           <button className="btn btn-ability arena-atk-btn" onClick={() => onAttack(mName + '-backstab', 0)}>Backstab</button>
                         )}
@@ -1815,7 +1815,7 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
             {/* Room transition loading */}
             {roomLoading && (
               <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 20, borderRadius: 12 }}>
-                <div style={{ textAlign: 'center', color: 'var(--gold)', fontSize: 12 }}>🚪 Entering Room 2...</div>
+                 <div style={{ textAlign: 'center', color: 'var(--gold)', fontSize: 12 }}>[~] Entering Room 2...</div>
               </div>
             )}
 
@@ -1825,7 +1825,7 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
             {/* Room 1 cleared — 3s celebration overlay */}
             {showRoom1Cleared && (
               <div className="arena-room1-cleared">
-                <div className="arena-room1-cleared-text">★ ROOM CLEARED! ★</div>
+                <div className="arena-room1-cleared-text">* ROOM CLEARED! *</div>
                 <div style={{ fontSize: 7, color: 'var(--text-dim)', marginTop: 6 }}>Treasure awaits...</div>
               </div>
             )}
@@ -1933,12 +1933,12 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
                     <div className="equip-row">
                       <Tooltip text={rb > 0 ? `Ring equipped: +${rb} HP regen at start of each round` : 'Ring — none equipped'}>
                         <div className={`equip-slot${rb > 0 ? ' filled' : ' empty'}`}>
-                          {rb > 0 ? <><span style={{ fontSize: 16, lineHeight: 1 }}>💍</span><span className="slot-stat">+{rb}/t</span></> : <PixelIcon name="ring" size={14} color="#333" />}
+                          {rb > 0 ? <><PixelIcon name="ring" size={14} /><span className="slot-stat">+{rb}/t</span></> : <PixelIcon name="ring" size={14} color="#333" />}
                         </div>
                       </Tooltip>
                       <Tooltip text={amb > 0 ? `Amulet equipped: +${amb}% to all damage dealt` : 'Amulet — none equipped'}>
                         <div className={`equip-slot${amb > 0 ? ' filled' : ' empty'}`}>
-                          {amb > 0 ? <><span style={{ fontSize: 16, lineHeight: 1 }}>📿</span><span className="slot-stat">+{amb}%</span></> : <PixelIcon name="amulet" size={14} color="#333" />}
+                          {amb > 0 ? <><PixelIcon name="amulet" size={14} /><span className="slot-stat">+{amb}%</span></> : <PixelIcon name="amulet" size={14} color="#333" />}
                         </div>
                       </Tooltip>
                     </div>
@@ -2079,7 +2079,7 @@ function DiceRoller({ formula }: { formula: string }) {
   }, [d.count, d.sides])
   return (
     <div className="dice-roller">
-      <div className="dice-label">🎲 Rolling {formula}...</div>
+      <div className="dice-label"><PixelIcon name="dice" size={10} /> Rolling {formula}...</div>
       <div className="dice-faces">{faces.map((v, i) => <span key={i} className="die rolling">{v}</span>)}</div>
     </div>
   )

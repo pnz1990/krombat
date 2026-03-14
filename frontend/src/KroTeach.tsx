@@ -9,6 +9,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { PixelIcon } from './PixelIcon'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -1226,7 +1227,7 @@ export function KroExpertCertificate({ dungeonName, heroClass, difficulty, turns
     <div className="kro-cert-overlay" onClick={onClose}>
       <div className="kro-cert-modal" onClick={e => e.stopPropagation()}>
         <div className="kro-cert-header">
-          <div className="kro-cert-badge">{isMaster ? '👑' : '🎓'}</div>
+          <div className="kro-cert-badge"><PixelIcon name={isMaster ? 'crown' : 'star'} size={32} /></div>
           <div className="kro-cert-title">{title}</div>
           <div className="kro-cert-subtitle">Certificate of Completion</div>
         </div>
@@ -1262,7 +1263,7 @@ export function KroExpertCertificate({ dungeonName, heroClass, difficulty, turns
 
         <div className="kro-cert-actions">
           <button className="btn btn-primary" onClick={handleCopyKubectl} style={{ fontSize: 8 }}>
-            📋 Copy kubectl commands
+            <PixelIcon name="scroll" size={10} /> Copy kubectl commands
           </button>
           <button className="btn" onClick={onClose} style={{ fontSize: 8 }}>
             Close
