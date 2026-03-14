@@ -642,6 +642,8 @@ export default function App() {
         </>
       ) : loading ? (
         <div className="loading">Initializing dungeon</div>
+      ) : detail && (detail.spec.initProcessedSeq ?? 0) === 0 ? (
+        <div className="loading">Initializing dungeon</div>
       ) : detail ? (
         <DungeonView
           cr={detail}

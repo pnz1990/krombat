@@ -35,6 +35,7 @@ export interface DungeonCR {
     lastHeroAction?: string; lastEnemyAction?: string; lastCombatLog?: string; lastLootDrop?: string
     attackSeq?: number; actionSeq?: number
     lastAttackTarget?: string; lastAction?: string; lastAbility?: string
+    initProcessedSeq?: number
   }
   status?: {
     livingMonsters: number; bossState: string; victory: boolean; defeated: boolean

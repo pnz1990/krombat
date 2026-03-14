@@ -14,10 +14,12 @@ async function createDungeonUI(page, name, { monsters = 2, difficulty = 'easy', 
   const monsterInput = page.locator('input[type="number"]');
   if (await monsterInput.count() > 0) await monsterInput.fill(String(monsters));
   await page.click('button:has-text("Create Dungeon")');
-  // Wait for dungeon view to load (not stuck on list or "Initializing")
+  // Wait for dungeon view to load (not stuck on list or "Initializing dungeon")
+  // The frontend shows "Initializing dungeon" until spec.initProcessedSeq == 1,
+  // which kro sets after computing heroHP, monsterHP, bossHP, modifier, monsterTypes.
   for (let i = 0; i < 60; i++) {
     const text = await page.textContent('body');
-    if (text.includes(heroClass.toUpperCase()) && text.includes(name)) return true;
+    if (text.includes(heroClass.toUpperCase()) && text.includes(name) && !text.includes('Initializing dungeon')) return true;
     await page.waitForTimeout(2000);
   }
   return false;

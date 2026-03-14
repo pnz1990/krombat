@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"math/rand"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -158,97 +157,28 @@ func (h *Handler) CreateDungeon(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	hp, _ := defaultHP[req.Difficulty]
-	monsterHP := make([]interface{}, req.Monsters)
-	for i := range monsterHP {
-		monsterHP[i] = hp.monster
-	}
-
 	heroClass := req.HeroClass
 	if heroClass == "" {
 		heroClass = "warrior"
 	}
-	heroHP := int64(100)
-	heroMana := int64(0)
-	switch heroClass {
-	case "warrior":
-		heroHP = 200
-	case "mage":
-		heroHP = 120
-		heroMana = 8
-	case "rogue":
-		heroHP = 150
-	default:
+	if heroClass != "warrior" && heroClass != "mage" && heroClass != "rogue" {
 		writeError(w, "heroClass must be warrior, mage, or rogue", http.StatusBadRequest)
 		return
 	}
 
-	// Pick a random modifier (20% none, 40% curse, 40% blessing)
-	modifiers := []string{"none", "curse-fortitude", "curse-fury", "curse-darkness", "blessing-strength", "blessing-resilience", "blessing-fortune", "blessing-strength", "curse-fury", "blessing-fortune"}
-	modifier := modifiers[rand.Intn(len(modifiers))]
-
-	// Curse of Fortitude: apply +50% monster HP at creation
-	if modifier == "curse-fortitude" {
-		for i := range monsterHP {
-			monsterHP[i] = monsterHP[i].(int64) * 3 / 2
-		}
-	}
-
-	// New Game+ scaling: each completed run multiplies monster HP by 1.25
-	// and adds +10% hero HP per run (compounded). runCount is the number of
-	// prior completed runs (0 = fresh start, 1 = first New Game+, etc.)
 	runCount := req.RunCount
 	if runCount < 0 || runCount > 20 {
 		runCount = 0 // clamp to reasonable range
 	}
-	if runCount > 0 {
-		// Scale monster HP: 1.25^runCount (integer approximation)
-		// 1 run: 125%, 2 runs: 156%, 3 runs: 195%, etc.
-		scale := int64(100)
-		for i := int64(0); i < runCount; i++ {
-			scale = scale * 125 / 100
-		}
-		for i := range monsterHP {
-			monsterHP[i] = monsterHP[i].(int64) * scale / 100
-		}
-		hp.boss = hp.boss * scale / 100
-		// Hero HP +10% per run (compounded)
-		heroHPScale := int64(100)
-		for i := int64(0); i < runCount; i++ {
-			heroHPScale = heroHPScale * 110 / 100
-		}
-		heroHP = heroHP * heroHPScale / 100
-	}
 
-	// Assign monster types for Room 1: goblin(0), skeleton(1), archer(2+even), shaman(3+odd)
-	// Archers (index % 2 == 0, index >= 2): 20% chance to stun instead of poison
-	// Shamans (index % 2 == 1, index >= 3): 30% chance to heal another monster on counter
-	monsterTypes := make([]interface{}, req.Monsters)
-	for i := range monsterTypes {
-		switch {
-		case i == 0:
-			monsterTypes[i] = "goblin"
-		case i == 1:
-			monsterTypes[i] = "skeleton"
-		case i%2 == 0:
-			monsterTypes[i] = "archer"
-		default:
-			monsterTypes[i] = "shaman"
-		}
-	}
-
+	// Backend writes only the player choices. kro dungeonInit specPatch computes
+	// heroHP, heroMana, monsterHP, bossHP, modifier, and monsterTypes from these
+	// fields deterministically via CEL.
 	dungeonSpec := map[string]interface{}{
-		"monsters":       req.Monsters,
-		"difficulty":     req.Difficulty,
-		"monsterHP":      monsterHP,
-		"bossHP":         hp.boss,
-		"heroHP":         heroHP,
-		"heroClass":      heroClass,
-		"heroMana":       heroMana,
-		"modifier":       modifier,
-		"monsterTypes":   monsterTypes,
-		"runCount":       runCount,
-		"room2MonsterHP": []interface{}{},
+		"monsters":   req.Monsters,
+		"difficulty": req.Difficulty,
+		"heroClass":  heroClass,
+		"runCount":   runCount,
 	}
 	// Carry over gear bonuses from prior run (New Game+)
 	if req.WeaponBonus > 0 {
