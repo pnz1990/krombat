@@ -13,7 +13,7 @@ permissions:
 
 env:
   AWS_REGION: us-west-2
-  REGISTRY: 569190534191.dkr.ecr.us-west-2.amazonaws.com
+  REGISTRY: 319279230668.dkr.ecr.us-west-2.amazonaws.com
 
 jobs:
   build-backend:

@@ -16,7 +16,7 @@ spec:
       serviceAccountName: rpg-backend-sa
       containers:
         - name: backend
-          image: 569190534191.dkr.ecr.us-west-2.amazonaws.com/krombat/backend:latest
+          image: 319279230668.dkr.ecr.us-west-2.amazonaws.com/krombat/backend:latest
           ports:
             - containerPort: 8080
           readinessProbe:

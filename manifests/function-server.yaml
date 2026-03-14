@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: function-server
-          image: 569190534191.dkr.ecr.us-west-2.amazonaws.com/krombat/function-server:latest
+          image: 319279230668.dkr.ecr.us-west-2.amazonaws.com/krombat/function-server:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8080

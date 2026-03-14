@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: 569190534191.dkr.ecr.us-west-2.amazonaws.com/krombat/frontend:latest
+          image: 319279230668.dkr.ecr.us-west-2.amazonaws.com/krombat/frontend:latest
           ports:
             - containerPort: 3000
           readinessProbe:

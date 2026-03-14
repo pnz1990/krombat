@@ -34,7 +34,7 @@ spec:
               topologyKey: kubernetes.io/hostname
       containers:
         - name: pause
-          image: 569190534191.dkr.ecr.us-west-2.amazonaws.com/krombat/job-runner:latest
+          image: 319279230668.dkr.ecr.us-west-2.amazonaws.com/krombat/job-runner:latest
           imagePullPolicy: Always
           command: ["sleep", "infinity"]
           resources:

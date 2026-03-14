@@ -39,9 +39,3 @@ variable "enable_ecr" {
   type        = bool
   default     = true
 }
-
-variable "enable_idc" {
-  description = "Enable Identity Center integration for Argo CD (requires IDC configured in the account)"
-  type        = bool
-  default     = true
-}
