@@ -15,7 +15,7 @@ A turn-based dungeon RPG where game state lives in Kubernetes Custom Resources o
 ## Architecture
 
 - **EKS Auto Mode** cluster (`krombat`, K8s 1.34) in `us-west-2`, account `569190534191`
-- **kro** (EKS Managed Capability) — nine RGDs manage the resource graph and derived status:
+- **kro** (self-installed via Helm, patched fork `cel-writeback-d`) — nine RGDs manage the resource graph and derived status:
   - `dungeon-graph` (parent): Dungeon CR → Namespace, Hero CR, Monster CRs, Boss CR, Treasure CR, Modifier CR, GameConfig CM, combatResult CM, actionResult CM
   - `hero-graph`: Hero CR → ConfigMap (HP, class, mana, stats via CEL)
   - `monster-graph`: Monster CR → ConfigMap (alive/dead from HP)
@@ -71,7 +71,6 @@ A turn-based dungeon RPG where game state lives in Kubernetes Custom Resources o
 | `frontend/src/App.tsx` | Main React app (~1000 lines) |
 | `frontend/src/Sprite.tsx` | Sprite components (hurt=6→1→6, dead=6 with 0.35 opacity) |
 | `tests/` | All test suites + helpers |
-| `images/job-runner/` | Minimal Docker image (bash + kubectl + jq) — kept for infra compatibility |
 | `infra/` | Terraform (EKS, kro, Argo CD, ECR, CloudWatch, OIDC) |
 | `Docs/runbook.md` | Operations runbook (kubectl debug commands, CloudWatch queries) |
 
