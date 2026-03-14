@@ -5,7 +5,7 @@ kind: IngressClassParams
 metadata:
   name: krombat
 spec:
-  scheme: internet-facing
+  scheme: internal
   certificateARNs:
     - arn:aws:acm:us-west-2:319279230668:certificate/fcaf3070-54fb-4ac1-bc76-4f57caf00221
   loadBalancerAttributes:
