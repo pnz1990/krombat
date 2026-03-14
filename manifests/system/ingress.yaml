@@ -1,18 +1,41 @@
+---
+# IngressClassParams: ALB configuration (EKS Auto Mode uses eks.amazonaws.com/v1)
+apiVersion: eks.amazonaws.com/v1
+kind: IngressClassParams
+metadata:
+  name: krombat
+spec:
+  scheme: internet-facing
+  certificateARNs:
+    - arn:aws:acm:us-west-2:319279230668:certificate/fcaf3070-54fb-4ac1-bc76-4f57caf00221
+  loadBalancerAttributes:
+    - key: idle_timeout.timeout_seconds
+      value: "300"
+---
+# IngressClass: wires EKS Auto Mode controller to the above params
+apiVersion: networking.k8s.io/v1
+kind: IngressClass
+metadata:
+  name: krombat
+spec:
+  controller: eks.amazonaws.com/alb
+  parameters:
+    apiGroup: eks.amazonaws.com
+    kind: IngressClassParams
+    name: krombat
+---
+# Ingress: path-based routing + external-dns hostname annotation
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: krombat
   namespace: rpg-system
   annotations:
-    kubernetes.io/ingress.class: alb
-    alb.ingress.kubernetes.io/scheme: internet-facing
-    alb.ingress.kubernetes.io/target-type: ip
-    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
-    alb.ingress.kubernetes.io/ssl-redirect: "443"
-    alb.ingress.kubernetes.io/certificate-arn: "arn:aws:acm:us-west-2:319279230668:certificate/fcaf3070-54fb-4ac1-bc76-4f57caf00221"
     external-dns.alpha.kubernetes.io/hostname: "learn-kro.eks.aws.dev"
-    alb.ingress.kubernetes.io/load-balancer-attributes: idle_timeout.timeout_seconds=300
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
+    alb.ingress.kubernetes.io/target-type: ip
 spec:
+  ingressClassName: krombat
   rules:
     - host: learn-kro.eks.aws.dev
       http:
