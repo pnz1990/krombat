@@ -1815,7 +1815,7 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
             {/* Room transition loading */}
             {roomLoading && (
               <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 20, borderRadius: 12 }}>
-                <div style={{ textAlign: 'center', color: 'var(--gold)', fontSize: 12 }}>[>] Entering Room 2...</div>
+                 <div style={{ textAlign: 'center', color: 'var(--gold)', fontSize: 12 }}>[~] Entering Room 2...</div>
               </div>
             )}
 
