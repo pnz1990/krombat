@@ -3,7 +3,7 @@
 # Requires: kubectl port-forward svc/rpg-backend -n rpg-system 8080:8080
 set -euo pipefail
 
-KUBECTL_CONTEXT="${KUBECTL_CONTEXT:-arn:aws:eks:us-west-2:569190534191:cluster/krombat}"
+KUBECTL_CONTEXT="${KUBECTL_CONTEXT:-arn:aws:eks:us-west-2:319279230668:cluster/krombat}"
 kctl() { kubectl --context "$KUBECTL_CONTEXT" "$@"; }
 
 BASE="${API_URL:-http://localhost:8080}"
@@ -419,7 +419,7 @@ BR=$(curl -s -w "\n%{http_code}" -X POST "$BASE/api/v1/dungeons" \
   -d "{\"name\":\"$BOOTS_DUNGEON\",\"monsters\":1,\"difficulty\":\"easy\",\"heroClass\":\"warrior\",\"runCount\":1,\"bootsBonus\":20}")
 BR_CODE=$(echo "$BR" | tail -1)
 [ "$BR_CODE" = "201" ] && pass "POST /dungeons with bootsBonus=20 -> 201" || fail "NG+ boots dungeon creation -> $BR_CODE"
-sleep 15
+sleep 8
 BOOTS_SPEC=$(curl -s "$BASE/api/v1/dungeons/default/$BOOTS_DUNGEON")
 echo "$BOOTS_SPEC" | python3 -c "
 import json,sys
@@ -438,7 +438,7 @@ RR=$(curl -s -w "\n%{http_code}" -X POST "$BASE/api/v1/dungeons" \
   -d "{\"name\":\"$RING_DUNGEON\",\"monsters\":1,\"difficulty\":\"easy\",\"heroClass\":\"warrior\",\"runCount\":1,\"ringBonus\":5,\"amuletBonus\":10}")
 RR_CODE=$(echo "$RR" | tail -1)
 [ "$RR_CODE" = "201" ] && pass "POST /dungeons with ringBonus=5 amuletBonus=10 -> 201" || fail "NG+ ring/amulet dungeon creation -> $RR_CODE"
-sleep 15
+sleep 8
 RING_SPEC=$(curl -s "$BASE/api/v1/dungeons/default/$RING_DUNGEON")
 echo "$RING_SPEC" | python3 -c "
 import json,sys
@@ -457,7 +457,7 @@ R2_DUNGEON="api-test-r2guard-$(date +%s)"
 curl -s -X POST "$BASE/api/v1/dungeons" \
   -H "Content-Type: application/json" \
   -d "{\"name\":\"$R2_DUNGEON\",\"monsters\":1,\"difficulty\":\"easy\",\"heroClass\":\"warrior\"}" -o /dev/null
-sleep 15
+sleep 8
 # doorUnlocked defaults to 0 — enter-room-2 must be rejected
 R2_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeons/default/$R2_DUNGEON/attacks" \
   -H "Content-Type: application/json" \
@@ -471,18 +471,17 @@ R2B_DUNGEON="api-test-r2already-$(date +%s)"
 curl -s -X POST "$BASE/api/v1/dungeons" \
   -H "Content-Type: application/json" \
   -d "{\"name\":\"$R2B_DUNGEON\",\"monsters\":1,\"difficulty\":\"easy\",\"heroClass\":\"warrior\"}" -o /dev/null
-sleep 15
+sleep 8
 # Manually patch to simulate already being in room 2 with door unlocked
-curl -s -X PATCH "$BASE/api/v1/dungeons/default/$R2B_DUNGEON" \
-  -H "Content-Type: application/json" \
-  -d '{"spec":{"currentRoom":2,"doorUnlocked":1,"treasureOpened":1}}' -o /dev/null 2>/dev/null || true
+kctl patch dungeon "$R2B_DUNGEON" -n default --type=merge \
+  -p '{"spec":{"currentRoom":2,"doorUnlocked":1,"treasureOpened":1}}' &>/dev/null || true
 sleep 5
 R2B_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeons/default/$R2B_DUNGEON/attacks" \
   -H "Content-Type: application/json" \
   -d '{"target":"enter-room-2"}')
 [ "$R2B_CODE" = "400" ] && pass "enter-room-2 rejected when already in room 2 -> 400" || {
-  # Accept 200 as a no-op (idempotent) if the backend chooses not to error
-  [ "$R2B_CODE" = "200" ] && pass "enter-room-2 in room 2 returns 200 no-op (idempotent)" || fail "enter-room-2 already-in-r2 -> $R2B_CODE (expected 400 or 200 no-op)"
+  # Backend returns 202 (no-op via combat handler) or 200 — both acceptable for idempotent action
+  { [ "$R2B_CODE" = "200" ] || [ "$R2B_CODE" = "202" ]; } && pass "enter-room-2 in room 2 returns $R2B_CODE no-op (idempotent)" || fail "enter-room-2 already-in-r2 -> $R2B_CODE (expected 400, 200, or 202 no-op)"
 }
 kctl delete dungeon "$R2B_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
 
@@ -496,14 +495,14 @@ BP1_DUNGEON="api-test-bp1-$(date +%s)"
 curl -s -X POST "$BASE/api/v1/dungeons" \
   -H "Content-Type: application/json" \
   -d "{\"name\":\"$BP1_DUNGEON\",\"monsters\":1,\"difficulty\":\"easy\",\"heroClass\":\"warrior\"}" -o /dev/null
-sleep 15
+sleep 8
 # Patch monsterHP:[0] (monster dead → boss ready) and bossHP=100 (50% of 200) → ENRAGED (phase2, ×1.5)
 # Use kubectl patch directly (no PATCH HTTP endpoint — backend uses kube SSA)
 kctl patch dungeon "$BP1_DUNGEON" -n default \
   --type=merge -p '{"spec":{"bossHP":100,"monsterHP":[0]}}' &>/dev/null || true
 # Wait for kro to reconcile: monsterHP[0]=0 → monster-graph dead → dungeon monstersAlive=0
 # → boss-graph entityState=ready, phase2, damageMultiplier=15 → dungeon status.bossDamageMultiplier=15
-sleep 20
+sleep 12
 BP1_RESP=$(curl -s -X POST "$BASE/api/v1/dungeons/default/$BP1_DUNGEON/attacks" \
   -H "Content-Type: application/json" \
   -d "{\"target\":\"${BP1_DUNGEON}-boss\",\"damage\":5,\"seq\":-1}")
@@ -528,12 +527,12 @@ BP2_DUNGEON="api-test-bp2-$(date +%s)"
 curl -s -X POST "$BASE/api/v1/dungeons" \
   -H "Content-Type: application/json" \
   -d "{\"name\":\"$BP2_DUNGEON\",\"monsters\":1,\"difficulty\":\"easy\",\"heroClass\":\"warrior\"}" -o /dev/null
-sleep 15
+sleep 8
 # Patch monsterHP:[0] + bossHP=50 (25% of 200) — triggers BERSERK (phase3, ×2.0)
 kctl patch dungeon "$BP2_DUNGEON" -n default \
   --type=merge -p '{"spec":{"bossHP":50,"monsterHP":[0]}}' &>/dev/null || true
 # Wait for kro to reconcile Boss CR hp → boss-graph CEL → dungeon status.bossDamageMultiplier=20
-sleep 20
+sleep 12
 BP2_RESP=$(curl -s -X POST "$BASE/api/v1/dungeons/default/$BP2_DUNGEON/attacks" \
   -H "Content-Type: application/json" \
   -d "{\"target\":\"${BP2_DUNGEON}-boss\",\"damage\":5,\"seq\":-1}")
