@@ -10,6 +10,10 @@ output "region" {
   value = var.region
 }
 
+output "kro_capability_arn" {
+  value = module.kro.arn
+}
+
 output "argocd_capability_arn" {
   value = module.argocd.arn
 }

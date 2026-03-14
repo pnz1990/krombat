@@ -17,13 +17,15 @@ terraform {
 }
 
 provider "aws" {
-  region = var.region
+  region  = var.region
+  profile = "319279230668-Admin"
 }
 
-# Identity Center lives in us-east-2 (org-level)
+# Identity Center lives in us-east-1 in this account
 provider "aws" {
-  alias  = "idc"
-  region = var.idc_region
+  alias   = "idc"
+  region  = var.idc_region
+  profile = "319279230668-Admin"
 }
 
 data "aws_availability_zones" "available" {
@@ -90,16 +92,6 @@ module "eks" {
         service_account = "cloudwatch-agent"
       }]
     }
-    external-dns = {
-      most_recent = true
-      configuration_values = jsonencode({
-        domainFilters = ["learn-kro.eks.aws.dev"]
-      })
-      pod_identity_association = [{
-        role_arn        = aws_iam_role.external_dns.arn
-        service_account = "external-dns"
-      }]
-    }
   }
 
   vpc_id     = module.vpc.vpc_id
@@ -109,14 +101,12 @@ module "eks" {
 # --- Identity Center ---
 
 data "aws_ssoadmin_instances" "this" {
-  count    = var.enable_idc ? 1 : 0
   provider = aws.idc
 }
 
 data "aws_identitystore_user" "admin" {
-  count             = var.enable_idc ? 1 : 0
   provider          = aws.idc
-  identity_store_id = one(data.aws_ssoadmin_instances.this[0].identity_store_ids)
+  identity_store_id = one(data.aws_ssoadmin_instances.this.identity_store_ids)
 
   alternate_identifier {
     unique_attribute {
@@ -128,26 +118,33 @@ data "aws_identitystore_user" "admin" {
 
 # --- EKS Capabilities ---
 
+module "kro" {
+  source = "terraform-aws-modules/eks/aws//modules/capability"
+
+  type         = "KRO"
+  cluster_name = module.eks.cluster_name
+}
+
 module "argocd" {
   source = "terraform-aws-modules/eks/aws//modules/capability"
 
   type         = "ARGOCD"
   cluster_name = module.eks.cluster_name
 
-  configuration = var.enable_idc ? {
+  configuration = {
     argo_cd = {
       aws_idc = {
-        idc_instance_arn = one(data.aws_ssoadmin_instances.this[*].arns[0])
+        idc_instance_arn = one(data.aws_ssoadmin_instances.this.arns)
         idc_region       = var.idc_region
       }
       namespace = "argocd"
       rbac_role_mapping = [{
         role = "ADMIN"
         identity = [{
-          id   = one(data.aws_identitystore_user.admin[*].user_id)
+          id   = data.aws_identitystore_user.admin.user_id
           type = "SSO_USER"
         }]
       }]
     }
-  } : {}
+  }
 }
