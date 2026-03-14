@@ -52,20 +52,19 @@ Modifier CR → ConfigMap. 6 modifier types with effects computed via CEL.
 ### loot-graph
 Loot CR → Secret. Item data: type, rarity, stat, description via CEL.
 
-### attack-graph (combat only)
-Attack CR → Job. Handles: monster attacks, boss attacks, mage heal, warrior taunt, rogue backstab. Builds comprehensive lastCombatLog JSON. Increments attackSeq. Rejects attacks on dead targets without incrementing attackSeq.
+### attack-graph (CRD-only stub)
+Defines the Attack CRD (`resources: []`). All combat logic (monster attacks, boss attacks, mage heal, warrior taunt, rogue backstab, attackSeq increment, dead-target rejection) is handled by the Go backend in `handlers.go`.
 
-### action-graph (non-combat)
-Action CR → Job. Handles: equip weapon/armor/shield, use HP/mana potions, open treasure, unlock door, enter room 2. All patches clear lastLootDrop. Enter-room-2 deletes stale attack CRs.
+### action-graph (CRD-only stub)
+Defines the Action CRD (`resources: []`). All non-combat logic (equip weapon/armor/shield, use HP/mana potions, open treasure, unlock door, enter room 2) is handled by the Go backend. All action patches clear `lastLootDrop`. Enter-room-2 deletes stale Attack CRs.
 
-## Attack Job Behavior
+## Go Backend Combat Logic
 - Reads Dungeon CR, computes dice roll, applies modifiers/equipment/class bonuses
 - Patches Dungeon CR with merge patch (monsterHP/bossHP, heroHP, status effects, loot, attackSeq)
 - Loot drops only on kill transition: OLD_HP > 0 && NEW_HP == 0
-- Boss target matching: grep -q "\-boss$" (not just "boss" anywhere)
+- Boss target matching: `-boss$` suffix regex (not just "boss" anywhere in name)
 - Already-dead targets: patches lastHeroAction but does NOT increment attackSeq
 - Game-over check: rejects combat when heroHP ≤ 0 or (bossHP ≤ 0 && all monsters dead)
-- Custom job-runner image: alpine + kubectl + jq + bash (~30MB)
 
 ## Frontend Architecture
 - React SPA with 8-bit pixel art styling
@@ -78,10 +77,10 @@ Action CR → Job. Handles: equip weapon/armor/shield, use HP/mana potions, open
 - Combat modal: attack animation (frames 3-5) for all entities during both rolling and resolved phases
 - Sprite system: individual frame images, hurt=6→1→6 loop, dead=static frame 6
 
-## Testing (224+ tests)
+## Testing (200+ tests)
 - Integration: 32 tests (core lifecycle, abilities, features, infra)
-- Guardrails: 28 tests (RBAC, no game logic leaks, loot guards, animation guards, combat/action separation)
-- Backend API: 17 tests (CRUD, validation, rate limiting, metrics)
+- Guardrails: 34 tests (RBAC, no game logic leaks, loot guards, animation guards, combat/action separation)
+- Backend API: 21 tests (CRUD, validation, rate limiting, metrics)
 - UI Smoke: 59 Playwright tests (page load, forms, classes, routing, modals)
 - Journey 1: 17 tests (warrior full UI playthrough)
 - Journey 4: 25 tests (items & equipment)

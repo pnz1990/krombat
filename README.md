@@ -8,7 +8,7 @@
 
 ---
 
-An interactive, turn-based dungeon game where the entire game state is orchestrated by [kro](https://kro.run) ResourceGraphDefinitions running as an [EKS Managed Capability](https://docs.aws.amazon.com/eks/latest/userguide/kro.html). No custom controllers, no external databases. Just declarative resource graphs, CEL expressions, and kro turning Kubernetes into a programmable game engine.
+An interactive, turn-based dungeon game where the entire game state is orchestrated by [kro](https://kro.run) ResourceGraphDefinitions. No custom controllers, no external databases. Just declarative resource graphs, CEL expressions, and kro turning Kubernetes into a programmable game engine.
 
 ## Concept
 
@@ -18,8 +18,8 @@ Kubernetes RPG demonstrates how [kro](https://kro.run) transforms Kubernetes int
 |---|---|
 | Dungeon | Custom Resource (parent RGD, orchestrates all child CRs) |
 | Hero | Custom Resource → ConfigMap (hero-graph RGD) |
-| Monster | Custom Resource → ConfigMap + conditional Loot CR (monster-graph RGD) |
-| Boss | Custom Resource → ConfigMap + conditional Loot CR (boss-graph RGD) |
+| Monster | Custom Resource → ConfigMap (monster-graph RGD) |
+| Boss | Custom Resource → ConfigMap (boss-graph RGD) |
 | Attack | Custom Resource — CRD-only stub (attack-graph RGD) |
 | Action | Custom Resource — CRD-only stub (action-graph RGD) |
 | Treasure | Custom Resource → ConfigMap + conditional Secret (treasure-graph RGD) |
@@ -31,9 +31,9 @@ Each dungeon instance gets its own Namespace for isolation and clean teardown.
 ## How It Works
 
 1. **Create a Dungeon** — specify a name, monster count (1–10), difficulty (easy/normal/hard), and hero class (warrior/mage/rogue)
-2. **kro reconciles** — dungeon-graph creates a Namespace, Hero CR, Monster CRs (one per monster, via forEach), Boss CR, Treasure CR, Modifier CR, and a `gameConfig` ConfigMap — all wired together via CEL expressions. Several `specPatch` virtual nodes in dungeon-graph act as the game engine, writing combat results and state transitions back to the Dungeon CR spec.
-3. **Attack monsters** — the frontend submits a POST to the backend; the backend runs full combat math in Go (FNV-1a seeded dice on Attack CR UID, class abilities, modifiers, status effects), patches the Dungeon CR spec (`attackSeq`, `lastAttackTarget`, new HP values), and upserts an Attack CR — which signals kro to reconcile and fire the `combatResolve` specPatch node. Loot drops use a separate SHA-256 seed (`kroSeededRoll`) that matches kro's `random.seededString()` exactly, so the item name Go writes to `spec.lastLootDrop` is always identical to what kro materialises in the Loot CR
-4. **Use items** — same pattern via Action CR; the backend runs item/equip/room logic, patches spec, and upserts an Action CR that triggers the `actionResolve` specPatch node
+2. **kro reconciles** — dungeon-graph creates a Namespace, Hero CR, Monster CRs (one per monster, via forEach), Boss CR, Treasure CR, Modifier CR, and a `gameConfig` ConfigMap — all wired together via CEL expressions. Virtual `specPatch` and `stateWrite` nodes in dungeon-graph write computed state back to the Dungeon CR spec.
+3. **Attack monsters** — the frontend submits a POST to the backend; the backend runs all combat math in Go (FNV-1a seeded dice, class abilities, modifiers, status effects), patches the Dungeon CR spec directly (new HP values, `attackSeq`, `lastAttackTarget`, loot), and upserts an Attack CR as a signal
+4. **Use items** — same pattern via Action CR; the backend runs item/equip/room logic and patches the spec directly
 5. **Boss unlocks** — when all monster HP = 0, kro's CEL in `boss-graph` transitions `bossState` to `ready`; the Dungeon CR status aggregates this via `dungeon-graph` CEL
 6. **Defeat the boss** — boss has three phases driven by HP thresholds in `boss-graph` CEL (Phase 1 → Phase 2 ENRAGED → Phase 3 BERSERK), each with higher counter damage and special attack chance
 7. **Enter Room 2** — after the boss falls, treasure auto-opens, door auto-unlocks; clicking the door triggers `enter-room-2`, which resets to a harder set of monsters (trolls/ghouls) and a bat-boss
@@ -62,7 +62,7 @@ Each dungeon instance gets its own Namespace for isolation and clean teardown.
 
 - **Frontend** — 8-bit pixel art React SPA. All game state read from Dungeon CR `spec` (not `status`, which can be stale after room transitions). Nginx reverse-proxies `/api/` to the backend. Includes a kro teaching layer: InsightCards, KroGlossary, CelTrace, live resource graph (KroGraph), Inspector panel, and an in-browser CEL Playground.
 - **Backend** — Stateless Go service. Only touches Dungeon, Attack, and Action CRs — never reads Pods, Secrets, or Jobs directly. Routes non-combat actions to Action CR, combat to Attack CR. Runs all game math in Go. Includes rate limiting (300 ms/dungeon), Prometheus metrics on `/metrics`, and a CEL eval endpoint.
-- **Kubernetes + kro** — Sole source of truth. Nine RGDs orchestrate the game via CR chaining. kro runs as an [EKS Managed Capability](https://docs.aws.amazon.com/eks/latest/userguide/kro.html).
+- **Kubernetes + kro** — Sole source of truth. Nine RGDs orchestrate the game via CR chaining. kro is self-installed via Helm (patched fork `cel-writeback-d`).
 - **Argo CD** — Runs as an [EKS Managed Capability](https://docs.aws.amazon.com/eks/latest/userguide/argocd.html). Continuously syncs all cluster manifests from this repo. GitHub webhook provides ~6 s sync latency.
 - **Observability** — CloudWatch Container Insights, structured JSON logs from the backend, CloudWatch dashboard and alarms. Prometheus metrics scraped from `/metrics`.
 
@@ -115,15 +115,14 @@ All nine ResourceGraphDefinitions live in `manifests/rgds/`:
 │   ├── apps/                # Argo CD Application manifest
 │   ├── rbac/                # ServiceAccounts, Roles, Bindings
 │   ├── rgds/                # 9 kro ResourceGraphDefinitions
-│   └── system/              # Deployments, CronJob, DaemonSet, ConfigMaps
-├── images/job-runner/       # Minimal image (bash + kubectl + jq) for node warming
+│   └── system/              # Deployments, CronJob, ConfigMaps
 ├── infra/                   # Terraform (EKS Auto Mode, kro, Argo CD, ECR, CloudWatch, OIDC)
 ├── tests/
 │   ├── run.sh               # Integration test runner (4 sub-suites)
 │   ├── guardrails.sh        # Architecture guardrails (~34 assertions)
-│   ├── backend-api.sh       # REST API tests (30 tests)
+│   ├── backend-api.sh       # REST API tests (21 tests)
 │   └── e2e/
-│       ├── smoke-test.js    # Playwright smoke tests (76 assertions)
+│       ├── smoke-test.js    # Playwright smoke tests (59 assertions)
 │       └── journeys/        # 32 gameplay journey tests
 ├── scripts/
 │   ├── ui-test.sh           # Deploy-and-test script (push → sync → smoke test)
@@ -133,7 +132,7 @@ All nine ResourceGraphDefinitions live in `manifests/rgds/`:
 
 ## Prerequisites
 
-- Amazon EKS cluster with the [kro](https://docs.aws.amazon.com/eks/latest/userguide/kro.html) and [Argo CD](https://docs.aws.amazon.com/eks/latest/userguide/argocd.html) managed capabilities enabled
+- Amazon EKS cluster with kro installed via Helm (patched fork `cel-writeback-d`) and [Argo CD](https://docs.aws.amazon.com/eks/latest/userguide/argocd.html) managed capability enabled
 - `kubectl` configured for the target cluster
 - See `infra/` for Terraform provisioning (EKS Auto Mode cluster, ECR repos, IAM roles, CloudWatch)
 
@@ -389,7 +388,7 @@ Provisioned by Terraform in `infra/`:
 |---|---|
 | Cluster | EKS Auto Mode `krombat`, Kubernetes 1.34, `us-west-2` |
 | Node pools | `general-purpose` + `system` (Auto Mode managed) |
-| kro | EKS Managed Capability |
+| kro | Self-installed via Helm (patched fork `cel-writeback-d`) |
 | Argo CD | EKS Managed Capability, IAM Identity Center SSO |
 | ECR | `krombat/backend` + `krombat/frontend` (last 10 images retained) |
 | CloudWatch | Container Insights, 4 log groups, dashboard, 3 alarms |
@@ -402,8 +401,6 @@ Provisioned by Terraform in `infra/`:
 | `backend.yaml` | `rpg-backend` Deployment + Service |
 | `frontend.yaml` | `rpg-frontend` Deployment + Service (nginx) |
 | `dungeon-reaper.yaml` | CronJob every 10 min — deletes dungeons older than 4 h (skips dungeons with active Attacks/Actions) |
-| `image-cache.yaml` | DaemonSet — pre-pulls job-runner image on every node (eliminates cold-start delay) |
-| `node-warmer.yaml` | Keeps a node warm for game workloads |
 | `leaderboard-cm.yaml` | Empty `krombat-leaderboard` ConfigMap (seed for leaderboard storage) |
 | `backend-pdb.yaml` | PodDisruptionBudget for the backend |
 
@@ -428,8 +425,8 @@ tests/run-all.sh
 # Individual suites
 tests/run.sh            # Integration: core lifecycle, abilities, features, infra
 tests/guardrails.sh     # Architecture guardrails (~34 assertions)
-tests/backend-api.sh    # REST API (30 tests)
-BASE_URL=http://localhost:3000 node tests/e2e/smoke-test.js   # UI smoke (76 assertions)
+tests/backend-api.sh    # REST API (21 tests)
+BASE_URL=http://localhost:3000 node tests/e2e/smoke-test.js   # UI smoke (59 assertions)
 
 # Run a specific journey
 BASE_URL=http://localhost:3000 node tests/e2e/journeys/20-leaderboard.js

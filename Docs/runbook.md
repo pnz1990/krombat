@@ -28,16 +28,12 @@ kubectl annotate dungeon <name> kro.run/force-reconcile=$(date +%s) --overwrite
 
 ## Troubleshooting
 
-### Attack job stuck or failing
+### Attack CR stuck or stale
 ```bash
-# Check job status
-kubectl get jobs -l test-dungeon=<name>
-kubectl logs job/<attack-name>
+# Check Attack CR status
+kubectl get attacks
 
-# Cancel a stuck job
-kubectl delete job <attack-name>
-
-# Delete the Attack CR
+# Delete a stale Attack CR
 kubectl delete attack <attack-name>
 ```
 
@@ -113,7 +109,7 @@ kubectl get application krombat -n argocd -o jsonpath='Sync: {.status.sync.statu
 | Log Group | Contents | Retention |
 |-----------|----------|-----------|
 | `/eks/krombat/rpg-system` | Backend + frontend container logs | 7 days |
-| `/eks/krombat/game` | Attack Job logs, dungeon namespace resources | 7 days |
+| `/eks/krombat/game` | Backend combat logs, dungeon namespace resources | 7 days |
 | `/eks/krombat/kro` | kro controller logs | 30 days |
 | `/eks/krombat/argocd` | Argo CD logs | 30 days |
 
@@ -152,7 +148,7 @@ fields @timestamp, msg, status, error, dungeon
 | limit 20
 ```
 
-### View attack Job combat math
+### View backend combat math
 ```
 # Query game log group
 fields @timestamp, @message
@@ -255,7 +251,7 @@ kubectl get dungeon <name> -o jsonpath='Inv:{.spec.inventory} Wpn:{.spec.weaponB
 # HP potion
 kubectl apply -f - <<EOF
 apiVersion: game.k8s.example/v1alpha1
-kind: Attack
+kind: Action
 metadata:
   name: use-potion-$(date +%s)
 spec:

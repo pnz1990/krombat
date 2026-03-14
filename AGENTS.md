@@ -2,9 +2,9 @@
 
 ## CRITICAL: kubectl Context Rule
 
-**ALWAYS pass `--context arn:aws:eks:us-west-2:569190534191:cluster/krombat` on EVERY kubectl command.** Multiple EKS clusters share this kubeconfig. Never rely on `kubectl config use-context` — another session may switch it. This applies to direct kubectl calls AND to test scripts (set `KUBECTL_CONTEXT` env var or pass `--context` inline).
+**ALWAYS pass `--context arn:aws:eks:us-west-2:319279230668:cluster/krombat` on EVERY kubectl command.** Multiple EKS clusters share this kubeconfig. Never rely on `kubectl config use-context` — another session may switch it. This applies to direct kubectl calls AND to test scripts (set `KUBECTL_CONTEXT` env var or pass `--context` inline).
 
-Example: `kubectl --context arn:aws:eks:us-west-2:569190534191:cluster/krombat get pods -n rpg-system`
+Example: `kubectl --context arn:aws:eks:us-west-2:319279230668:cluster/krombat get pods -n rpg-system`
 
 ## What This Is
 
@@ -14,7 +14,7 @@ A turn-based dungeon RPG where game state lives in Kubernetes Custom Resources o
 
 ## Architecture
 
-- **EKS Auto Mode** cluster (`krombat`, K8s 1.34) in `us-west-2`, account `569190534191`
+- **EKS Auto Mode** cluster (`krombat`, K8s 1.34) in `us-west-2`, account `319279230668`
 - **kro** (self-installed via Helm, patched fork `cel-writeback-d`) — nine RGDs manage the resource graph and derived status:
   - `dungeon-graph` (parent): Dungeon CR → Namespace, Hero CR, Monster CRs, Boss CR, Treasure CR, Modifier CR, GameConfig CM, combatResult CM, actionResult CM
   - `hero-graph`: Hero CR → ConfigMap (HP, class, mana, stats via CEL)
@@ -85,7 +85,7 @@ A turn-based dungeon RPG where game state lives in Kubernetes Custom Resources o
 ## Game Features
 
 - **3 Hero Classes**: Warrior (200 HP, 25% defense, Taunt), Mage (120 HP, 1.3x all, 8 mana, Heal), Rogue (150 HP, 1.1x, 25% dodge, Backstab)
-- **3 Difficulty Levels**: Easy (1d20+2), Normal (2d12+4), Hard (3d20+5)
+- **3 Difficulty Levels**: Easy (1d20+3), Normal (2d12+6), Hard (3d20+8)
 - **Multi-room dungeons**: Room 1 (goblins/skeletons + dragon) → treasure → door → Room 2 (trolls/ghouls + bat-boss)
 - **Dungeon Modifiers**: 6 types (3 curses, 3 blessings) via modifier-graph RGD
 - **Loot System**: Weapons, armor, shields, HP/mana potions. Only drops on kill transition (OLD_HP>0 && NEW_HP==0)
@@ -201,7 +201,7 @@ If tests fail: check output → review logs → check `test-failure.png` screens
 - [x] Journey 11: Room 2 Full Victory — Complete both rooms end-to-end (25/25)
 - [x] Journey 12: kro Teaching Layer — InsightCards, glossary, graph panel, CelTrace, K8s log annotations (25/25)
 
-**Critical rule for journey tests**: Tests must interact exclusively through the browser UI — no `kubectl`, no direct `fetch()` to the API. Tests must exercise the real code paths where bugs live (attack-graph Jobs, kro reconciliation, frontend polling).
+**Critical rule for journey tests**: Tests must interact exclusively through the browser UI — no `kubectl`, no direct `fetch()` to the API. Tests must exercise the real code paths where bugs live (Go backend combat logic, kro reconciliation, frontend polling).
 
 ---
 
@@ -221,12 +221,11 @@ Next tasks may include the open feature requests:
 - `gameOver` and `bossState` must derive from `spec` fields, NOT `status` (status is stale after room transitions)
 - `allMonstersDead` must be declared BEFORE `bossState` in JS (TDZ crash risk)
 - Boss target matching must use `-boss$` suffix regex, not just the string "boss" (dungeon names can contain "boss")
-- Attack Jobs from room 1 can run in room 2 — `enter-room-2` action must delete stale attacks
-- `imagePullPolicy: IfNotPresent` on Job containers (cold start is 30–60s otherwise)
+- Stale Attack CRs from room 1 can be re-processed in room 2 — `enter-room-2` action must delete stale Attack CRs
 - Item actions early-return in frontend — no fallthrough to combat/loot code
 - `prevInventoryRef` was removed — loot detection uses `lastLootDrop` field from server
 - Avoid `${}` in RGD YAML — kro parses it as CEL; use `$()` for bash variable expansion
-- `readyWhen` expressions in RGDs must use `${}` wrapper AND the resource's own ID (not `self`) — kro EKS Managed Capability enforces both
+- `readyWhen` expressions in RGDs must use `${}` wrapper AND the resource's own ID (not `self`) — kro enforces both
 - When adding new fields to the Dungeon CR spec in `dungeon-graph.yaml`, always `kubectl delete rgd dungeon-graph` after merge so kro regenerates the CRD schema — Argo CD sync alone does NOT update the CRD field list
 
 ---
@@ -370,8 +369,8 @@ If anything outside the intended scope appears, do NOT open the PR — clean the
 
 ## Infrastructure
 
-- Cluster: `krombat` in `us-west-2`, account `569190534191`
-- ECR: `569190534191.dkr.ecr.us-west-2.amazonaws.com/krombat/{backend,frontend}`
+- Cluster: `krombat` in `us-west-2`, account `319279230668`
+- ECR: `319279230668.dkr.ecr.us-west-2.amazonaws.com/krombat/{backend,frontend}`
 - GitHub: `pnz1990/krombat`
 - 9 RGDs active, Argo CD syncing from `manifests/`
 - CI: `.github/workflows/build-images.yml` — builds on PR, pushes to ECR + rollout restart on main merge

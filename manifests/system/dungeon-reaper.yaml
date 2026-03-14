@@ -45,7 +45,7 @@ spec:
           restartPolicy: Never
           containers:
             - name: reaper
-              image: bitnami/kubectl:1.31.0
+              image: alpine/k8s:1.31.4
               command: ["/bin/bash", "-c"]
               args:
                 - |
