@@ -559,7 +559,7 @@ patch := map[string]interface{}{
     learnMore: 'backend/internal/handlers/handlers.go and dungeon-graph.yaml',
   },
 
-   'cel-playground': {
+  'cel-playground': {
     id: 'cel-playground',
     title: 'CEL Playground — Live Expression Sandbox',
     tagline: 'Type any CEL expression and evaluate it against your live dungeon spec — the same way kro evaluates RGD expressions during reconcile.',
