@@ -75,6 +75,7 @@ spec:
       modifier: "${modifierCR.status.?effect.orValue('No modifier')}"
       modifierType: "${modifierCR.status.?modifierType.orValue('none')}"
       maxHeroHP: "${heroCR.status.?maxHP.orValue('100')}"
+      maxHeroMana: "${schema.spec.heroClass == 'mage' ? '8' : '0'}"
       maxMonsterHP: "${gameConfig.data.maxMonsterHP}"
       maxBossHP: "${gameConfig.data.maxBossHP}"
       diceFormula: "${gameConfig.data.diceFormula}"
