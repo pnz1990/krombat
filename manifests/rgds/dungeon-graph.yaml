@@ -300,14 +300,17 @@ spec:
         abilityProcessedSeq: "${schema.spec.attackSeq}"
         lastAbility: "${''}"
 
-    # --- DoT tick: decrement poison/burn/stun and apply HP damage, once per attack turn ---
-    # Gate: attackSeq has advanced past dotProcessedSeq AND at least one DoT is active
-    # AND lastAttackTarget is empty (meaning combatResolve isn't handling this turn)
-    # AND lastAbility is empty (meaning abilityResolve already ran or this isn't an ability turn).
+     # --- DoT tick: decrement poison/burn/stun and apply HP damage, once per attack turn ---
+     # Gate: attackSeq has advanced past dotProcessedSeq AND combatResolve has fired first
+     # (dotProcessedSeq < combatProcessedSeq prevents firing the same reconcile cycle that
+     # applied the DoT via counter-attack, which would give an extra tick)
+     # AND at least one DoT is active
+     # AND lastAttackTarget is empty (combatResolve already ran and cleared the target)
+     # AND lastAbility is empty.
     - id: tickDoT
       type: specPatch
       includeWhen:
-        - "${schema.spec.attackSeq > schema.spec.dotProcessedSeq && (schema.spec.poisonTurns > 0 || schema.spec.burnTurns > 0 || schema.spec.stunTurns > 0) && schema.spec.lastAttackTarget == '' && schema.spec.lastAbility == ''}"
+        - "${schema.spec.attackSeq > schema.spec.dotProcessedSeq && schema.spec.dotProcessedSeq < schema.spec.combatProcessedSeq && (schema.spec.poisonTurns > 0 || schema.spec.burnTurns > 0 || schema.spec.stunTurns > 0) && schema.spec.lastAttackTarget == '' && schema.spec.lastAbility == ''}"
       patch:
         heroHP: "${schema.spec.heroHP - (schema.spec.poisonTurns > 0 ? 5 : 0) - (schema.spec.burnTurns > 0 ? 8 : 0) < 0 ? 0 : schema.spec.heroHP - (schema.spec.poisonTurns > 0 ? 5 : 0) - (schema.spec.burnTurns > 0 ? 8 : 0)}"
         poisonTurns: "${schema.spec.poisonTurns > 0 ? schema.spec.poisonTurns - 1 : 0}"

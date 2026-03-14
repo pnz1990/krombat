@@ -419,11 +419,19 @@ export default function App() {
         } else {
           addEvent(icon, heroAction)
         }
-        if (heroAction.includes('Dropped')) addEvent('chest', heroAction.split('Dropped')[1]?.trim() || 'Loot dropped!')
-        // Kill
-        if (heroAction.includes('-> 0)')) {
-          const target = heroAction.match(/damage to (\S+)/)?.[1] || 'enemy'
-          addEvent('skull', `${target} slain!`)
+        // Loot: use lastLootDrop from spec (kro-authoritative), not Go log text
+        if (pollSucceeded && updated.spec.lastLootDrop && updated.spec.lastLootDrop !== detail?.spec.lastLootDrop) {
+          addEvent('chest', `Loot dropped: ${updated.spec.lastLootDrop}`)
+        }
+        // Kill detection: use actual monsterHP spec change, not Go log text
+        if (pollSucceeded) {
+          const prevMonHP: number[] = detail?.spec.monsterHP || []
+          const newMonHP: number[] = updated.spec.monsterHP || []
+          newMonHP.forEach((hp, idx) => {
+            if (hp <= 0 && (prevMonHP[idx] ?? 1) > 0) {
+              addEvent('skull', `monster-${idx} slain!`)
+            }
+          })
         }
       }
       if (pollSucceeded && enemyAction) {
@@ -1590,7 +1598,6 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
           difficulty={spec.difficulty || 'normal'}
           turns={spec.attackSeq || 0}
           unlocked={kroUnlocked}
-          k8sLog={k8sLog}
           onClose={() => setShowCertificate(false)}
         />
       )}
@@ -2033,9 +2040,11 @@ function CombatBreakdown({ heroAction, enemyAction, spec, oldHP }: { heroAction:
   // Weapon bonus
   if (heroAction.includes('+') && heroAction.includes('wpn')) lines.push({ icon: 'dagger', text: 'Weapon bonus applied' })
 
-  // Loot
-  if (heroAction.includes('Dropped')) { const m = heroAction.match(/Dropped (.+?)!/); if (m) lines.push({ icon: 'chest', text: `Loot: ${m[1]}`, color: '#f5c518' }) }
-  if (heroAction.includes('mana!')) lines.push({ icon: 'mana', text: '+1 mana (monster kill)', color: '#9b59b6' })
+  // Mana regen on kill (from Go log text — reliable)
+  if (heroAction.includes('+1 mana')) lines.push({ icon: 'mana', text: '+1 mana (monster kill)', color: '#9b59b6' })
+
+  // Loot — show from spec.lastLootDrop (kro-authoritative), not from Go log text
+  if (spec?.lastLootDrop) lines.push({ icon: 'chest', text: `Loot: ${spec.lastLootDrop}`, color: '#f5c518' })
 
   // Enemy action
   if (enemyAction) {
@@ -2054,8 +2063,10 @@ function CombatBreakdown({ heroAction, enemyAction, spec, oldHP }: { heroAction:
   if (enemyAction.includes('BURN')) lines.push({ icon: 'fire', text: 'Burning! -8 HP/turn for 2 turns', color: '#e74c3c' })
   if (enemyAction.includes('STUN')) lines.push({ icon: 'lightning', text: 'Stunned! Skip next attack', color: '#f1c40f' })
 
-  // Kill / victory
-  if (dmgMatch && dmgMatch[3] === '0') lines.push({ icon: 'skull', text: 'Target slain!', color: '#f5c518' })
+  // Kill / victory — derive from spec (kro-authoritative), not Go log text
+  const monsterKilled = Array.isArray(spec?.monsterHP) && spec.monsterHP.some((hp: number) => hp <= 0)
+  const bossKilled = (spec?.bossHP ?? 1) <= 0
+  if ((monsterKilled || bossKilled) && (dmgMatch || heroAction.includes('defeated'))) lines.push({ icon: 'skull', text: 'Target slain!', color: '#f5c518' })
   if (enemyAction.includes('defeated')) lines.push({ icon: 'crown', text: 'BOSS DEFEATED!', color: '#f5c518' })
 
   return (
