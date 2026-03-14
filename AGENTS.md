@@ -104,7 +104,7 @@ A turn-based dungeon RPG where game state lives in Kubernetes Custom Resources o
 - **To deploy**: push to main → CI builds image → CI rollout restarts both backend+frontend
 - **When RGD schema changes**: `kubectl delete rgd <name>` → Argo CD recreates
 - **Avoid `${BASH_VAR}` in RGD YAML** — kro parses `${}` as CEL; use `$(BASH_VAR)` instead
-- **Access game**: `kubectl port-forward svc/rpg-frontend -n rpg-system 3000:3000` → http://localhost:3000
+- **Access game**: `https://learn-kro.eks.aws.dev` (internet-facing ALB — **NEVER use port-forward**)
 
 ---
 
@@ -148,32 +148,28 @@ gh pr merge <pr-number> --squash --delete-branch
 
 ## Testing Workflow
 
-**NEVER claim "done" or "try it out" without running `./scripts/ui-test.sh` first.**
+**NEVER claim "done" or "try it out" without running journey tests against prod first.**
 
 ### Standard workflow after frontend or backend changes
 
 ```bash
 # 1. Make code changes
-# 2. Commit changes
-# 3. Run the deploy-and-test script:
-./scripts/ui-test.sh
+# 2. Commit and push via PR (see Git Workflow)
+# 3. Wait for CI deploy to land on prod (Argo CD syncs in ~6s after merge to main)
+# 4. Clean up any stale dungeons before testing:
+kubectl --context arn:aws:eks:us-west-2:319279230668:cluster/krombat delete dungeons --all -A
+# 5. Run journey tests in batches of 8 against prod (NEVER port-forward):
+BASE_URL=https://learn-kro.eks.aws.dev node tests/e2e/run-journeys.js 01,02,03,04,05,06,07,08
+BASE_URL=https://learn-kro.eks.aws.dev node tests/e2e/run-journeys.js 09,10,11,12,13,14,15,16
+BASE_URL=https://learn-kro.eks.aws.dev node tests/e2e/run-journeys.js 17,18,19,20,21,22,23,24
+BASE_URL=https://learn-kro.eks.aws.dev node tests/e2e/run-journeys.js 25,26,27,28,29,30,31,32
 ```
 
-This script:
-- Pushes changes to Git
-- Waits for Argo CD to sync (5 min timeout)
-- Waits for deployments to be ready (5 min timeout)
-- Port-forwards the frontend service
-- Runs curl test to verify UI responds
-- Runs Playwright smoke tests (5 automated checks)
-- Shows logs if anything fails
+**Port-forward is BANNED for testing.** It drops mid-test and causes false failures. Always use `BASE_URL=https://learn-kro.eks.aws.dev` directly.
 
-```bash
-# If you already pushed and just want to re-test:
-./scripts/ui-test.sh --skip-push
-```
+**Always clean dungeons before a test run.** Stale dungeons from prior runs pollute state and cause flaky failures.
 
-If tests fail: check output → review logs → check `test-failure.png` screenshot → fix → re-run.
+**Run journeys in batches of 8 max.** Running all 32 in parallel overwhelms the cluster and causes timeouts.
 
 ### All test suites
 
