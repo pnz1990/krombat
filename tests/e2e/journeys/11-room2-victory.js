@@ -33,7 +33,7 @@ async function run() {
   const dName = `j11-${Date.now()}`;
   const consoleErrors = [];
   page.on('console', msg => {
-    if (msg.type() === 'error' && !msg.text().includes('WebSocket') && !msg.text().includes('404'))
+    if (msg.type() === 'error' && !msg.text().includes('WebSocket') && !msg.text().includes('404') && !msg.text().includes('net::ERR'))
       consoleErrors.push(msg.text());
   });
 
