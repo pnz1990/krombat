@@ -592,6 +592,14 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 
 	heroHP := getInt(spec, "heroHP")
 	heroClass := getString(spec, "heroClass", "warrior")
+	maxHeroHPStatus, _ := strconv.ParseInt(getString(dungeonStatus, "maxHeroHP", ""), 10, 64)
+	if maxHeroHPStatus <= 0 {
+		maxHeroHPStatus = classMaxHP(heroClass)
+	}
+	maxHeroManaStatus, _ := strconv.ParseInt(getString(dungeonStatus, "maxHeroMana", ""), 10, 64)
+	if maxHeroManaStatus < 0 {
+		maxHeroManaStatus = classMaxMana(heroClass)
+	}
 	heroMana := getInt(spec, "heroMana")
 	difficulty := getString(spec, "difficulty", "normal")
 	tauntActive := getInt(spec, "tauntActive")
@@ -718,7 +726,7 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 			return fmt.Errorf("not enough mana")
 		}
 		// Compute heal values for log text (kro will independently compute the same mutations)
-		maxHP := int64(120)
+		maxHP := maxHeroHPStatus
 		newHP := min64(heroHP+40, maxHP)
 		heroMana -= 2
 		heroAction := fmt.Sprintf("Mage heals for %d HP! (Mana: %d)", newHP-heroHP, heroMana)
@@ -1027,7 +1035,7 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 		newMonsterHP[idxInt] = newHP
 
 		// Mage mana regen on kill
-		if oldHP > 0 && newHP == 0 && heroClass == "mage" && heroMana < classMaxMana(heroClass) {
+		if oldHP > 0 && newHP == 0 && heroClass == "mage" && heroMana < maxHeroManaStatus {
 			heroMana++
 			classNote += " +1 mana!"
 		}
@@ -1209,10 +1217,19 @@ func (h *Handler) processAction(ctx context.Context, ns, name, action string, cl
 		return err
 	}
 	spec := getMap(dungeon.Object, "spec")
+	dungeonStatusAction := getMap(dungeon.Object, "status")
 
 	heroHP := getInt(spec, "heroHP")
 	heroMana := getInt(spec, "heroMana")
 	heroClass := getString(spec, "heroClass", "warrior")
+	maxHeroHPAction, _ := strconv.ParseInt(getString(dungeonStatusAction, "maxHeroHP", ""), 10, 64)
+	if maxHeroHPAction <= 0 {
+		maxHeroHPAction = classMaxHP(heroClass)
+	}
+	maxHeroManaAction, _ := strconv.ParseInt(getString(dungeonStatusAction, "maxHeroMana", ""), 10, 64)
+	if maxHeroManaAction < 0 {
+		maxHeroManaAction = classMaxMana(heroClass)
+	}
 	inventory := getString(spec, "inventory", "")
 	bossHP := getInt(spec, "bossHP")
 	actionSeq := getInt(spec, "actionSeq")
@@ -1278,17 +1295,17 @@ func (h *Handler) processAction(ctx context.Context, ns, name, action string, cl
 
 		switch item {
 		case "hppotion-common":
-			maxHP := classMaxHP(heroClass)
+			maxHP := maxHeroHPAction
 			newHP := min64(heroHP+20, maxHP)
 			patchSpec["lastHeroAction"] = fmt.Sprintf("Used %s! HP: %d -> %d", item, heroHP, newHP)
 			patchSpec["lastEnemyAction"] = "Item used"
 		case "hppotion-rare":
-			maxHP := classMaxHP(heroClass)
+			maxHP := maxHeroHPAction
 			newHP := min64(heroHP+40, maxHP)
 			patchSpec["lastHeroAction"] = fmt.Sprintf("Used %s! HP: %d -> %d", item, heroHP, newHP)
 			patchSpec["lastEnemyAction"] = "Item used"
 		case "hppotion-epic":
-			maxHP := classMaxHP(heroClass)
+			maxHP := maxHeroHPAction
 			newHP := min64(heroHP+999, maxHP)
 			patchSpec["lastHeroAction"] = fmt.Sprintf("Used %s! HP: %d -> %d", item, heroHP, newHP)
 			patchSpec["lastEnemyAction"] = "Item used"
@@ -1297,7 +1314,7 @@ func (h *Handler) processAction(ctx context.Context, ns, name, action string, cl
 				writeError(w, "mana potions can only be used by Mage", http.StatusBadRequest)
 				return fmt.Errorf("mana potion non-mage")
 			}
-			newMana := min64(heroMana+2, classMaxMana(heroClass))
+			newMana := min64(heroMana+2, maxHeroManaAction)
 			patchSpec["lastHeroAction"] = fmt.Sprintf("Used %s! Mana: %d -> %d", item, heroMana, newMana)
 			patchSpec["lastEnemyAction"] = "Item used"
 		case "manapotion-rare":
@@ -1305,7 +1322,7 @@ func (h *Handler) processAction(ctx context.Context, ns, name, action string, cl
 				writeError(w, "mana potions can only be used by Mage", http.StatusBadRequest)
 				return fmt.Errorf("mana potion non-mage")
 			}
-			newMana := min64(heroMana+3, classMaxMana(heroClass))
+			newMana := min64(heroMana+3, maxHeroManaAction)
 			patchSpec["lastHeroAction"] = fmt.Sprintf("Used %s! Mana: %d -> %d", item, heroMana, newMana)
 			patchSpec["lastEnemyAction"] = "Item used"
 		case "manapotion-epic":
@@ -1313,7 +1330,7 @@ func (h *Handler) processAction(ctx context.Context, ns, name, action string, cl
 				writeError(w, "mana potions can only be used by Mage", http.StatusBadRequest)
 				return fmt.Errorf("mana potion non-mage")
 			}
-			newMana := min64(heroMana+8, classMaxMana(heroClass))
+			newMana := min64(heroMana+8, maxHeroManaAction)
 			patchSpec["lastHeroAction"] = fmt.Sprintf("Used %s! Mana: %d -> %d", item, heroMana, newMana)
 			patchSpec["lastEnemyAction"] = "Item used"
 		default:
