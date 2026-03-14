@@ -487,25 +487,26 @@ R2B_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeons
 kctl delete dungeon "$R2B_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
 
 # --- Test 29: Boss ENRAGED phase — counter multiplier 1.5x at ≤50% HP ---
-# Strategy: create a dungeon (easy, 0 monsters so boss is immediately ready),
-# patch bossHP to exactly 50% of easy maxHP (200 → 100), wait for kro to reconcile
-# the boss-graph CEL (sets damageMultiplier=15), then submit a boss attack and
-# verify lastEnemyAction contains the [ENRAGED ×1.5] annotation.
+# Strategy: create a dungeon with 1 monster, patch monsterHP:[0] to mark it dead
+# (boss becomes "ready"), patch bossHP to 50% of easy maxHP (200 → 100), wait for
+# kro to reconcile boss-graph CEL (sets damageMultiplier=15), then submit a boss
+# attack and verify lastEnemyAction contains the [ENRAGED ×1.5] annotation.
 log "Test 29: Boss ENRAGED phase counter-attack multiplier (1.5x at ≤50% HP)"
 BP1_DUNGEON="api-test-bp1-$(date +%s)"
 curl -s -X POST "$BASE/api/v1/dungeons" \
   -H "Content-Type: application/json" \
-  -d "{\"name\":\"$BP1_DUNGEON\",\"monsters\":0,\"difficulty\":\"easy\",\"heroClass\":\"warrior\"}" -o /dev/null
+  -d "{\"name\":\"$BP1_DUNGEON\",\"monsters\":1,\"difficulty\":\"easy\",\"heroClass\":\"warrior\"}" -o /dev/null
 sleep 15
-# Patch bossHP to 100 = 50% of easy maxHP (200) — triggers ENRAGED (phase2, ×1.5)
-curl -s -X PATCH "$BASE/api/v1/dungeons/default/$BP1_DUNGEON" \
-  -H "Content-Type: application/json" \
-  -d '{"spec":{"bossHP":100,"monsterHP":[]}}' -o /dev/null 2>/dev/null || true
-# Wait for kro to reconcile Boss CR hp → boss-graph CEL → dungeon status.bossDamageMultiplier=15
+# Patch monsterHP:[0] (monster dead → boss ready) and bossHP=100 (50% of 200) → ENRAGED (phase2, ×1.5)
+# Use kubectl patch directly (no PATCH HTTP endpoint — backend uses kube SSA)
+kctl patch dungeon "$BP1_DUNGEON" -n default \
+  --type=merge -p '{"spec":{"bossHP":100,"monsterHP":[0]}}' &>/dev/null || true
+# Wait for kro to reconcile: monsterHP[0]=0 → monster-graph dead → dungeon monstersAlive=0
+# → boss-graph entityState=ready, phase2, damageMultiplier=15 → dungeon status.bossDamageMultiplier=15
 sleep 20
 BP1_RESP=$(curl -s -X POST "$BASE/api/v1/dungeons/default/$BP1_DUNGEON/attacks" \
   -H "Content-Type: application/json" \
-  -d '{"target":"boss","damage":5}')
+  -d "{\"target\":\"${BP1_DUNGEON}-boss\",\"damage\":5,\"seq\":-1}")
 BP1_ACTION=$(echo "$BP1_RESP" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('spec',{}).get('lastEnemyAction',''))" 2>/dev/null || true)
 if echo "$BP1_ACTION" | grep -qi "ENRAGED"; then
   pass "Boss ENRAGED phase: lastEnemyAction contains [ENRAGED ×1.5]: \"$(echo "$BP1_ACTION" | head -c 80)\""
@@ -520,23 +521,22 @@ fi
 kctl delete dungeon "$BP1_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
 
 # --- Test 30: Boss BERSERK phase — counter multiplier 2.0x at ≤25% HP ---
-# Same approach: patch bossHP to 25% of easy maxHP (200 → 50 = exactly 25%).
+# Same approach: patch monsterHP:[0] + bossHP to 25% of easy maxHP (200 → 50 = exactly 25%).
 # boss-graph CEL: 50*100/200 = 25, NOT > 25 → phase3, damageMultiplier=20 (2.0x).
 log "Test 30: Boss BERSERK phase counter-attack multiplier (2.0x at ≤25% HP)"
 BP2_DUNGEON="api-test-bp2-$(date +%s)"
 curl -s -X POST "$BASE/api/v1/dungeons" \
   -H "Content-Type: application/json" \
-  -d "{\"name\":\"$BP2_DUNGEON\",\"monsters\":0,\"difficulty\":\"easy\",\"heroClass\":\"warrior\"}" -o /dev/null
+  -d "{\"name\":\"$BP2_DUNGEON\",\"monsters\":1,\"difficulty\":\"easy\",\"heroClass\":\"warrior\"}" -o /dev/null
 sleep 15
-# Patch bossHP to 50 = 25% of easy maxHP (200) — triggers BERSERK (phase3, ×2.0)
-curl -s -X PATCH "$BASE/api/v1/dungeons/default/$BP2_DUNGEON" \
-  -H "Content-Type: application/json" \
-  -d '{"spec":{"bossHP":50,"monsterHP":[]}}' -o /dev/null 2>/dev/null || true
+# Patch monsterHP:[0] + bossHP=50 (25% of 200) — triggers BERSERK (phase3, ×2.0)
+kctl patch dungeon "$BP2_DUNGEON" -n default \
+  --type=merge -p '{"spec":{"bossHP":50,"monsterHP":[0]}}' &>/dev/null || true
 # Wait for kro to reconcile Boss CR hp → boss-graph CEL → dungeon status.bossDamageMultiplier=20
 sleep 20
 BP2_RESP=$(curl -s -X POST "$BASE/api/v1/dungeons/default/$BP2_DUNGEON/attacks" \
   -H "Content-Type: application/json" \
-  -d '{"target":"boss","damage":5}')
+  -d "{\"target\":\"${BP2_DUNGEON}-boss\",\"damage\":5,\"seq\":-1}")
 BP2_ACTION=$(echo "$BP2_RESP" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('spec',{}).get('lastEnemyAction',''))" 2>/dev/null || true)
 if echo "$BP2_ACTION" | grep -qi "BERSERK"; then
   pass "Boss BERSERK phase: lastEnemyAction contains [BERSERK ×2.0]: \"$(echo "$BP2_ACTION" | head -c 80)\""
