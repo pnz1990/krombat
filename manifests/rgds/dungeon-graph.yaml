@@ -207,7 +207,7 @@ spec:
           cel.bind(s9, rc >= 9 ? s8 * 110 / 100 : s8,
           cel.bind(s10, rc >= 10 ? s9 * 110 / 100 : s9,
           rc > 10 ? s10 * (rc == 11 ? 110 : rc == 12 ? 121 : rc == 13 ? 133 : rc == 14 ? 146 : rc == 15 ? 161 : rc == 16 ? 177 : rc == 17 ? 195 : rc == 18 ? 214 : rc == 19 ? 236 : 259) / 100 : s10
-          )))))))))))))}
+          ))))))))))))}
 
         # --- Hero mana by class ---
         heroMana: >-
@@ -235,7 +235,7 @@ spec:
           cel.bind(sc10, rc >= 10 ? sc9 * 125 / 100 : sc9,
           cel.bind(mhp, rc > 10 ? sc10 * (rc == 11 ? 125 : rc == 12 ? 156 : rc == 13 ? 195 : rc == 14 ? 244 : rc == 15 ? 305 : rc == 16 ? 381 : rc == 17 ? 476 : rc == 18 ? 596 : rc == 19 ? 745 : 931) / 100 : sc10,
           lists.range(schema.spec.monsters).map(i, mhp)
-          )))))))))))))))))))))}
+          )))))))))))))))))))}
 
         # --- Boss HP: base by difficulty, NG+ scaled ---
         bossHP: >-
