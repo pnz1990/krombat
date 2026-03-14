@@ -61,6 +61,7 @@ spec:
       abilityProcessedSeq: integer | default=0
       runCount: integer | default=0
       monsterTypes: "[]string"
+      initProcessedSeq: integer | default=0
     status:
       livingMonsters: "${size(monsterCRs.filter(m, m.status.?entityState.orValue('alive') == 'alive'))}"
       bossState: "${bossCR.status.?entityState.orValue('pending')}"
@@ -179,6 +180,119 @@ spec:
           diceFormula: "${schema.spec.difficulty == 'easy' ? '1d20+3' : schema.spec.difficulty == 'hard' ? '3d20+8' : '2d12+6'}"
           monsterCounter: "${schema.spec.difficulty == 'easy' ? '1' : schema.spec.difficulty == 'hard' ? '3' : '2'}"
           bossCounter: "${schema.spec.difficulty == 'easy' ? '3' : schema.spec.difficulty == 'hard' ? '8' : '5'}"
+
+    # ===================================================================
+    # dungeonInit: compute all starting game state from player choices.
+    # Gate: initProcessedSeq == 0 (fires exactly once at creation).
+    # Backend writes only: monsters, difficulty, heroClass, runCount,
+    # and optional NG+ gear carry-overs. kro computes everything else.
+    # ===================================================================
+    - id: dungeonInit
+      type: specPatch
+      includeWhen:
+        - "${schema.spec.initProcessedSeq == 0}"
+      patch:
+        # --- Hero HP by class, scaled by New Game+ runCount (+10% per run compounded) ---
+        heroHP: >-
+          ${cel.bind(base,
+            schema.spec.heroClass == 'warrior' ? 200
+            : schema.spec.heroClass == 'mage' ? 120
+            : schema.spec.heroClass == 'rogue' ? 150 : 100,
+          cel.bind(rc, schema.spec.runCount > 20 ? 20 : (schema.spec.runCount < 0 ? 0 : schema.spec.runCount),
+          cel.bind(s1, rc >= 1 ? base * 110 / 100 : base,
+          cel.bind(s2, rc >= 2 ? s1 * 110 / 100 : s1,
+          cel.bind(s3, rc >= 3 ? s2 * 110 / 100 : s2,
+          cel.bind(s4, rc >= 4 ? s3 * 110 / 100 : s3,
+          cel.bind(s5, rc >= 5 ? s4 * 110 / 100 : s4,
+          cel.bind(s6, rc >= 6 ? s5 * 110 / 100 : s5,
+          cel.bind(s7, rc >= 7 ? s6 * 110 / 100 : s6,
+          cel.bind(s8, rc >= 8 ? s7 * 110 / 100 : s7,
+          cel.bind(s9, rc >= 9 ? s8 * 110 / 100 : s8,
+          cel.bind(s10, rc >= 10 ? s9 * 110 / 100 : s9,
+            rc > 10
+              ? s10 * (rc == 11 ? 110 : rc == 12 ? 121 : rc == 13 ? 133 : rc == 14 ? 146 : rc == 15 ? 161 : rc == 16 ? 177 : rc == 17 ? 195 : rc == 18 ? 214 : rc == 19 ? 236 : 259) / 100
+              : s10
+          )))))))))))))
+
+        # --- Hero mana by class ---
+        heroMana: >-
+          ${schema.spec.heroClass == 'mage' ? 8 : 0}
+
+        # --- Monster HP array: base by difficulty, curse-fortitude +50%, NG+ scale ---
+        monsterHP: >-
+          ${cel.bind(diff, schema.spec.difficulty,
+          cel.bind(base, diff == 'easy' ? 30 : diff == 'hard' ? 80 : 50,
+          cel.bind(rc, schema.spec.runCount > 20 ? 20 : (schema.spec.runCount < 0 ? 0 : schema.spec.runCount),
+          cel.bind(alpha, 'abcdefghijklmnopqrstuvwxyz0123456789',
+          cel.bind(name, schema.metadata.name,
+          cel.bind(modIdx, alpha.indexOf(random.seededString(1, name + '-mod')) % 10,
+          cel.bind(mod, modIdx == 0 ? 'none' : modIdx == 1 ? 'curse-fortitude' : modIdx == 2 ? 'curse-fury' : modIdx == 3 ? 'curse-darkness' : modIdx == 4 ? 'blessing-strength' : modIdx == 5 ? 'blessing-resilience' : modIdx == 6 ? 'blessing-fortune' : modIdx == 7 ? 'blessing-strength' : modIdx == 8 ? 'curse-fury' : 'blessing-fortune',
+          cel.bind(fortified, mod == 'curse-fortitude' ? base * 3 / 2 : base,
+          cel.bind(sc1, rc >= 1 ? fortified * 125 / 100 : fortified,
+          cel.bind(sc2, rc >= 2 ? sc1 * 125 / 100 : sc1,
+          cel.bind(sc3, rc >= 3 ? sc2 * 125 / 100 : sc2,
+          cel.bind(sc4, rc >= 4 ? sc3 * 125 / 100 : sc3,
+          cel.bind(sc5, rc >= 5 ? sc4 * 125 / 100 : sc4,
+          cel.bind(sc6, rc >= 6 ? sc5 * 125 / 100 : sc5,
+          cel.bind(sc7, rc >= 7 ? sc6 * 125 / 100 : sc6,
+          cel.bind(sc8, rc >= 8 ? sc7 * 125 / 100 : sc7,
+          cel.bind(sc9, rc >= 9 ? sc8 * 125 / 100 : sc8,
+          cel.bind(sc10, rc >= 10 ? sc9 * 125 / 100 : sc9,
+          cel.bind(mhp,
+            rc > 10
+              ? sc10 * (rc == 11 ? 125 : rc == 12 ? 156 : rc == 13 ? 195 : rc == 14 ? 244 : rc == 15 ? 305 : rc == 16 ? 381 : rc == 17 ? 476 : rc == 18 ? 596 : rc == 19 ? 745 : 931) / 100
+              : sc10,
+            lists.range(schema.spec.monsters).map(i, mhp)
+          ))))))))))))))))))))}
+
+        # --- Boss HP: base by difficulty, NG+ scaled ---
+        bossHP: >-
+          ${cel.bind(diff, schema.spec.difficulty,
+          cel.bind(base, diff == 'easy' ? 200 : diff == 'hard' ? 800 : 400,
+          cel.bind(rc, schema.spec.runCount > 20 ? 20 : (schema.spec.runCount < 0 ? 0 : schema.spec.runCount),
+          cel.bind(sc1, rc >= 1 ? base * 125 / 100 : base,
+          cel.bind(sc2, rc >= 2 ? sc1 * 125 / 100 : sc1,
+          cel.bind(sc3, rc >= 3 ? sc2 * 125 / 100 : sc2,
+          cel.bind(sc4, rc >= 4 ? sc3 * 125 / 100 : sc3,
+          cel.bind(sc5, rc >= 5 ? sc4 * 125 / 100 : sc4,
+          cel.bind(sc6, rc >= 6 ? sc5 * 125 / 100 : sc5,
+          cel.bind(sc7, rc >= 7 ? sc6 * 125 / 100 : sc6,
+          cel.bind(sc8, rc >= 8 ? sc7 * 125 / 100 : sc7,
+          cel.bind(sc9, rc >= 9 ? sc8 * 125 / 100 : sc8,
+          cel.bind(sc10, rc >= 10 ? sc9 * 125 / 100 : sc9,
+            rc > 10
+              ? sc10 * (rc == 11 ? 125 : rc == 12 ? 156 : rc == 13 ? 195 : rc == 14 ? 244 : rc == 15 ? 305 : rc == 16 ? 381 : rc == 17 ? 476 : rc == 18 ? 596 : rc == 19 ? 745 : 931) / 100
+              : sc10
+          ))))))))))))))}
+
+        # --- Modifier: deterministic from dungeon name via seeded random ---
+        modifier: >-
+          ${cel.bind(alpha, 'abcdefghijklmnopqrstuvwxyz0123456789',
+          cel.bind(name, schema.metadata.name,
+          cel.bind(modIdx, alpha.indexOf(random.seededString(1, name + '-mod')) % 10,
+            modIdx == 0 ? 'none'
+            : modIdx == 1 ? 'curse-fortitude'
+            : modIdx == 2 ? 'curse-fury'
+            : modIdx == 3 ? 'curse-darkness'
+            : modIdx == 4 ? 'blessing-strength'
+            : modIdx == 5 ? 'blessing-resilience'
+            : modIdx == 6 ? 'blessing-fortune'
+            : modIdx == 7 ? 'blessing-strength'
+            : modIdx == 8 ? 'curse-fury'
+            : 'blessing-fortune'
+          )))}
+
+        # --- Monster types: goblin(0), skeleton(1), archer(even>=2), shaman(odd>=3) ---
+        monsterTypes: >-
+          ${lists.range(schema.spec.monsters).map(i,
+            i == 0 ? 'goblin'
+            : i == 1 ? 'skeleton'
+            : i % 2 == 0 ? 'archer'
+            : 'shaman'
+          )}
+
+        # --- Sentinel: mark init complete ---
+        initProcessedSeq: "${1}"
 
     # --- Ability resolution: mage heal and warrior taunt ---
     # Gate: attackSeq has advanced past abilityProcessedSeq AND lastAbility is set.
