@@ -261,7 +261,7 @@ spec:
           cel.bind(name, schema.metadata.name,
           cel.bind(modIdx, alpha.indexOf(random.seededString(1, name + '-mod')) % 10,
           modIdx == 0 ? 'none' : modIdx == 1 ? 'curse-fortitude' : modIdx == 2 ? 'curse-fury' : modIdx == 3 ? 'curse-darkness' : modIdx == 4 ? 'blessing-strength' : modIdx == 5 ? 'blessing-resilience' : modIdx == 6 ? 'blessing-fortune' : modIdx == 7 ? 'blessing-strength' : modIdx == 8 ? 'curse-fury' : 'blessing-fortune'
-          ))}
+          )))}
 
         # --- Monster types: goblin(0), skeleton(1), archer(even>=2), shaman(odd>=3) ---
         monsterTypes: >-
