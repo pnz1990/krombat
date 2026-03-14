@@ -1205,24 +1205,14 @@ export interface KroExpertCertificateProps {
   difficulty: string
   turns: number
   unlocked: Set<KroConceptId>
-  k8sLog: { ts: string; cmd: string; res: string }[]
   onClose: () => void
 }
 
-export function KroExpertCertificate({ dungeonName, heroClass, difficulty, turns, unlocked, k8sLog, onClose }: KroExpertCertificateProps) {
+export function KroExpertCertificate({ dungeonName, heroClass, difficulty, turns, unlocked, onClose }: KroExpertCertificateProps) {
   const total = CONCEPT_ORDER.length
   const count = unlocked.size
   const isMaster = count === total
   const title = isMaster ? 'kro Master' : count >= 9 ? 'kro Expert' : count >= 4 ? 'kro Practitioner' : 'kro Apprentice'
-
-  const handleCopyKubectl = () => {
-    const cmds = k8sLog
-      .filter(e => e.cmd.startsWith('kubectl'))
-      .map(e => `# ${e.res}\n${e.cmd}`)
-      .join('\n\n')
-    navigator.clipboard.writeText(cmds).catch(() => {/* ignore */})
-  }
-
   return (
     <div className="kro-cert-overlay" onClick={onClose}>
       <div className="kro-cert-modal" onClick={e => e.stopPropagation()}>
@@ -1262,10 +1252,7 @@ export function KroExpertCertificate({ dungeonName, heroClass, difficulty, turns
         )}
 
         <div className="kro-cert-actions">
-          <button className="btn btn-primary" onClick={handleCopyKubectl} style={{ fontSize: 8 }}>
-            <PixelIcon name="scroll" size={10} /> Copy kubectl commands
-          </button>
-          <button className="btn" onClick={onClose} style={{ fontSize: 8 }}>
+          <button className="btn btn-primary" onClick={onClose} style={{ fontSize: 8 }}>
             Close
           </button>
         </div>

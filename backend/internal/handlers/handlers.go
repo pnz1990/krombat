@@ -680,7 +680,7 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 		},
 	}}
 	attackData, _ := json.Marshal(attackObj.Object)
-	attackResult, err := h.client.Dynamic.Resource(k8s.AttackGVR).Namespace("default").Patch(
+	_, err = h.client.Dynamic.Resource(k8s.AttackGVR).Namespace("default").Patch(
 		ctx, attackCRName, types.ApplyPatchType, attackData,
 		metav1.PatchOptions{FieldManager: "rpg-backend", Force: boolPtr(true)})
 	if err != nil {
@@ -692,8 +692,11 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 
 	// Step 3: Compute combat math here in the backend (Go replaces the bash Job).
 	// All game logic is deterministic given the inputs from dungeon spec.
-	// Random rolls use the Attack CR's UID as seed (written by API server, truly random).
-	attackUID := string(attackResult.GetUID())
+	// Per-turn seed: unique per (dungeon, turn) — produces real dice variance.
+	// NOTE: The fixed-name Attack CR reuses the same UID every turn via SSA, so
+	// attackResult.GetUID() is constant and MUST NOT be used as a random seed.
+	// We use dungeon name + sequence number instead.
+	turnSeed := name + "-seq-" + strconv.FormatInt(newSeq, 10)
 
 	// NOTE: DoT ticks (poison/burn/stun), backstab cooldown decrement, and taunt
 	// advancement are now handled by kro specPatch nodes (tickDoT, advanceTaunt,
@@ -771,9 +774,9 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 		return h.patchAndRespond(ctx, ns, name, patch, w)
 	}
 
-	// Dice roll (seeded by attack UID)
+	// Dice roll (seeded by turn seed — changes every turn for real variance)
 	isBossTarget := strings.HasSuffix(realTarget, "-boss")
-	baseDamage := rollDice(difficulty, isBossTarget, attackUID)
+	baseDamage, diceFormula := rollDiceDetailed(difficulty, isBossTarget, turnSeed)
 
 	// Class modifier
 	effectiveDamage := baseDamage
@@ -803,7 +806,7 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 		effectiveDamage = effectiveDamage * 3 / 2
 		classNote += " [Blessing: +50% dmg]"
 	} else if modifier == "blessing-fortune" {
-		critRoll := seededRoll(attackUID+"-crit", 100)
+		critRoll := seededRoll(turnSeed+"-crit", 100)
 		if critRoll < 20 {
 			effectiveDamage *= 2
 			classNote += " [CRIT! 2x dmg]"
@@ -824,7 +827,7 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 
 	// Helmet bonus: crit chance (double damage)
 	if helmetBonus > 0 {
-		if seededRoll(attackUID+"-helmet-crit", 100) < helmetBonus {
+		if seededRoll(turnSeed+"-helmet-crit", 100) < helmetBonus {
 			effectiveDamage *= 2
 			classNote += fmt.Sprintf(" [CRIT! helmet +%d%% crit]", helmetBonus)
 		}
@@ -858,7 +861,7 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 	patchSpec := map[string]interface{}{
 		"attackSeq":            newSeq,
 		"lastAttackTarget":     realTarget,
-		"lastAttackSeed":       attackUID,
+		"lastAttackSeed":       turnSeed,
 		"lastAttackIndex":      int64(-1), // will be set below for monster targets
 		"lastAttackIsBoss":     isBossTarget,
 		"lastAttackIsBackstab": isBackstab,
@@ -911,7 +914,7 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 			}
 			// Shield block is independent of armor — works even with no armor equipped
 			if shieldBonus > 0 && counter > 0 {
-				if seededRoll(attackUID+"-shield", 100) < shieldBonus {
+				if seededRoll(turnSeed+"-shield", 100) < shieldBonus {
 					counter = 0
 					classNote += " Shield blocked!"
 				}
@@ -919,14 +922,14 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 			if heroClass == "warrior" {
 				counter = counter * 3 / 4
 			} else if heroClass == "rogue" {
-				if seededRoll(attackUID+"-dodge-boss", 100) < 25 {
+				if seededRoll(turnSeed+"-dodge-boss", 100) < 25 {
 					counter = 0
 					classNote += " Rogue dodged!"
 				}
 			}
 			// Pants: bonus dodge chance (any class)
 			if pantsBonus > 0 && counter > 0 {
-				if seededRoll(attackUID+"-pants-dodge", 100) < pantsBonus {
+				if seededRoll(turnSeed+"-pants-dodge", 100) < pantsBonus {
 					counter = 0
 					classNote += fmt.Sprintf(" [DODGED! pants +%d%% dodge]", pantsBonus)
 				}
@@ -942,8 +945,8 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 			enemyAction = fmt.Sprintf("Boss strikes back for %d damage!%s (Hero HP: %d)", counter, phaseNote, heroHP)
 
 			// Status effects from boss — boots provide status resist
-			effectRoll := seededRoll(attackUID+"-fx", 100)
-			resistRoll := seededRoll(attackUID+"-boots-resist", 100)
+			effectRoll := seededRoll(turnSeed+"-fx", 100)
+			resistRoll := seededRoll(turnSeed+"-boots-resist", 100)
 			resisted := bootsBonus > 0 && resistRoll < bootsBonus
 			if currentRoom == 2 {
 				// Bat-boss: poison 30%, stun 15%
@@ -982,19 +985,14 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 			}
 		} else {
 			enemyAction = "Boss defeated!"
-			// Boss loot — always drops, added to inventory if under cap
-			// (Loot CR is created by boss-graph via includeWhen: hp==0)
-			// We compute the item name from the same CEL seed so frontend shows it
+			// Boss loot computed by kro combatResolve; no loot text in Go log to avoid RNG mismatch.
 			bossLootItem := computeBossLoot(name)
-			if updated, added := inventoryAdd(inventory2, bossLootItem); added {
-				inventory2 = updated
-				classNote += " Boss dropped " + bossLootItem + "!"
-			} else {
-				classNote += " Boss dropped " + bossLootItem + " (inventory full!)"
+			if _, added := inventoryAdd(inventory2, bossLootItem); !added {
+				classNote += " (inventory full)"
 			}
 		}
 
-		heroAction := fmt.Sprintf("Hero (%s) deals %d damage to %s (HP: %d -> %d)%s", heroClass, effectiveDamage, realTarget, bossHP, newBossHP, classNote)
+		heroAction := fmt.Sprintf("[%s] Hero (%s) deals %d damage to %s (HP: %d -> %d)%s", diceFormula, heroClass, effectiveDamage, realTarget, bossHP, newBossHP, classNote)
 		// MIGRATION: game state (heroHP, bossHP, poisonTurns, etc.) is computed by kro.
 		// Backend writes only log text and loot/inventory.
 		patchSpec["lastHeroAction"] = heroAction
@@ -1040,14 +1038,15 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 			classNote += " +1 mana!"
 		}
 
-		// Loot drop on kill transition
+		// Loot drop is computed by kro combatResolve and written to lastLootDrop.
+		// Backend no longer adds "Dropped X!" to classNote to avoid Go vs kro RNG mismatch.
+		// inventory2 is still updated to guard the "inventory full" message correctly.
 		if oldHP > 0 && newHP == 0 {
 			if dropped, item := computeMonsterLoot(name, idxInt, difficulty); dropped {
-				if updated, added := inventoryAdd(inventory2, item); added {
-					inventory2 = updated
-					classNote += " Dropped " + item + "!"
+				if _, added := inventoryAdd(inventory2, item); added {
+					// item added — kro handles the actual drop log; no note here
 				} else {
-					classNote += " " + item + " dropped but inventory full!"
+					classNote += " (inventory full)"
 				}
 			}
 		}
@@ -1080,7 +1079,7 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 		}
 		// Shield block is independent of armor — works even with no armor equipped
 		if shieldBonus > 0 && totalCounter > 0 {
-			if seededRoll(attackUID+"-shield-m", 100) < shieldBonus {
+			if seededRoll(turnSeed+"-shield-m", 100) < shieldBonus {
 				totalCounter = 0
 				classNote += " Shield blocked!"
 			}
@@ -1090,14 +1089,14 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 			if heroClass == "warrior" {
 				totalCounter = totalCounter * 3 / 4 // 25% reduction (consistent with boss path)
 			} else if heroClass == "rogue" {
-				if seededRoll(attackUID+"-dodge-monster", 100) < 25 {
+				if seededRoll(turnSeed+"-dodge-monster", 100) < 25 {
 					totalCounter = 0
 					classNote += " Rogue dodged!"
 				}
 			}
 			// Pants: bonus dodge chance (any class)
 			if pantsBonus > 0 && totalCounter > 0 {
-				if seededRoll(attackUID+"-pants-dodge", 100) < pantsBonus {
+				if seededRoll(turnSeed+"-pants-dodge", 100) < pantsBonus {
 					totalCounter = 0
 					classNote += fmt.Sprintf(" [DODGED! pants +%d%% dodge]", pantsBonus)
 				}
@@ -1120,8 +1119,8 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 		// Status effects from monster counter — boots provide status resist
 		effectNote := ""
 		if aliveCount > 0 && poisonTurns == 0 {
-			resistRoll := seededRoll(attackUID+"-boots-resist", 100)
-			if seededRoll(attackUID+"-fx", 100) < 20 {
+			resistRoll := seededRoll(turnSeed+"-boots-resist", 100)
+			if seededRoll(turnSeed+"-fx", 100) < 20 {
 				if bootsBonus > 0 && resistRoll < bootsBonus {
 					effectNote = fmt.Sprintf(" [RESISTED poison! boots +%d%% resist]", bootsBonus)
 				} else {
@@ -1141,8 +1140,8 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 					mtype, _ = monsterTypesRaw[i].(string)
 				}
 				if hp > 0 && mtype == "archer" {
-					if seededRoll(attackUID+fmt.Sprintf("-archer%d-stun", i), 100) < 20 {
-						resistRoll := seededRoll(attackUID+"-boots-resist-archer", 100)
+					if seededRoll(turnSeed+fmt.Sprintf("-archer%d-stun", i), 100) < 20 {
+						resistRoll := seededRoll(turnSeed+"-boots-resist-archer", 100)
 						if bootsBonus > 0 && resistRoll < bootsBonus {
 							effectNote += fmt.Sprintf(" [RESISTED archer stun! boots +%d%% resist]", bootsBonus)
 						} else {
@@ -1165,7 +1164,7 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 					mtype, _ = monsterTypesRaw[i].(string)
 				}
 				if hp > 0 && mtype == "shaman" {
-					if seededRoll(attackUID+fmt.Sprintf("-shaman%d-heal", i), 100) < 30 {
+					if seededRoll(turnSeed+fmt.Sprintf("-shaman%d-heal", i), 100) < 30 {
 						// Find the first alive non-shaman monster to heal
 						for j, vj := range newMonsterHP {
 							hpj := sliceInt(vj)
@@ -1193,7 +1192,7 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 			}
 		}
 
-		heroAction := fmt.Sprintf("Hero (%s) deals %d damage to %s (HP: %d -> %d)%s", heroClass, effectiveDamage, realTarget, oldHP, newHP, classNote)
+		heroAction := fmt.Sprintf("[%s] Hero (%s) deals %d damage to %s (HP: %d -> %d)%s", diceFormula, heroClass, effectiveDamage, realTarget, oldHP, newHP, classNote)
 		// MIGRATION: game state (heroHP, monsterHP, poisonTurns, etc.) is computed by kro.
 		// Backend writes only log text. lastLootDrop and inventory computed by kro combatResolve.
 		patchSpec["lastHeroAction"] = heroAction
@@ -1555,19 +1554,39 @@ func sanitizeK8sError(err error) string {
 
 // rollDice rolls dice based on difficulty using seeded randomness.
 func rollDice(difficulty string, isBoss bool, uid string) int64 {
+	result, _ := rollDiceDetailed(difficulty, isBoss, uid)
+	return result
+}
+
+// rollDiceDetailed returns both the numeric result and a human-readable formula string
+// e.g. "1d20+3: rolled 14 (11+3)" or "2d12+6: rolled 19 (7+6+6)".
+func rollDiceDetailed(difficulty string, isBoss bool, uid string) (int64, string) {
 	var result int64
+	var formula string
 	switch difficulty {
 	case "easy":
-		result = seededRoll(uid+"-d1", 20) + 3
+		d1 := seededRoll(uid+"-d1", 20) // [0,19]
+		result = d1 + 3
+		formula = fmt.Sprintf("1d20+3: rolled %d (%d+3)", result, d1)
 	case "hard":
-		result = seededRoll(uid+"-d1", 20) + seededRoll(uid+"-d2", 20) + seededRoll(uid+"-d3", 20) + 8
-	default:
-		result = seededRoll(uid+"-d1", 12) + seededRoll(uid+"-d2", 12) + 6
+		d1 := seededRoll(uid+"-d1", 20)
+		d2 := seededRoll(uid+"-d2", 20)
+		d3 := seededRoll(uid+"-d3", 20)
+		result = d1 + d2 + d3 + 8
+		formula = fmt.Sprintf("3d20+8: rolled %d (%d+%d+%d+8)", result, d1, d2, d3)
+	default: // normal
+		d1 := seededRoll(uid+"-d1", 12)
+		d2 := seededRoll(uid+"-d2", 12)
+		result = d1 + d2 + 6
+		formula = fmt.Sprintf("2d12+6: rolled %d (%d+%d+6)", result, d1, d2)
 	}
 	if isBoss {
-		result += seededRoll(uid+"-dboss", 20) + 3
+		db := seededRoll(uid+"-dboss", 20)
+		base := result
+		result += db + 3
+		formula = fmt.Sprintf("%s + boss[%d+3]=%d", formula, db, result-base)
 	}
-	return result
+	return result, formula
 }
 
 // seededRoll returns a deterministic value in [0, max) using the uid seed.
