@@ -194,10 +194,7 @@ spec:
       patch:
         # --- Hero HP by class, scaled by New Game+ runCount (+10% per run compounded) ---
         heroHP: >-
-          ${cel.bind(base,
-            schema.spec.heroClass == 'warrior' ? 200
-            : schema.spec.heroClass == 'mage' ? 120
-            : schema.spec.heroClass == 'rogue' ? 150 : 100,
+          ${cel.bind(base, schema.spec.heroClass == 'warrior' ? 200 : schema.spec.heroClass == 'mage' ? 120 : schema.spec.heroClass == 'rogue' ? 150 : 100,
           cel.bind(rc, schema.spec.runCount > 20 ? 20 : (schema.spec.runCount < 0 ? 0 : schema.spec.runCount),
           cel.bind(s1, rc >= 1 ? base * 110 / 100 : base,
           cel.bind(s2, rc >= 2 ? s1 * 110 / 100 : s1,
@@ -209,9 +206,7 @@ spec:
           cel.bind(s8, rc >= 8 ? s7 * 110 / 100 : s7,
           cel.bind(s9, rc >= 9 ? s8 * 110 / 100 : s8,
           cel.bind(s10, rc >= 10 ? s9 * 110 / 100 : s9,
-            rc > 10
-              ? s10 * (rc == 11 ? 110 : rc == 12 ? 121 : rc == 13 ? 133 : rc == 14 ? 146 : rc == 15 ? 161 : rc == 16 ? 177 : rc == 17 ? 195 : rc == 18 ? 214 : rc == 19 ? 236 : 259) / 100
-              : s10
+          rc > 10 ? s10 * (rc == 11 ? 110 : rc == 12 ? 121 : rc == 13 ? 133 : rc == 14 ? 146 : rc == 15 ? 161 : rc == 16 ? 177 : rc == 17 ? 195 : rc == 18 ? 214 : rc == 19 ? 236 : 259) / 100 : s10
           )))))))))))))
 
         # --- Hero mana by class ---
@@ -270,16 +265,7 @@ spec:
           ${cel.bind(alpha, 'abcdefghijklmnopqrstuvwxyz0123456789',
           cel.bind(name, schema.metadata.name,
           cel.bind(modIdx, alpha.indexOf(random.seededString(1, name + '-mod')) % 10,
-            modIdx == 0 ? 'none'
-            : modIdx == 1 ? 'curse-fortitude'
-            : modIdx == 2 ? 'curse-fury'
-            : modIdx == 3 ? 'curse-darkness'
-            : modIdx == 4 ? 'blessing-strength'
-            : modIdx == 5 ? 'blessing-resilience'
-            : modIdx == 6 ? 'blessing-fortune'
-            : modIdx == 7 ? 'blessing-strength'
-            : modIdx == 8 ? 'curse-fury'
-            : 'blessing-fortune'
+          modIdx == 0 ? 'none' : modIdx == 1 ? 'curse-fortitude' : modIdx == 2 ? 'curse-fury' : modIdx == 3 ? 'curse-darkness' : modIdx == 4 ? 'blessing-strength' : modIdx == 5 ? 'blessing-resilience' : modIdx == 6 ? 'blessing-fortune' : modIdx == 7 ? 'blessing-strength' : modIdx == 8 ? 'curse-fury' : 'blessing-fortune'
           )))}
 
         # --- Monster types: goblin(0), skeleton(1), archer(even>=2), shaman(odd>=3) ---
