@@ -90,6 +90,16 @@ module "eks" {
         service_account = "cloudwatch-agent"
       }]
     }
+    external-dns = {
+      most_recent = true
+      configuration_values = jsonencode({
+        domainFilters = ["learn-kro.eks.aws.dev"]
+      })
+      pod_identity_association = [{
+        role_arn        = aws_iam_role.external_dns.arn
+        service_account = "external-dns"
+      }]
+    }
   }
 
   vpc_id     = module.vpc.vpc_id
