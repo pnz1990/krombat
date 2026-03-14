@@ -4,7 +4,18 @@ metadata:
   name: rpg-backend-pdb
   namespace: rpg-system
 spec:
-  minAvailable: 0
+  minAvailable: 2
   selector:
     matchLabels:
       app: rpg-backend
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: rpg-frontend-pdb
+  namespace: rpg-system
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: rpg-frontend

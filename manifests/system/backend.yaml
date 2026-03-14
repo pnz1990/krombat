@@ -4,7 +4,7 @@ metadata:
   name: rpg-backend
   namespace: rpg-system
 spec:
-  replicas: 1
+  replicas: 3
   selector:
     matchLabels:
       app: rpg-backend
@@ -14,6 +14,13 @@ spec:
         app: rpg-backend
     spec:
       serviceAccountName: rpg-backend-sa
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: rpg-backend
       containers:
         - name: backend
           image: 319279230668.dkr.ecr.us-west-2.amazonaws.com/krombat/backend:latest
