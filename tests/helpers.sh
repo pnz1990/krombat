@@ -4,7 +4,7 @@ set -euo pipefail
 
 # CRITICAL: Always use the krombat cluster context. Multiple EKS clusters share
 # this kubeconfig — another session may switch the default context at any time.
-KUBECTL_CONTEXT="${KUBECTL_CONTEXT:-arn:aws:eks:us-west-2:569190534191:cluster/krombat}"
+KUBECTL_CONTEXT="${KUBECTL_CONTEXT:-arn:aws:eks:us-west-2:319279230668:cluster/krombat}"
 export KUBECTL_CONTEXT
 kctl() { kubectl --context "$KUBECTL_CONTEXT" "$@"; }
 

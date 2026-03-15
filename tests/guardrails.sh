@@ -3,7 +3,7 @@
 # This test prevents regression — the backend must never touch native K8s objects
 set -euo pipefail
 
-KUBECTL_CONTEXT="${KUBECTL_CONTEXT:-arn:aws:eks:us-west-2:569190534191:cluster/krombat}"
+KUBECTL_CONTEXT="${KUBECTL_CONTEXT:-arn:aws:eks:us-west-2:319279230668:cluster/krombat}"
 kctl() { kubectl --context "$KUBECTL_CONTEXT" "$@"; }
 
 PASS=0
