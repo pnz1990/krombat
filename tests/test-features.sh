@@ -9,13 +9,13 @@ setup_backend_pf 8091
 
 log "Creating feature dungeons"
 curl -s -X POST "${BACKEND_URL}/api/v1/dungeons" \
-  -H "Content-Type: application/json" \
+  -H "Content-Type: application/json" "${TEST_USER_HEADER[@]}" \
   -d "{\"name\":\"test-mod-$TS\",\"monsters\":1,\"difficulty\":\"easy\",\"heroClass\":\"warrior\"}" -o /dev/null
 curl -s -X POST "${BACKEND_URL}/api/v1/dungeons" \
-  -H "Content-Type: application/json" \
+  -H "Content-Type: application/json" "${TEST_USER_HEADER[@]}" \
   -d "{\"name\":\"test-fx-$TS\",\"monsters\":1,\"difficulty\":\"easy\",\"heroClass\":\"warrior\"}" -o /dev/null
 curl -s -X POST "${BACKEND_URL}/api/v1/dungeons" \
-  -H "Content-Type: application/json" \
+  -H "Content-Type: application/json" "${TEST_USER_HEADER[@]}" \
   -d "{\"name\":\"test-loot-$TS\",\"monsters\":1,\"difficulty\":\"easy\",\"heroClass\":\"warrior\"}" -o /dev/null
 
 wait_dungeon_ready "test-mod-$TS"

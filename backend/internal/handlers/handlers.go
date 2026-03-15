@@ -126,6 +126,13 @@ type CreateDungeonReq struct {
 }
 
 func (h *Handler) CreateDungeon(w http.ResponseWriter, r *http.Request) {
+	// Require authentication — users must be logged in to create dungeons.
+	sess := sessionFromCtx(r.Context())
+	if sess == nil {
+		writeError(w, "authentication required", http.StatusUnauthorized)
+		return
+	}
+
 	var req CreateDungeonReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, "invalid request body", http.StatusBadRequest)
@@ -203,8 +210,13 @@ func (h *Handler) CreateDungeon(w http.ResponseWriter, r *http.Request) {
 	dungeon := &unstructured.Unstructured{Object: map[string]interface{}{
 		"apiVersion": "game.k8s.example/v1alpha1",
 		"kind":       "Dungeon",
-		"metadata":   map[string]interface{}{"name": req.Name},
-		"spec":       dungeonSpec,
+		"metadata": map[string]interface{}{
+			"name": req.Name,
+			"labels": map[string]interface{}{
+				"krombat.io/owner": sess.Login,
+			},
+		},
+		"spec": dungeonSpec,
 	}}
 
 	var result *unstructured.Unstructured
@@ -235,8 +247,18 @@ func (h *Handler) CreateDungeon(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) ListDungeons(w http.ResponseWriter, r *http.Request) {
+	// Filter by owner label if authenticated.
+	listOpts := metav1.ListOptions{}
+	if sess := sessionFromCtx(r.Context()); sess != nil {
+		listOpts.LabelSelector = "krombat.io/owner=" + sess.Login
+	} else {
+		// Unauthenticated: return empty list
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode([]interface{}{})
+		return
+	}
 	list, err := h.client.Dynamic.Resource(k8s.DungeonGVR).Namespace("").List(
-		context.Background(), metav1.ListOptions{})
+		context.Background(), listOpts)
 	if err != nil {
 		slog.Error("failed to list dungeons", "component", "api", "error", err)
 		writeError(w, sanitizeK8sError(err), http.StatusInternalServerError)
@@ -290,6 +312,12 @@ func (h *Handler) GetDungeon(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Ownership check: only the owning user can get their dungeon.
+	if err := requireDungeonOwner(r, dungeon); err != nil {
+		writeError(w, err.Error(), http.StatusForbidden)
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(dungeon.Object)
 }
@@ -304,6 +332,11 @@ func (h *Handler) DeleteDungeon(w http.ResponseWriter, r *http.Request) {
 	// Read dungeon spec and status before deletion to capture run stats for the leaderboard.
 	ctx := context.Background()
 	if dungeon, err := h.client.Dynamic.Resource(k8s.DungeonGVR).Namespace(ns).Get(ctx, name, metav1.GetOptions{}); err == nil {
+		// Ownership check: only the owning user can delete their dungeon.
+		if ownerErr := requireDungeonOwner(r, dungeon); ownerErr != nil {
+			writeError(w, ownerErr.Error(), http.StatusForbidden)
+			return
+		}
 		spec, _ := dungeon.Object["spec"].(map[string]interface{})
 		kroStatus, _ := dungeon.Object["status"].(map[string]interface{})
 		if spec != nil {
@@ -557,6 +590,12 @@ func (h *Handler) CreateAttack(w http.ResponseWriter, r *http.Request) {
 	ns := r.PathValue("namespace")
 	name := r.PathValue("name")
 	if !validateNamespace(w, ns) {
+		return
+	}
+
+	// Require authentication — unauthenticated users cannot interact with dungeons.
+	if sess := sessionFromCtx(r.Context()); sess == nil {
+		writeError(w, "authentication required", http.StatusUnauthorized)
 		return
 	}
 
@@ -1508,6 +1547,23 @@ func (h *Handler) processAction(ctx context.Context, ns, name, action string, cl
 }
 
 // ---- helpers ----------------------------------------------------------------
+
+// requireDungeonOwner checks that the authenticated user (from r's context) is
+// the owner of the dungeon CR. Returns a non-nil error if the check fails.
+// Legacy dungeons without the krombat.io/owner label are accessible to any
+// authenticated user (treat as unowned / public during migration).
+func requireDungeonOwner(r *http.Request, dungeon interface{ GetLabels() map[string]string }) error {
+	sess := sessionFromCtx(r.Context())
+	if sess == nil {
+		return fmt.Errorf("authentication required")
+	}
+	labels := dungeon.GetLabels()
+	owner, hasLabel := labels["krombat.io/owner"]
+	if hasLabel && owner != sess.Login {
+		return fmt.Errorf("forbidden: dungeon belongs to another user")
+	}
+	return nil
+}
 
 // retryK8s retries fn up to attempts times, sleeping with linear backoff between
 // retries. Client errors (4xx — not found, already exists, invalid, forbidden)

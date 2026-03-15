@@ -10,7 +10,7 @@ setup_backend_pf 8089
 
 log "Create dungeon"
 curl -s -X POST "${BACKEND_URL}/api/v1/dungeons" \
-  -H "Content-Type: application/json" \
+  -H "Content-Type: application/json" "${TEST_USER_HEADER[@]}" \
   -d "{\"name\":\"${D}\",\"monsters\":2,\"difficulty\":\"easy\",\"heroClass\":\"warrior\"}" -o /dev/null
 
 wait_for "namespace" "kctl get ns $D" 60 && pass "Namespace created" || fail "Namespace"

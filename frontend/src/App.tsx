@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { DungeonSummary, DungeonCR, listDungeons, getDungeon, createDungeon, createNewGamePlus, submitAttack, deleteDungeon, ApiError, LeaderboardEntry, getLeaderboard, reportError, trackEvent } from './api'
+import { DungeonSummary, DungeonCR, listDungeons, getDungeon, createDungeon, createNewGamePlus, submitAttack, deleteDungeon, ApiError, LeaderboardEntry, getLeaderboard, reportError, trackEvent, getMe, logout, AuthUser } from './api'
 import { useWebSocket, WSEvent } from './useWebSocket'
 
 import { Sprite, getMonsterSprite, getMonsterName, SpriteAction, ItemSprite } from './Sprite'
@@ -105,6 +105,23 @@ export default function App() {
   const [lootDrop, setLootDrop] = useState<string | null>(null)
   const [attackTarget, setAttackTarget] = useState<string | null>(null)
   const [animPhase, setAnimPhase] = useState<'idle' | 'hero-attack' | 'enemy-attack' | 'item-use' | 'done'>('idle')
+
+  // Auth state — null = not yet checked, false = not logged in, AuthUser = logged in
+  const [authUser, setAuthUser] = useState<AuthUser | null | false>(null)
+  const authCheckedRef = useRef(false)
+  useEffect(() => {
+    if (authCheckedRef.current) return
+    authCheckedRef.current = true
+    getMe().then(user => setAuthUser(user ?? false))
+  }, [])
+
+  const handleLogout = useCallback(async () => {
+    await logout()
+    setAuthUser(false)
+    setDungeons([])
+    setDetail(null)
+    navigate('/')
+  }, [navigate])
 
   // kro teaching layer
   const { unlocked, unlock } = useKroGlossary()
@@ -618,6 +635,32 @@ export default function App() {
     } catch (e: any) { reportError('create-new-game-plus', e); setError(e.message) }
   }
 
+  // Auth not yet checked — show nothing to avoid flash
+  if (authUser === null) {
+    return <div className="app"><div className="loading">Checking session...</div></div>
+  }
+
+  // Not logged in — show login screen
+  if (authUser === false) {
+    return (
+      <div className="app">
+        <header className="header">
+          <img src="/logo.png" alt="Kubernetes RPG" className="logo" />
+          <p>Powered by kro ResourceGraphDefinitions on EKS</p>
+        </header>
+        <div className="card" style={{ textAlign: 'center', padding: '32px 16px', maxWidth: 400, margin: '40px auto' }}>
+          <div style={{ fontSize: '10px', color: 'var(--gold)', marginBottom: 16 }}>Your Dungeon is a Kubernetes CR</div>
+          <div style={{ fontSize: '8px', color: 'var(--text-dim)', marginBottom: 24, lineHeight: 1.8 }}>
+            Dungeon state lives in EKS. kro drives the resource graph. You drive the hero.
+          </div>
+          <a href="/api/v1/auth/login" className="btn btn-gold" style={{ display: 'inline-block', textDecoration: 'none', fontSize: '8px' }}>
+            Login with GitHub
+          </a>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="app">
       <header className="header">
@@ -627,6 +670,12 @@ export default function App() {
           <p style={{ fontSize: '7px', marginTop: 4, color: connected ? '#00ff41' : '#e94560' }}>
             {connected ? '● CONNECTED' : '○ DISCONNECTED'}
           </p>
+        )}
+        {authUser && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
+            <img src={authUser.avatarUrl} alt={authUser.login} width={20} height={20} style={{ borderRadius: '50%', border: '1px solid var(--gold)' }} />
+            <span style={{ fontSize: '7px', color: 'var(--text-dim)' }}>@{authUser.login}</span>
+          </div>
         )}
       </header>
 
@@ -644,6 +693,7 @@ export default function App() {
               {showHamburger && (
                 <div className="hamburger-menu">
                   <button className="hamburger-item" onClick={() => { setShowHamburger(false); handleOpenLeaderboard() }}>Leaderboard</button>
+                  {authUser && <button className="hamburger-item" onClick={() => { setShowHamburger(false); handleLogout() }}>Logout @{authUser.login}</button>}
                 </div>
               )}
             </div>
