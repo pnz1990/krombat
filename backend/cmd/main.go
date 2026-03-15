@@ -14,6 +14,13 @@ import (
 func main() {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
 
+	// Validate KROMBAT_TEST_USER early: Kubernetes label values must be ≤63 chars.
+	// The value is used as krombat.io/owner label — a 64-char value causes 500 on list.
+	if tv := os.Getenv("KROMBAT_TEST_USER"); len(tv) > 63 {
+		slog.Error("KROMBAT_TEST_USER exceeds 63 characters — Kubernetes label value limit; rotate the krombat-test-auth secret with: bash tests/create-test-secret.sh --rotate")
+		os.Exit(1)
+	}
+
 	client, err := k8s.NewClient()
 	if err != nil {
 		slog.Error("failed to create k8s client", "error", err)

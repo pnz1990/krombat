@@ -23,7 +23,7 @@ if [ -n "$EXISTING" ] && [ "$ROTATE" != "--rotate" ]; then
   exit 0
 fi
 
-TOKEN="$(openssl rand -hex 32)"
+TOKEN="$(openssl rand -hex 31)"  # 62 chars — Kubernetes label values must be ≤63 characters
 
 kctl create secret generic krombat-test-auth \
   --namespace rpg-system \
