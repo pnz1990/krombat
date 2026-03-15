@@ -10,13 +10,13 @@
  *   [dungeon-graph RGD]  ← ResourceGroup CRD (kro)
  *       └── [Dungeon CR]  ← root CR instance
  *               ├── [Namespace]
- *       ├── [Hero CR] → [heroState CM]
+ *       ├── [Hero CR] → [hero CM]
  *       ├── [Monster CR ×N] → [monsterState CM] → [Loot CR?] → [lootSecret?]
- *       ├── [Boss CR] → [bossState CM] → [Loot CR?]
- *       ├── [Treasure CR] → [treasureState CM] → [treasureSecret?]
+ *       ├── [Boss CR] → [boss CM] → [Loot CR?]
+ *       ├── [Treasure CR] → [treasure-state CM] → [treasureSecret?]
  *       ├── [Modifier CR?] → [modifierState CM]
- *       ├── [combatResult CM]
- *       ├── [actionResult CM]
+ *       ├── [combatResolve specPatch]
+ *       ├── [actionResolve specPatch]
  *       └── [gameConfig CM]
  */
 

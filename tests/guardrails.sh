@@ -618,6 +618,47 @@ grep -q "kind: Role$" manifests/system/dungeon-reaper.yaml && pass "#427: dungeo
 grep -q "sessionTTL.*=.*4.*time.Hour\|4.*time.Hour.*sessionTTL" backend/internal/handlers/auth.go && pass "#429: session TTL reduced to 4h" || fail "#429: session TTL not reduced to 4h"
 grep -q '"j".*jti\|Jti.*string\|jti.*nonce' backend/internal/handlers/auth.go && pass "#429: session payload has jti field for future revocation" || fail "#429: session payload missing jti field"
 
+# --- Teaching T1 guardrails (#436, #438, #441-#443, #446-#448, #451) ---
+echo "=== Teaching T1 guardrails"
+
+# #436: Inspector must use correct CM names
+grep -q 'name.*"-hero-state"' backend/internal/handlers/handlers.go && fail "#436: herostate still uses wrong CM name -hero-state" || pass "#436: herostate CM name fixed to -hero"
+grep -q 'name.*"-boss-state"' backend/internal/handlers/handlers.go && fail "#436: bossstate still uses wrong CM name -boss-state" || pass "#436: bossstate CM name fixed to -boss"
+grep -q '"treasurecm".*"-treasure"[^-]' backend/internal/handlers/handlers.go && fail "#436: treasurecm still uses wrong CM name (missing -state suffix)" || pass "#436: treasurecm CM name fixed to -treasure-state"
+
+# #441: dead cases removed from GetDungeonResource
+grep -q '"combatresult"\|"combatcm"\|"actioncm"' backend/internal/handlers/handlers.go && fail "#441: dead combatresult/combatcm/actioncm cases still in GetDungeonResource" || pass "#441: dead combatresult/combatcm/actioncm cases removed"
+
+# #442: equip-weapon CEL annotation must show correct values (5, 10, 20) and use variable 'a'
+grep -q "'equip-weapon-rare' ? 5\|equip-weapon-rare.*10 : 3\|action == 'equip-weapon" frontend/src/KroTeach.tsx && fail "#442: equip-weapon CEL still uses old wrong values or 'action' variable name" || pass "#442: equip-weapon CEL uses correct variable 'a' and values 5/10/20"
+grep -q "'equip-weapon-common' ? 5" frontend/src/KroTeach.tsx && pass "#442: equip-weapon-common bonus is 5 (correct)" || fail "#442: equip-weapon-common bonus not set to 5"
+
+# #443: HP-potion CEL must not use min() or maxHeroHP or healAmt
+grep -q "min(heroHP\|min(hp\|healAmt" frontend/src/KroTeach.tsx && fail "#443: HP-potion CEL still uses min()/healAmt" || pass "#443: HP-potion CEL uses correct ternary clamping"
+grep -q "hppotion-common.*hp + 20\|use-hppotion-epic.*maxHP" frontend/src/KroTeach.tsx && pass "#443: HP-potion CEL shows correct amounts (20/40/maxHP)" || fail "#443: HP-potion CEL missing correct amounts"
+
+# #446: CelTrace must use random.seededInt not seededRoll; lastAttackIsBackstab not backstabCooldown == 0
+grep -q "seededRoll\|uid+'-" frontend/src/KroTeach.tsx && fail "#446: CelTrace still uses seededRoll() or uid variable" || pass "#446: CelTrace uses random.seededInt and lastAttackSeed"
+# Check backstabCooldown == 0 is not in code (comments are ok, look for the expr string)
+grep -q '"backstabCooldown == 0"' frontend/src/KroTeach.tsx && fail "#446: CelTrace backstab expr still has backstabCooldown == 0" || pass "#446: CelTrace backstab uses lastAttackIsBackstab"
+grep -q '"berserk"\|"enraged"\|bossHP <= maxBossHP' frontend/src/KroTeach.tsx && fail "#446: CelTrace boss phase still uses berserk/enraged/maxBossHP" || pass "#446: CelTrace boss phase uses phase1/phase2/phase3"
+
+# #447: modifier CelTrace must use correct multipliers (not 1.25/1.15/0.85 for damage/counter)
+# Exclude comment lines (// comments) and check only code lines
+grep -v '^\s*//' frontend/src/KroTeach.tsx | grep -q "damage.*1\.25\|damage.*1\.15\|'counter.*1\.25\|'counter.*1\.15\|'counter.*0\.85" && fail "#447: modifier CelTrace still shows wrong multipliers (1.25/1.15/0.85)" || pass "#447: modifier CelTrace multipliers corrected"
+# Check that modExpr assignments use schema.spec.modifier (not bare spec.modifier without schema prefix)
+grep -q "modExpr = .*'spec\.modifier\|modExpr = .*\"spec\.modifier" frontend/src/KroTeach.tsx && fail "#447: modifier CelTrace uses bare spec.modifier in expression string (needs schema.spec.modifier)" || pass "#447: modifier CelTrace modExpr uses schema.spec.modifier"
+
+# #448: InsightCards must not reference combatResult CM or processCombat
+grep -q "combatResult ConfigMap\|processCombat\|in a ConfigMap'" frontend/src/KroTeach.tsx && fail "#448: InsightCards still reference stale combatResult CM or processCombat" || pass "#448: InsightCards stale arch references removed"
+grep -q 'lists\.setIndex' frontend/src/KroTeach.tsx && fail "#448: lists.setIndex still used (should be lists.set)" || pass "#448: lists.setIndex replaced with lists.set"
+grep -q 'int(name.*36\|base-36.*coercion' frontend/src/KroTeach.tsx && fail "#448: loot-drop-string-ops still mentions int(name, 36) / base-36" || pass "#448: loot-drop-string-ops headline updated"
+
+# #451: intro modal must be updated
+grep -q "'kro Creates 7 Resources\|two ConfigMaps\|id: combatResult" frontend/src/KroTeach.tsx && fail "#451: intro modal still says '7 Resources' or references combatResult/two ConfigMaps" || pass "#451: intro modal resource count and combatResult reference updated"
+grep -q "kubectl patch dungeon\|backend runs a kubectl patch\|'Every Action is a kubectl" frontend/src/KroTeach.tsx && fail "#451: intro modal still says 'backend runs kubectl patch'" || pass "#451: intro modal kubectl patch reference removed"
+grep -q "15 core kro concepts\|and 9 more" frontend/src/KroTeach.tsx && fail "#451: intro modal still says '15 concepts' or '9 more'" || pass "#451: intro modal concept count updated to 23"
+
 # --- Summary ---
 
 echo ""
