@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -86,12 +85,6 @@ func (h *Handler) AttackWithRateLimit() http.HandlerFunc {
 	return h.attackLimit.Wrap(h.CreateAttack, func(r *http.Request) string {
 		return r.PathValue("namespace") + "/" + r.PathValue("name")
 	})
-}
-
-var defaultHP = map[string]struct{ monster, boss int64 }{
-	"easy":   {30, 200},
-	"normal": {50, 400},
-	"hard":   {80, 800},
 }
 
 // validDNSLabel matches valid Kubernetes namespace names (RFC 1123 DNS label).
@@ -601,47 +594,20 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 		maxHeroManaStatus = classMaxMana(heroClass)
 	}
 	heroMana := getInt(spec, "heroMana")
-	difficulty := getString(spec, "difficulty", "normal")
-	tauntActive := getInt(spec, "tauntActive")
-	backstabCD := getInt(spec, "backstabCooldown")
 	attackSeq := getInt(spec, "attackSeq")
+	bossHP := getInt(spec, "bossHP")
+	monsterHPRaw, _ := spec["monsterHP"].([]interface{})
+	currentRoom := getInt(spec, "currentRoom")
+	stunTurns := getInt(spec, "stunTurns")
+	ringBonus := getInt(spec, "ringBonus")
+	amuletBonus := getInt(spec, "amuletBonus")
 
-	// Boss phase damage multiplier from kro-derived status (boss-graph CEL).
-	// Stored as integer *10: phase1=10 (1.0x), phase2=15 (1.5x), phase3=20 (2.0x).
-	// Default to 10 (1.0x) if status not yet populated.
-	bossDmgMultiplierStr := getString(dungeonStatus, "bossDamageMultiplier", "10")
-	bossDmgMultiplier, _ := strconv.ParseInt(bossDmgMultiplierStr, 10, 64)
-	if bossDmgMultiplier <= 0 {
-		bossDmgMultiplier = 10
-	}
-	bossPhaseStr := getString(dungeonStatus, "bossPhase", "phase1")
-
-	// Conflict guard: if the client sent a known sequence number that doesn't
-	// match the current spec, another request already advanced the dungeon
-	// state. Reject with 409 so the client re-fetches before retrying.
+	// Conflict guard: reject stale requests
 	if clientSeq >= 0 && clientSeq != attackSeq {
 		slog.Warn("stale attack rejected", "component", "api", "dungeon", name, "clientSeq", clientSeq, "serverSeq", attackSeq)
 		writeError(w, "stale request — dungeon state has changed, please retry", http.StatusConflict)
 		return fmt.Errorf("stale attack: clientSeq=%d serverSeq=%d", clientSeq, attackSeq)
 	}
-	modifier := getString(spec, "modifier", "none")
-	inventory := getString(spec, "inventory", "")
-	weaponBonus := getInt(spec, "weaponBonus")
-	weaponUses := getInt(spec, "weaponUses")
-	armorBonus := getInt(spec, "armorBonus")
-	shieldBonus := getInt(spec, "shieldBonus")
-	helmetBonus := getInt(spec, "helmetBonus")
-	pantsBonus := getInt(spec, "pantsBonus")
-	bootsBonus := getInt(spec, "bootsBonus")
-	ringBonus := getInt(spec, "ringBonus")
-	amuletBonus := getInt(spec, "amuletBonus")
-	poisonTurns := getInt(spec, "poisonTurns")
-	burnTurns := getInt(spec, "burnTurns")
-	stunTurns := getInt(spec, "stunTurns")
-	currentRoom := getInt(spec, "currentRoom")
-	bossHP := getInt(spec, "bossHP")
-	monsterHPRaw, _ := spec["monsterHP"].([]interface{})
-	monsterTypesRaw, _ := spec["monsterTypes"].([]interface{})
 
 	// Guard: reject if dungeon is over
 	allMonstersDead := true
@@ -652,7 +618,6 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 		}
 	}
 	if heroHP <= 0 || (bossHP <= 0 && allMonstersDead) {
-		// Dungeon over — no-op, return current state
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusAccepted)
 		json.NewEncoder(w).Encode(dungeon.Object)
@@ -661,7 +626,103 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 
 	newSeq := attackSeq + 1
 
-	// Step 2: Upsert fixed-name Attack CR via SSA
+	// Mage heal ability
+	if target == "hero" {
+		if heroClass != "mage" {
+			writeError(w, "only mage can heal", http.StatusBadRequest)
+			return fmt.Errorf("only mage can heal")
+		}
+		if heroMana < 2 {
+			writeError(w, "not enough mana", http.StatusBadRequest)
+			return fmt.Errorf("not enough mana")
+		}
+		maxHP := maxHeroHPStatus
+		newHP := min64(heroHP+40, maxHP)
+		heroAction := fmt.Sprintf("Mage heals for %d HP! (Mana: %d)", newHP-heroHP, heroMana-2)
+		patch := map[string]interface{}{
+			"spec": map[string]interface{}{
+				"lastAbility":     "mage-heal",
+				"lastHeroAction":  heroAction,
+				"lastEnemyAction": "No counter-attack during heal",
+				"lastLootDrop":    "",
+				"attackSeq":       newSeq,
+			},
+		}
+		if err := h.patchDungeon(ctx, ns, name, patch); err != nil {
+			slog.Error("failed to patch dungeon after heal", "component", "api", "dungeon", name, "namespace", ns, "error", err)
+			writeError(w, sanitizeK8sError(err), http.StatusInternalServerError)
+			return err
+		}
+		return h.respondDungeon(ctx, ns, name, w)
+	}
+
+	// Warrior taunt activation
+	tauntActive := getInt(spec, "tauntActive")
+	if target == "activate-taunt" {
+		if heroClass != "warrior" {
+			writeError(w, "only warrior can taunt", http.StatusBadRequest)
+			return fmt.Errorf("only warrior can taunt")
+		}
+		if tauntActive > 0 {
+			writeError(w, "taunt already active", http.StatusBadRequest)
+			return fmt.Errorf("taunt already active")
+		}
+		patch := map[string]interface{}{
+			"spec": map[string]interface{}{
+				"lastAbility":     "warrior-taunt",
+				"lastHeroAction":  "Warrior activates Taunt! Next attack has 60% counter-attack reduction.",
+				"lastEnemyAction": "",
+				"lastLootDrop":    "",
+				"attackSeq":       newSeq,
+			},
+		}
+		return h.patchAndRespond(ctx, ns, name, patch, w)
+	}
+
+	// Determine real target (strip -backstab suffix)
+	isBackstab := false
+	realTarget := target
+	backstabCD := getInt(spec, "backstabCooldown")
+	if strings.HasSuffix(target, "-backstab") {
+		isBackstab = true
+		realTarget = strings.TrimSuffix(target, "-backstab")
+		if backstabCD > 0 {
+			writeError(w, "backstab on cooldown", http.StatusBadRequest)
+			return fmt.Errorf("backstab on cooldown")
+		}
+	}
+
+	isBossTarget := strings.HasSuffix(realTarget, "-boss")
+
+	// Parse monster index for monster targets
+	idxInt := -1
+	if !isBossTarget {
+		idxStr := realTarget
+		for i := len(realTarget) - 1; i >= 0; i-- {
+			if realTarget[i] < '0' || realTarget[i] > '9' {
+				idxStr = realTarget[i+1:]
+				break
+			}
+		}
+		idxParsed, _ := strconv.ParseInt(idxStr, 10, strconv.IntSize)
+		idxInt = int(idxParsed)
+		if idxInt < 0 || idxInt >= len(monsterHPRaw) {
+			writeError(w, "invalid monster index", http.StatusBadRequest)
+			return fmt.Errorf("invalid monster index")
+		}
+	}
+
+	// Early-exit: target already dead
+	if isBossTarget && bossHP <= 0 {
+		patch := map[string]interface{}{"spec": map[string]interface{}{"lastLootDrop": "", "lastHeroAction": "Boss already defeated", "lastEnemyAction": "", "attackSeq": newSeq}}
+		return h.patchAndRespond(ctx, ns, name, patch, w)
+	}
+	if !isBossTarget && idxInt >= 0 && sliceInt(monsterHPRaw[idxInt]) <= 0 {
+		patch := map[string]interface{}{"spec": map[string]interface{}{"lastLootDrop": "", "lastHeroAction": "Monster already dead", "lastEnemyAction": "", "attackSeq": newSeq}}
+		return h.patchAndRespond(ctx, ns, name, patch, w)
+	}
+
+	// Step 2: Upsert Attack CR (trigger for kro)
 	attackCRName := name + "-latest-attack"
 	attackObj := &unstructured.Unstructured{Object: map[string]interface{}{
 		"apiVersion": "game.k8s.example/v1alpha1",
@@ -690,517 +751,275 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 	}
 	attacksSubmitted.WithLabelValues(name).Inc()
 
-	// Step 3: Compute combat math here in the backend (Go replaces the bash Job).
-	// All game logic is deterministic given the inputs from dungeon spec.
-	// Per-turn seed: unique per (dungeon, turn) — produces real dice variance.
-	// NOTE: The fixed-name Attack CR reuses the same UID every turn via SSA, so
-	// attackResult.GetUID() is constant and MUST NOT be used as a random seed.
-	// We use dungeon name + sequence number instead.
+	// Per-turn seed (unique per dungeon+turn, ensures real dice variance)
 	turnSeed := name + "-seq-" + strconv.FormatInt(newSeq, 10)
 
-	// NOTE: DoT ticks (poison/burn/stun), backstab cooldown decrement, and taunt
-	// advancement are now handled by kro specPatch nodes (tickDoT, advanceTaunt,
-	// tickCooldown) in dungeon-graph.yaml. The backend reads the current kro-managed
-	// values for validation/counter-attack logic but does not mutate them here.
-	isStunned := stunTurns > 0
-	wasStunnedThisTurn := isStunned // guard: don't reapply stun the same turn it was consumed
-
-	// Determine real target (strip -backstab suffix)
-	isBackstab := false
-	realTarget := target
-	if strings.HasSuffix(target, "-backstab") {
-		isBackstab = true
-		realTarget = strings.TrimSuffix(target, "-backstab")
-		if backstabCD > 0 {
-			writeError(w, "backstab on cooldown", http.StatusBadRequest)
-			return fmt.Errorf("backstab on cooldown")
-		}
-		backstabCD = 3
-	}
-
-	// Is mage heal?
-	if target == "hero" {
-		if heroClass != "mage" {
-			writeError(w, "only mage can heal", http.StatusBadRequest)
-			return fmt.Errorf("only mage can heal")
-		}
-		if heroMana < 2 {
-			writeError(w, "not enough mana", http.StatusBadRequest)
-			return fmt.Errorf("not enough mana")
-		}
-		// Compute heal values for log text (kro will independently compute the same mutations)
-		maxHP := maxHeroHPStatus
-		newHP := min64(heroHP+40, maxHP)
-		heroMana -= 2
-		heroAction := fmt.Sprintf("Mage heals for %d HP! (Mana: %d)", newHP-heroHP, heroMana)
-		// MIGRATION: Write trigger fields only — kro's abilityResolve computes heroHP/heroMana
-		patch := map[string]interface{}{
-			"spec": map[string]interface{}{
-				"lastAbility":     "mage-heal",
-				"lastHeroAction":  heroAction,
-				"lastEnemyAction": "No counter-attack during heal",
-				"lastLootDrop":    "",
-				"attackSeq":       newSeq,
-			},
-		}
-		if err := h.patchDungeon(ctx, ns, name, patch); err != nil {
-			slog.Error("failed to patch dungeon after heal", "component", "api", "dungeon", name, "namespace", ns, "error", err)
-			writeError(w, sanitizeK8sError(err), http.StatusInternalServerError)
-			return err
-		}
-		return h.respondDungeon(ctx, ns, name, w)
-	}
-
-	// Is taunt activation?
-	if target == "activate-taunt" {
-		if heroClass != "warrior" {
-			writeError(w, "only warrior can taunt", http.StatusBadRequest)
-			return fmt.Errorf("only warrior can taunt")
-		}
-		if tauntActive > 0 {
-			writeError(w, "taunt already active", http.StatusBadRequest)
-			return fmt.Errorf("taunt already active")
-		}
-		// MIGRATION: Write trigger fields only — kro's abilityResolve sets tauntActive + pre-arms tauntProcessedSeq
-		patch := map[string]interface{}{
-			"spec": map[string]interface{}{
-				"lastAbility":     "warrior-taunt",
-				"lastHeroAction":  "Warrior activates Taunt! Next attack has 60% counter-attack reduction.",
-				"lastEnemyAction": "",
-				"lastLootDrop":    "",
-				"attackSeq":       newSeq,
-			},
-		}
-		return h.patchAndRespond(ctx, ns, name, patch, w)
-	}
-
-	// Dice roll (seeded by turn seed — changes every turn for real variance)
-	isBossTarget := strings.HasSuffix(realTarget, "-boss")
-	baseDamage, diceFormula := rollDiceDetailed(difficulty, isBossTarget, turnSeed)
-
-	// Class modifier
-	effectiveDamage := baseDamage
-	classNote := ""
-	if isBackstab {
-		effectiveDamage = baseDamage * 3
-		classNote = " (Backstab 3x!)"
-	} else if heroClass == "mage" {
-		if heroMana > 0 {
-			effectiveDamage = baseDamage * 13 / 10
-			classNote = " (Mage power!)"
-			heroMana--
-		} else {
-			effectiveDamage = baseDamage / 2
-			classNote = " (No mana!)"
-		}
-	} else if heroClass == "rogue" {
-		effectiveDamage = baseDamage * 11 / 10
-		classNote = " (Rogue strike!)"
-	}
-
-	// Dungeon modifier on hero damage
-	if modifier == "curse-darkness" {
-		effectiveDamage = effectiveDamage * 3 / 4
-		classNote += " [Curse: -25% dmg]"
-	} else if modifier == "blessing-strength" {
-		effectiveDamage = effectiveDamage * 3 / 2
-		classNote += " [Blessing: +50% dmg]"
-	} else if modifier == "blessing-fortune" {
-		critRoll := seededRoll(turnSeed+"-crit", 100)
-		if critRoll < 20 {
-			effectiveDamage *= 2
-			classNote += " [CRIT! 2x dmg]"
-		}
-	}
-
-	// Weapon bonus
-
-	if weaponUses > 0 {
-		effectiveDamage += weaponBonus
-		weaponUses--
-		classNote += fmt.Sprintf(" [+%d wpn]", weaponBonus)
-		if weaponUses == 0 {
-			weaponBonus = 0
-			classNote += " [weapon broke!]"
-		}
-	}
-
-	// Helmet bonus: crit chance (double damage)
-	if helmetBonus > 0 {
-		if seededRoll(turnSeed+"-helmet-crit", 100) < helmetBonus {
-			effectiveDamage *= 2
-			classNote += fmt.Sprintf(" [CRIT! helmet +%d%% crit]", helmetBonus)
-		}
-	}
-
-	// Amulet power boost: multiply hero damage output
-	if amuletBonus > 0 {
-		effectiveDamage = effectiveDamage * (100 + amuletBonus) / 100
-		classNote += fmt.Sprintf(" [+%d%% amulet]", amuletBonus)
-	}
-
-	// Ring regen is now handled by kro specPatch node (regenRing).
-	// The backend no longer applies ring HP regen here.
-
-	// Stun zeroes damage
-	if isStunned {
-		effectiveDamage = 0
-		classNote = " STUNNED!"
-	}
-
-	// Build patch values
-	// NOTE: poisonTurns, burnTurns, stunTurns, backstabCooldown, tauntActive are
-	// NOT included here — kro specPatch nodes manage these fields asynchronously.
-	// The backend only writes new DoT values when boss/monster inflicts them (below),
-	// and writes backstabCooldown=3 when backstab is triggered (to start the countdown).
-	//
-	// MIGRATION: The backend now writes TRIGGER FIELDS that kro's combatResolve specPatch
-	// reads to compute the actual state mutations (monsterHP, bossHP, heroHP, weaponUses,
-	// weaponBonus, heroMana, poisonTurns, burnTurns, stunTurns). The backend still computes
-	// combat math for log text generation (same FNV-1a RNG → same results as kro).
+	// Step 3: Write trigger fields only — kro's combatResolve specPatch computes
+	// all actual game state (HP, mana, DoT, loot, inventory).
 	patchSpec := map[string]interface{}{
 		"attackSeq":            newSeq,
 		"lastAttackTarget":     realTarget,
 		"lastAttackSeed":       turnSeed,
-		"lastAttackIndex":      int64(-1), // will be set below for monster targets
+		"lastAttackIndex":      int64(idxInt),
 		"lastAttackIsBoss":     isBossTarget,
 		"lastAttackIsBackstab": isBackstab,
-		// ringBonus and amuletBonus: pass through (not mutated by combat)
-		"ringBonus":   ringBonus,
-		"amuletBonus": amuletBonus,
+		"ringBonus":            ringBonus,
+		"amuletBonus":          amuletBonus,
+		// Clear log fields so stale text isn't visible before kro fires
+		"lastHeroAction":  "",
+		"lastEnemyAction": "",
+		"lastLootDrop":    "",
 	}
-	// MIGRATION: backstabCooldown and cooldownProcessedSeq are now set by kro's
-	// combatResolve specPatch when lastAttackIsBackstab == true. Backend no longer
-	// writes these fields directly.
+	if err := h.patchDungeon(ctx, ns, name, map[string]interface{}{"spec": patchSpec}); err != nil {
+		slog.Error("failed to patch trigger fields", "component", "api", "dungeon", name, "namespace", ns, "error", err)
+		writeError(w, sanitizeK8sError(err), http.StatusInternalServerError)
+		return err
+	}
 
-	// MIGRATION: loot state (lastLootDrop, inventory) is now computed by kro's combatResolve.
-	// Backend still needs inventory2 to decide log text ("inventory full!" vs "Dropped X!").
-	inventory2 := inventory
+	// Step 4: Poll until kro's combatResolve has fired (combatProcessedSeq == newSeq).
+	postDungeon, err := h.pollUntilCombatProcessed(ctx, ns, name, newSeq)
+	if err != nil {
+		// Timed out or error — return current state so frontend doesn't hang
+		slog.Warn("combat poll timed out or failed", "component", "api", "dungeon", name, "seq", newSeq, "error", err)
+		return h.respondDungeon(ctx, ns, name, w)
+	}
+	postSpec := getMap(postDungeon.Object, "spec")
+	postStatus := getMap(postDungeon.Object, "status")
+
+	// Step 5: Derive log text from pre→post spec diff (no math — kro is authoritative).
+	diceFormula := getString(postStatus, "diceFormula", getString(dungeonStatus, "diceFormula", ""))
+	bossPhaseStr := getString(postStatus, "bossPhase", getString(dungeonStatus, "bossPhase", "phase1"))
+	heroAction, enemyAction := deriveCombatLog(
+		spec, postSpec, realTarget, isBossTarget, idxInt, isBackstab, stunTurns > 0,
+		heroClass, diceFormula, bossPhaseStr,
+	)
+
+	// Step 6: Write log text and return final dungeon state.
+	logPatch := map[string]interface{}{
+		"spec": map[string]interface{}{
+			"lastHeroAction":  heroAction,
+			"lastEnemyAction": enemyAction,
+		},
+	}
+	return h.patchAndRespond(ctx, ns, name, logPatch, w)
+}
+
+// pollUntilCombatProcessed polls the Dungeon CR until spec.combatProcessedSeq == targetSeq,
+// indicating kro's combatResolve specPatch has fired and all game state is up to date.
+// Max wait: 10s (100ms intervals × 100 attempts).
+func (h *Handler) pollUntilCombatProcessed(ctx context.Context, ns, name string, targetSeq int64) (*unstructured.Unstructured, error) {
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		d, err := h.client.Dynamic.Resource(k8s.DungeonGVR).Namespace(ns).Get(ctx, name, metav1.GetOptions{})
+		if err == nil {
+			s := getMap(d.Object, "spec")
+			if getInt(s, "combatProcessedSeq") >= targetSeq {
+				return d, nil
+			}
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	// Last try
+	d, err := h.client.Dynamic.Resource(k8s.DungeonGVR).Namespace(ns).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("poll timed out and final get failed: %w", err)
+	}
+	return d, fmt.Errorf("combatProcessedSeq did not reach %d", targetSeq)
+}
+
+// deriveCombatLog generates heroAction and enemyAction log strings from a pre→post spec diff.
+// No RNG or math — all values are read directly from kro's computed post-state.
+func deriveCombatLog(
+	pre, post map[string]interface{},
+	realTarget string, isBossTarget bool, idxInt int,
+	isBackstab bool, wasStunned bool,
+	heroClass, diceFormula, bossPhaseStr string,
+) (heroAction, enemyAction string) {
+	preHeroHP := getInt(pre, "heroHP")
+	postHeroHP := getInt(post, "heroHP")
+	preHeroMana := getInt(pre, "heroMana")
+	postHeroMana := getInt(post, "heroMana")
+	preBossHP := getInt(pre, "bossHP")
+	postBossHP := getInt(post, "bossHP")
+	preMonsterHP, _ := pre["monsterHP"].([]interface{})
+	postMonsterHP, _ := post["monsterHP"].([]interface{})
+	preInventory := getString(pre, "inventory", "")
+	postInventory := getString(post, "inventory", "")
+	prePoisonTurns := getInt(pre, "poisonTurns")
+	postPoisonTurns := getInt(post, "poisonTurns")
+	preBurnTurns := getInt(pre, "burnTurns")
+	postBurnTurns := getInt(post, "burnTurns")
+	preStunTurns := getInt(pre, "stunTurns")
+	postStunTurns := getInt(post, "stunTurns")
+	postWeaponBonus := getInt(post, "weaponBonus")
+	postWeaponUses := getInt(post, "weaponUses")
+	preWeaponBonus := getInt(pre, "weaponBonus")
+	preWeaponUses := getInt(pre, "weaponUses")
+	postAmuletBonus := getInt(post, "amuletBonus")
+	postLastLootDrop := getString(post, "lastLootDrop", "")
+
+	// --- Hero action ---
+	var notes []string
+
+	if wasStunned {
+		// Hero was stunned: no damage dealt
+		if diceFormula != "" {
+			heroAction = fmt.Sprintf("[%s] Hero STUNNED! — no attack this turn", diceFormula)
+		} else {
+			heroAction = "Hero STUNNED! — no attack this turn"
+		}
+		return heroAction, "Hero was stunned this turn."
+	}
+
+	// Compute effective damage from spec diff
+	var effectiveDamage int64
+	var oldHP, newHP int64
+	if isBossTarget {
+		oldHP = preBossHP
+		newHP = postBossHP
+		effectiveDamage = oldHP - newHP
+		if effectiveDamage < 0 {
+			effectiveDamage = 0
+		}
+	} else if idxInt >= 0 && idxInt < len(preMonsterHP) && idxInt < len(postMonsterHP) {
+		oldHP = sliceInt(preMonsterHP[idxInt])
+		newHP = sliceInt(postMonsterHP[idxInt])
+		effectiveDamage = oldHP - newHP
+		if effectiveDamage < 0 {
+			effectiveDamage = 0
+		}
+	}
+
+	// Class notes from damage diff
+	if isBackstab {
+		notes = append(notes, "Backstab 3x!")
+	} else if heroClass == "mage" {
+		if preHeroMana > 0 && postHeroMana < preHeroMana {
+			notes = append(notes, "Mage power!")
+		} else if preHeroMana == 0 {
+			notes = append(notes, "No mana!")
+		}
+	} else if heroClass == "rogue" {
+		notes = append(notes, "Rogue strike!")
+	}
+
+	// Mana regen on monster kill (mage)
+	if !isBossTarget && heroClass == "mage" && oldHP > 0 && newHP == 0 {
+		if postHeroMana > preHeroMana {
+			notes = append(notes, "+1 mana!")
+		}
+	}
+
+	// Weapon broke
+	if preWeaponUses > 0 && postWeaponUses == 0 && postWeaponBonus == 0 && preWeaponBonus > 0 {
+		notes = append(notes, fmt.Sprintf("+%d wpn, weapon broke!", preWeaponBonus))
+	} else if preWeaponUses > 0 && postWeaponUses < preWeaponUses {
+		notes = append(notes, fmt.Sprintf("+%d wpn", preWeaponBonus))
+	}
+
+	// Amulet
+	if postAmuletBonus > 0 {
+		notes = append(notes, fmt.Sprintf("+%d%% amulet", postAmuletBonus))
+	}
+
+	// Inventory full (loot dropped but inventory unchanged)
+	if postLastLootDrop != "" && inventoryCount(postInventory) == inventoryCount(preInventory) && inventoryCount(postInventory) >= 8 {
+		notes = append(notes, "inventory full")
+	}
+
+	noteStr := ""
+	if len(notes) > 0 {
+		noteStr = " (" + strings.Join(notes, ", ") + ")"
+	}
+
+	formulaStr := ""
+	if diceFormula != "" {
+		formulaStr = fmt.Sprintf("[%s] ", diceFormula)
+	}
+	heroAction = fmt.Sprintf("%sHero (%s) deals %d damage to %s (HP: %d -> %d)%s",
+		formulaStr, heroClass, effectiveDamage, realTarget, oldHP, newHP, noteStr)
+
+	// --- Enemy action ---
+	heroDmgTaken := preHeroHP - postHeroHP
+	if heroDmgTaken < 0 {
+		heroDmgTaken = 0
+	}
+
+	// Check for shaman heals (any monster HP increased)
+	var healNotes []string
+	for i := range postMonsterHP {
+		if i >= len(preMonsterHP) {
+			break
+		}
+		postHP := sliceInt(postMonsterHP[i])
+		preHP := sliceInt(preMonsterHP[i])
+		if postHP > preHP {
+			healNotes = append(healNotes, fmt.Sprintf("Shaman heals m%d for %d HP!", i, postHP-preHP))
+		}
+	}
+
+	// DoT inflictions
+	var effectNotes []string
+	if postPoisonTurns > prePoisonTurns {
+		if isBossTarget {
+			effectNotes = append(effectNotes, fmt.Sprintf("Bat Boss inflicts POISON! (%d turns, -5 HP/turn)", postPoisonTurns))
+		} else {
+			effectNotes = append(effectNotes, fmt.Sprintf("Monsters inflict POISON! (%d turns, -5 HP/turn)", postPoisonTurns))
+		}
+	}
+	if postBurnTurns > preBurnTurns {
+		effectNotes = append(effectNotes, fmt.Sprintf("Boss inflicts BURN! (%d turns, -8 HP/turn)", postBurnTurns))
+	}
+	if postStunTurns > preStunTurns {
+		if isBossTarget {
+			effectNotes = append(effectNotes, fmt.Sprintf("Boss inflicts STUN! (%d turn)", postStunTurns))
+		} else {
+			effectNotes = append(effectNotes, fmt.Sprintf("Archer fires! STUNNED! (%d turn)", postStunTurns))
+		}
+	}
+
+	phaseNote := ""
+	if bossPhaseStr == "phase2" {
+		phaseNote = " [ENRAGED ×1.5]"
+	} else if bossPhaseStr == "phase3" {
+		phaseNote = " [BERSERK ×2.0]"
+	}
+
+	allEffects := append(healNotes, effectNotes...)
+	effectStr := ""
+	if len(allEffects) > 0 {
+		effectStr = " " + strings.Join(allEffects, " ")
+	}
 
 	if isBossTarget {
-		if bossHP <= 0 {
-			// Already dead
-			patch := map[string]interface{}{"spec": map[string]interface{}{"lastLootDrop": "", "lastHeroAction": "Boss already defeated", "lastEnemyAction": "", "attackSeq": newSeq}}
-			return h.patchAndRespond(ctx, ns, name, patch, w)
-		}
-		newBossHP := max64(bossHP-effectiveDamage, 0)
-		// MIGRATION: bossHP is computed by kro combatResolve. Backend only computes for log.
-
-		// Counter-attack
-		var counter int64
-		switch difficulty {
-		case "easy":
-			counter = 3
-		case "hard":
-			counter = 8
-		default:
-			counter = 5
-		}
-		// Apply boss phase multiplier (derived from boss-graph CEL via kro status).
-		// Phase 1: ×1.0, Phase 2: ×1.5, Phase 3: ×2.0 — stored as integer *10.
-		counter = counter * bossDmgMultiplier / 10
-		phaseNote := ""
-		if bossPhaseStr == "phase2" {
-			phaseNote = " [ENRAGED ×1.5]"
-		} else if bossPhaseStr == "phase3" {
-			phaseNote = " [BERSERK ×2.0]"
-		}
-		enemyAction := ""
-		effectNote := ""
-		if newBossHP > 0 {
-			counter = applyModifierToCounter(modifier, counter)
-			if armorBonus > 0 {
-				counter = counter * (100 - armorBonus) / 100
-			}
-			// Shield block is independent of armor — works even with no armor equipped
-			if shieldBonus > 0 && counter > 0 {
-				if seededRoll(turnSeed+"-shield", 100) < shieldBonus {
-					counter = 0
-					classNote += " Shield blocked!"
-				}
-			}
-			if heroClass == "warrior" {
-				counter = counter * 3 / 4
-			} else if heroClass == "rogue" {
-				if seededRoll(turnSeed+"-dodge-boss", 100) < 25 {
-					counter = 0
-					classNote += " Rogue dodged!"
-				}
-			}
-			// Pants: bonus dodge chance (any class)
-			if pantsBonus > 0 && counter > 0 {
-				if seededRoll(turnSeed+"-pants-dodge", 100) < pantsBonus {
-					counter = 0
-					classNote += fmt.Sprintf(" [DODGED! pants +%d%% dodge]", pantsBonus)
-				}
-			}
-			if tauntActive == 2 && counter > 0 {
-				counter = counter * 2 / 5
-			}
-			// One-shot protection: a single counter-attack cannot reduce hero below 1 HP.
-			if heroHP-counter < 1 && counter < heroHP {
-				counter = heroHP - 1
-			}
-			heroHP = max64(heroHP-counter, 0)
-			enemyAction = fmt.Sprintf("Boss strikes back for %d damage!%s (Hero HP: %d)", counter, phaseNote, heroHP)
-
-			// Status effects from boss — boots provide status resist
-			effectRoll := seededRoll(turnSeed+"-fx", 100)
-			resistRoll := seededRoll(turnSeed+"-boots-resist", 100)
-			resisted := bootsBonus > 0 && resistRoll < bootsBonus
-			if currentRoom == 2 {
-				// Bat-boss: poison 30%, stun 15%
-				if effectRoll < 15 && stunTurns == 0 && !wasStunnedThisTurn {
-					if resisted {
-						effectNote = fmt.Sprintf(" [RESISTED stun! boots +%d%% resist]", bootsBonus)
-					} else {
-						stunTurns = 1
-						effectNote = " Bat Boss inflicts STUN! (1 turn)"
-					}
-				} else if effectRoll < 45 && poisonTurns == 0 {
-					if resisted {
-						effectNote = fmt.Sprintf(" [RESISTED poison! boots +%d%% resist]", bootsBonus)
-					} else {
-						poisonTurns = 3
-						effectNote = " Bat Boss inflicts POISON! (3 turns, -5 HP/turn)"
-					}
-				}
-			} else {
-				// Dragon: stun 15%, burn 25%
-				if effectRoll < 15 && stunTurns == 0 && !wasStunnedThisTurn {
-					if resisted {
-						effectNote = fmt.Sprintf(" [RESISTED stun! boots +%d%% resist]", bootsBonus)
-					} else {
-						stunTurns = 1
-						effectNote = " Boss inflicts STUN! (1 turn)"
-					}
-				} else if effectRoll < 40 && burnTurns == 0 {
-					if resisted {
-						effectNote = fmt.Sprintf(" [RESISTED burn! boots +%d%% resist]", bootsBonus)
-					} else {
-						burnTurns = 2
-						effectNote = " Boss inflicts BURN! (2 turns, -8 HP/turn)"
-					}
-				}
-			}
-		} else {
+		if postBossHP == 0 {
 			enemyAction = "Boss defeated!"
-			// Boss loot computed by kro combatResolve; no loot text in Go log to avoid RNG mismatch.
-			bossLootItem := computeBossLoot(name)
-			if _, added := inventoryAdd(inventory2, bossLootItem); !added {
-				classNote += " (inventory full)"
-			}
-		}
-
-		heroAction := fmt.Sprintf("[%s] Hero (%s) deals %d damage to %s (HP: %d -> %d)%s", diceFormula, heroClass, effectiveDamage, realTarget, bossHP, newBossHP, classNote)
-		// MIGRATION: game state (heroHP, bossHP, poisonTurns, etc.) is computed by kro.
-		// Backend writes only log text and loot/inventory.
-		patchSpec["lastHeroAction"] = heroAction
-		patchSpec["lastEnemyAction"] = enemyAction + effectNote
-		// MIGRATION: lastLootDrop and inventory are now computed by kro's combatResolve specPatch.
-		// Backend keeps computeBossLoot() for log text (classNote) but does not write loot state.
-
-	} else {
-		// Monster target — parse index as native int to avoid int64→int narrowing
-		idxStr := realTarget
-		for i := len(realTarget) - 1; i >= 0; i-- {
-			if realTarget[i] < '0' || realTarget[i] > '9' {
-				idxStr = realTarget[i+1:]
-				break
-			}
-		}
-		idxParsed, _ := strconv.ParseInt(idxStr, 10, strconv.IntSize)
-		idxInt := int(idxParsed) // ParseInt with strconv.IntSize guarantees fits in int
-
-		if idxInt < 0 || idxInt >= len(monsterHPRaw) {
-			writeError(w, "invalid monster index", http.StatusBadRequest)
-			return fmt.Errorf("invalid monster index")
-		}
-		// MIGRATION: set lastAttackIndex for kro combatResolve to identify the target monster
-		patchSpec["lastAttackIndex"] = int64(idxInt)
-		oldHP := sliceInt(monsterHPRaw[idxInt])
-		if oldHP <= 0 {
-			patch := map[string]interface{}{"spec": map[string]interface{}{"lastLootDrop": "", "lastHeroAction": "Monster already dead", "lastEnemyAction": "", "attackSeq": newSeq}}
-			return h.patchAndRespond(ctx, ns, name, patch, w)
-		}
-		newHP := max64(oldHP-effectiveDamage, 0)
-
-		// Rebuild monsterHP array
-		newMonsterHP := make([]interface{}, len(monsterHPRaw))
-		for i, v := range monsterHPRaw {
-			newMonsterHP[i] = v
-		}
-		newMonsterHP[idxInt] = newHP
-
-		// Mage mana regen on kill
-		if oldHP > 0 && newHP == 0 && heroClass == "mage" && heroMana < maxHeroManaStatus {
-			heroMana++
-			classNote += " +1 mana!"
-		}
-
-		// Loot drop is computed by kro combatResolve and written to lastLootDrop.
-		// Backend no longer adds "Dropped X!" to classNote to avoid Go vs kro RNG mismatch.
-		// inventory2 is still updated to guard the "inventory full" message correctly.
-		if oldHP > 0 && newHP == 0 {
-			if dropped, item := computeMonsterLoot(name, idxInt, difficulty); dropped {
-				if _, added := inventoryAdd(inventory2, item); added {
-					// item added — kro handles the actual drop log; no note here
-				} else {
-					classNote += " (inventory full)"
-				}
-			}
-		}
-
-		// Counter-attack from all still-alive monsters
-		var baseCounter int64
-		switch difficulty {
-		case "easy":
-			baseCounter = 1
-		case "hard":
-			baseCounter = 3
-		default:
-			baseCounter = 2
-		}
-		aliveCount := int64(0)
-		for i, v := range monsterHPRaw {
-			hp := sliceInt(v)
-			if i != idxInt && hp > 0 {
-				aliveCount++
-			} else if i == idxInt && newHP > 0 {
-				aliveCount++
-			}
-		}
-		totalCounter := aliveCount * baseCounter
-		if modifier == "blessing-resilience" {
-			totalCounter /= 2
-		}
-		if armorBonus > 0 {
-			totalCounter = totalCounter * (100 - armorBonus) / 100
-		}
-		// Shield block is independent of armor — works even with no armor equipped
-		if shieldBonus > 0 && totalCounter > 0 {
-			if seededRoll(turnSeed+"-shield-m", 100) < shieldBonus {
-				totalCounter = 0
-				classNote += " Shield blocked!"
-			}
-		}
-		enemyAction := ""
-		if totalCounter > 0 {
-			if heroClass == "warrior" {
-				totalCounter = totalCounter * 3 / 4 // 25% reduction (consistent with boss path)
-			} else if heroClass == "rogue" {
-				if seededRoll(turnSeed+"-dodge-monster", 100) < 25 {
-					totalCounter = 0
-					classNote += " Rogue dodged!"
-				}
-			}
-			// Pants: bonus dodge chance (any class)
-			if pantsBonus > 0 && totalCounter > 0 {
-				if seededRoll(turnSeed+"-pants-dodge", 100) < pantsBonus {
-					totalCounter = 0
-					classNote += fmt.Sprintf(" [DODGED! pants +%d%% dodge]", pantsBonus)
-				}
-			}
-			if tauntActive == 2 && totalCounter > 0 {
-				totalCounter = totalCounter * 2 / 5
-			}
-			// One-shot protection: a single counter-attack cannot reduce hero below 1 HP.
-			if heroHP-totalCounter < 1 && totalCounter < heroHP {
-				totalCounter = heroHP - 1
-			}
-			heroHP = max64(heroHP-totalCounter, 0)
-			enemyAction = fmt.Sprintf("%d monsters counter-attack for %d total damage! (Hero HP: %d)", aliveCount, totalCounter, heroHP)
-		} else if newHP == 0 {
-			enemyAction = "Monster slain! No remaining counter-attack."
+		} else if heroDmgTaken > 0 {
+			enemyAction = fmt.Sprintf("Boss strikes back for %d damage!%s (Hero HP: %d)%s",
+				heroDmgTaken, phaseNote, postHeroHP, effectStr)
 		} else {
-			enemyAction = "Monsters counter-attack absorbed!"
+			enemyAction = fmt.Sprintf("Boss attack blocked/dodged!%s (Hero HP: %d)%s",
+				phaseNote, postHeroHP, effectStr)
 		}
-
-		// Status effects from monster counter — boots provide status resist
-		effectNote := ""
-		if aliveCount > 0 && poisonTurns == 0 {
-			resistRoll := seededRoll(turnSeed+"-boots-resist", 100)
-			if seededRoll(turnSeed+"-fx", 100) < 20 {
-				if bootsBonus > 0 && resistRoll < bootsBonus {
-					effectNote = fmt.Sprintf(" [RESISTED poison! boots +%d%% resist]", bootsBonus)
-				} else {
-					poisonTurns = 3
-					effectNote = " Monsters inflict POISON! (3 turns, -5 HP/turn)"
+	} else {
+		if newHP == 0 && heroDmgTaken == 0 {
+			enemyAction = "Monster slain! No remaining counter-attack." + effectStr
+		} else if heroDmgTaken > 0 {
+			// Count alive monsters in post-state
+			aliveCount := int64(0)
+			for _, v := range postMonsterHP {
+				if sliceInt(v) > 0 {
+					aliveCount++
 				}
 			}
+			enemyAction = fmt.Sprintf("%d monster(s) counter-attack for %d total damage! (Hero HP: %d)%s",
+				aliveCount, heroDmgTaken, postHeroHP, effectStr)
+		} else {
+			enemyAction = "Monsters counter-attack absorbed!" + effectStr
 		}
-
-		// Archer special: any alive archer (index % 2 == 0, index >= 2) has 20% stun chance
-		// Only triggers if hero wasn't already poisoned this round and stun not already active
-		if aliveCount > 0 && stunTurns == 0 && !wasStunnedThisTurn {
-			for i, v := range monsterHPRaw {
-				hp := sliceInt(v)
-				mtype := ""
-				if i < len(monsterTypesRaw) {
-					mtype, _ = monsterTypesRaw[i].(string)
-				}
-				if hp > 0 && mtype == "archer" {
-					if seededRoll(turnSeed+fmt.Sprintf("-archer%d-stun", i), 100) < 20 {
-						resistRoll := seededRoll(turnSeed+"-boots-resist-archer", 100)
-						if bootsBonus > 0 && resistRoll < bootsBonus {
-							effectNote += fmt.Sprintf(" [RESISTED archer stun! boots +%d%% resist]", bootsBonus)
-						} else {
-							stunTurns = 1
-							effectNote += " Archer fires! STUNNED! (1 turn)"
-						}
-						break
-					}
-				}
-			}
-		}
-
-		// Shaman special: any alive shaman (index % 2 == 1, index >= 3) has 30% chance to
-		// heal the first alive non-shaman monster for 10 HP (not exceeding max creation HP)
-		if aliveCount > 0 {
-			for i, v := range monsterHPRaw {
-				hp := sliceInt(v)
-				mtype := ""
-				if i < len(monsterTypesRaw) {
-					mtype, _ = monsterTypesRaw[i].(string)
-				}
-				if hp > 0 && mtype == "shaman" {
-					if seededRoll(turnSeed+fmt.Sprintf("-shaman%d-heal", i), 100) < 30 {
-						// Find the first alive non-shaman monster to heal
-						for j, vj := range newMonsterHP {
-							hpj := sliceInt(vj)
-							mtypej := ""
-							if j < len(monsterTypesRaw) {
-								mtypej, _ = monsterTypesRaw[j].(string)
-							}
-							if hpj > 0 && mtypej != "shaman" {
-								// Heal by 10, but not exceeding original creation HP
-								maxHP := defaultHP[difficulty].monster
-								if modifier == "curse-fortitude" {
-									maxHP = maxHP * 3 / 2
-								}
-								healedHP := min64(hpj+10, maxHP)
-								if healedHP > hpj {
-									newMonsterHP[j] = healedHP
-									effectNote += fmt.Sprintf(" Shaman heals %s-%d for %d HP!", mtypej, j, healedHP-hpj)
-								}
-								break // healed the first eligible monster; done
-							}
-						}
-						break // only one shaman heals per round
-					}
-				}
-			}
-		}
-
-		heroAction := fmt.Sprintf("[%s] Hero (%s) deals %d damage to %s (HP: %d -> %d)%s", diceFormula, heroClass, effectiveDamage, realTarget, oldHP, newHP, classNote)
-		// MIGRATION: game state (heroHP, monsterHP, poisonTurns, etc.) is computed by kro.
-		// Backend writes only log text. lastLootDrop and inventory computed by kro combatResolve.
-		patchSpec["lastHeroAction"] = heroAction
-		patchSpec["lastEnemyAction"] = enemyAction + effectNote
 	}
 
-	patch := map[string]interface{}{"spec": patchSpec}
-	return h.patchAndRespond(ctx, ns, name, patch, w)
+	return heroAction, enemyAction
 }
 
 // processAction handles a non-combat action (use item, equip, treasure, door, room transition).
@@ -1550,134 +1369,6 @@ func sanitizeK8sError(err error) string {
 	default:
 		return "Internal server error"
 	}
-}
-
-// rollDice rolls dice based on difficulty using seeded randomness.
-func rollDice(difficulty string, isBoss bool, uid string) int64 {
-	result, _ := rollDiceDetailed(difficulty, isBoss, uid)
-	return result
-}
-
-// rollDiceDetailed returns both the numeric result and a human-readable formula string
-// e.g. "1d20+3: rolled 14 (11+3)" or "2d12+6: rolled 19 (7+6+6)".
-func rollDiceDetailed(difficulty string, isBoss bool, uid string) (int64, string) {
-	var result int64
-	var formula string
-	switch difficulty {
-	case "easy":
-		d1 := seededRoll(uid+"-d1", 20) // [0,19]
-		result = d1 + 3
-		formula = fmt.Sprintf("1d20+3: rolled %d (%d+3)", result, d1)
-	case "hard":
-		d1 := seededRoll(uid+"-d1", 20)
-		d2 := seededRoll(uid+"-d2", 20)
-		d3 := seededRoll(uid+"-d3", 20)
-		result = d1 + d2 + d3 + 8
-		formula = fmt.Sprintf("3d20+8: rolled %d (%d+%d+%d+8)", result, d1, d2, d3)
-	default: // normal
-		d1 := seededRoll(uid+"-d1", 12)
-		d2 := seededRoll(uid+"-d2", 12)
-		result = d1 + d2 + 6
-		formula = fmt.Sprintf("2d12+6: rolled %d (%d+%d+6)", result, d1, d2)
-	}
-	if isBoss {
-		db := seededRoll(uid+"-dboss", 20)
-		base := result
-		result += db + 3
-		formula = fmt.Sprintf("%s + boss[%d+3]=%d", formula, db, result-base)
-	}
-	return result, formula
-}
-
-// seededRoll returns a deterministic value in [0, max) using the uid seed.
-// Uses FNV-1a hash of the seed string for fast, uniform distribution.
-func seededRoll(seed string, max int64) int64 {
-	h := uint64(14695981039346656037) // FNV-1a offset basis (fits uint64)
-	for i := 0; i < len(seed); i++ {
-		h ^= uint64(seed[i])
-		h *= 1099511628211
-	}
-	return int64(h>>1) % max
-}
-
-func applyModifierToCounter(modifier string, counter int64) int64 {
-	switch modifier {
-	case "curse-fury":
-		return counter * 2
-	case "blessing-resilience":
-		return counter / 2
-	}
-	return counter
-}
-
-// kroSeededRoll implements the same algorithm as kro's CEL random.seededString(1, seed)
-// followed by indexOf on "abcdefghijklmnopqrstuvwxyz0123456789" (CEL alphabet), modulo n.
-//
-// kro uses SHA-256 of the seed; bytes 0-3 form a uint32 index into
-// "0123456789abcdefghijklmnopqrstuvwxyz" (kro's output alphabet, digits first).
-// The CEL expressions then call indexOf on "abcdefghijklmnopqrstuvwxyz0123456789"
-// (letters first), so we map the output character to the CEL alphabet position.
-//
-// Source: kubernetes-sigs/kro pkg/cel/library/random.go
-func kroSeededRoll(seed string, n int) int {
-	const kroAlpha = "0123456789abcdefghijklmnopqrstuvwxyz" // kro seededString output alphabet
-	const celAlpha = "abcdefghijklmnopqrstuvwxyz0123456789" // CEL indexOf alphabet
-	hash := sha256.Sum256([]byte(seed))
-	idx := uint32(hash[0])<<24 | uint32(hash[1])<<16 | uint32(hash[2])<<8 | uint32(hash[3])
-	idx = idx % uint32(len(kroAlpha))
-	ch := kroAlpha[idx]
-	// find position of ch in celAlpha
-	for i := 0; i < len(celAlpha); i++ {
-		if celAlpha[i] == ch {
-			return i % n
-		}
-	}
-	return 0
-}
-
-// computeMonsterLoot mirrors the CEL logic in monster-graph.yaml exactly.
-// Uses the same SHA-256-based kroSeededRoll so results match kro-created Loot CRs.
-// Seed: dungeonName + '-m' + index + '-drop'/'-rar'/'-typ'
-// Item type list: 8 entries (no ring/amulet — matches CEL's 8-type array)
-func computeMonsterLoot(dungeonName string, idx int, difficulty string) (bool, string) {
-	seed := fmt.Sprintf("%s-m%d", dungeonName, idx)
-	dropRoll := kroSeededRoll(seed+"-drop", 36)
-	var dropThreshold int
-	switch difficulty {
-	case "easy":
-		dropThreshold = 22
-	case "hard":
-		dropThreshold = 13
-	default:
-		dropThreshold = 16
-	}
-	if dropRoll >= dropThreshold {
-		return false, ""
-	}
-	rarRoll := kroSeededRoll(seed+"-rar", 36)
-	rarity := "common"
-	if rarRoll >= 33 {
-		rarity = "epic"
-	} else if rarRoll >= 22 {
-		rarity = "rare"
-	}
-	typRoll := kroSeededRoll(seed+"-typ", 8)
-	types := []string{"weapon", "armor", "hppotion", "manapotion", "shield", "helmet", "pants", "boots"}
-	return true, types[typRoll] + "-" + rarity
-}
-
-// computeBossLoot mirrors the CEL logic in boss-graph.yaml exactly.
-// Uses the same SHA-256-based kroSeededRoll so results match kro-created Loot CRs.
-// Item type list: 7 entries (no manapotion/ring/amulet — matches CEL's 7-type array)
-func computeBossLoot(dungeonName string) string {
-	rarRoll := kroSeededRoll(dungeonName+"-boss-rar", 36)
-	rarity := "rare"
-	if rarRoll >= 18 {
-		rarity = "epic"
-	}
-	typRoll := kroSeededRoll(dungeonName+"-boss-typ", 7)
-	types := []string{"weapon", "armor", "hppotion", "shield", "helmet", "pants", "boots"}
-	return types[typRoll] + "-" + rarity
 }
 
 func classMaxHP(heroClass string) int64 {
