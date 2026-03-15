@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -157,8 +158,14 @@ func (h *Handler) CreateDungeon(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// #408: enforce per-user dungeon creation limit (max 5 active dungeons).
-	const maxDungeonsPerUser = 5
+	// #408: enforce per-user dungeon creation limit.
+	// Configurable via MAX_DUNGEONS_PER_USER env var; default 20.
+	maxDungeonsPerUser := 20
+	if v := os.Getenv("MAX_DUNGEONS_PER_USER"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			maxDungeonsPerUser = n
+		}
+	}
 	existing, listErr := h.client.Dynamic.Resource(k8s.DungeonGVR).Namespace(req.Namespace).List(
 		context.Background(), metav1.ListOptions{
 			LabelSelector: "krombat.io/owner=" + sess.Login,
