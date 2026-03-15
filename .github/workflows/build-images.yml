@@ -32,6 +32,7 @@ jobs:
           # #414: exit-code 1 causes CI to fail on critical CVEs.
           exit-code: '1'
           ignore-unfixed: true
+          trivyignores: '.trivyignore'
       - name: Upload backend Trivy results
         uses: github/codeql-action/upload-sarif@v3
         if: always()
@@ -66,6 +67,7 @@ jobs:
           # #414: exit-code 1 causes CI to fail on critical CVEs.
           exit-code: '1'
           ignore-unfixed: true
+          trivyignores: '.trivyignore'
       - name: Upload frontend Trivy results
         uses: github/codeql-action/upload-sarif@v3
         if: always()
