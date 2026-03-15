@@ -59,10 +59,11 @@ subjects:
     name: rpg-backend-sa
     namespace: rpg-system
 ---
-# Role: rpg-system namespace — allows backend to read/write the leaderboard ConfigMap.
+# Role: rpg-system namespace — allows backend to read/write the leaderboard ConfigMap
+# and the user profiles ConfigMap.
 # Note: 'create' cannot be restricted by resourceNames (the resource doesn't exist yet at
 # create time), so it is a separate rule without resourceNames. get/update/patch are
-# restricted to only the krombat-leaderboard ConfigMap for least-privilege.
+# restricted to only the named ConfigMaps for least-privilege.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -74,7 +75,7 @@ rules:
     verbs: [create]
   - apiGroups: [""]
     resources: [configmaps]
-    resourceNames: [krombat-leaderboard]
+    resourceNames: [krombat-leaderboard, krombat-profiles]
     verbs: [get, update, patch]
 ---
 apiVersion: rbac.authorization.k8s.io/v1

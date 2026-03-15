@@ -130,6 +130,40 @@ export async function getLeaderboard(): Promise<LeaderboardEntry[]> {
   return r.json()
 }
 
+export interface UserProfile {
+  dungeonsPlayed: number
+  dungeonsWon: number
+  dungeonsLost: number
+  dungeonsAbandoned: number
+  totalTurns: number
+  totalKills: number
+  totalBossKills: number
+  favouriteClass: string
+  favouriteDifficulty: string
+  inventory: string          // CSV
+  weaponBonus: number; weaponUses: number; armorBonus: number; shieldBonus: number
+  helmetBonus: number; pantsBonus: number; bootsBonus: number; ringBonus: number; amuletBonus: number
+  heroHP: number
+  heroMana: number
+  earnedBadges: string[]
+  badgeCounts: Record<string, number>
+  xp: number
+  level: number
+  kroCertificates: string[]
+  firstPlayed: string
+  lastPlayed: string
+}
+
+export async function getProfile(): Promise<UserProfile | null> {
+  try {
+    const r = await fetch(`${BASE}/profile`, CREDS)
+    if (!r.ok) return null
+    return r.json()
+  } catch {
+    return null
+  }
+}
+
 
 export class ApiError extends Error {
   constructor(public readonly status: number, message: string) {
