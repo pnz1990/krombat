@@ -13,7 +13,13 @@ FAIL=0
 TESTS=()
 
 # Auth bypass header — backend accepts X-Test-User when KROMBAT_TEST_USER env var matches.
-AUTH_H=(-H "X-Test-User: test-player")
+# Value is read from the krombat-test-auth K8s Secret (never committed to git).
+_TEST_USER="$(kubectl --context "$KUBECTL_CONTEXT" get secret krombat-test-auth \
+  -n rpg-system -o jsonpath='{.data.KROMBAT_TEST_USER}' 2>/dev/null | base64 -d 2>/dev/null || echo "")"
+if [ -z "$_TEST_USER" ]; then
+  echo "⚠️  krombat-test-auth secret not found — test bypass unavailable" >&2
+fi
+AUTH_H=(-H "X-Test-User: ${_TEST_USER}")
 
 log()  { echo "=== $1"; }
 pass() { echo "  ✅ $1"; PASS=$((PASS+1)); TESTS+=("PASS: $1"); }
