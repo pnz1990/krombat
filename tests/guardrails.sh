@@ -440,6 +440,9 @@ grep -q "getMonsterName" frontend/src/Sprite.tsx && pass "Sprite.tsx exports get
 grep -q "getMonsterName" frontend/src/App.tsx && pass "App.tsx uses getMonsterName for display labels" || fail "App.tsx not using getMonsterName"
 grep -q "Archer.*STUNNED\|STUNNED.*Archer\|archer.*stun\|stun.*archer" backend/internal/handlers/handlers.go && pass "Backend implements Archer stun mechanic" || fail "Archer stun mechanic missing from backend"
 grep -q "Shaman.*heal\|shaman.*heal" backend/internal/handlers/handlers.go && pass "Backend implements Shaman heal mechanic" || fail "Shaman heal mechanic missing from backend"
+# Stun must be consumed by combatResolve (not tickDoT) — tickDoT only handles poison/burn HP damage
+! grep -A10 "id: tickDoT" manifests/rgds/dungeon-graph.yaml | grep -q "stunTurns.*-.*1\|stunTurns.*stun" && pass "Stun not decremented in tickDoT (consumed by combatResolve)" || fail "tickDoT still decrements stunTurns — stun will be silently cleared before it takes effect"
+grep -A5 "id: combatResolve" manifests/rgds/dungeon-graph.yaml | grep -q "combatResolve\|type: specPatch" && grep -q "wasStunned ? st - 1" manifests/rgds/dungeon-graph.yaml && pass "combatResolve consumes stun (wasStunned ? st - 1)" || fail "combatResolve missing stun consumption (wasStunned ? st - 1)"
 
 # --- New Game+ guardrails ---
 echo "=== New Game+ guardrails"
