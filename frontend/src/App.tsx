@@ -268,6 +268,8 @@ export default function App() {
       navigate(`/dungeon/default/${name}`)
     } catch (e: any) { reportError('create-dungeon', e); setError(e.message) }
   }
+
+  const addEvent = (icon: string, msg: string) => {
     setEvents(prev => [{ type: 'COMBAT', action: icon, name: msg, namespace: '', payload: null }, ...prev].slice(0, 30))
   }
 

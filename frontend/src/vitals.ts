@@ -1,12 +1,6 @@
-import { onCLS, onFCP, onLCP, onTTFB, onINP } from 'web-vitals'
+import { onCLS, onFCP, onLCP, onTTFB, onINP, type Metric } from 'web-vitals'
 
-interface VitalMetric {
-  name: string
-  value: number
-  rating: string
-}
-
-function sendVital(metric: VitalMetric) {
+function sendVital(metric: Metric) {
   fetch('/api/v1/vitals', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
