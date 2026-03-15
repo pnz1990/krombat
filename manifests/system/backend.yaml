@@ -31,6 +31,8 @@ spec:
               value: "https://learn-kro.eks.aws.dev/api/v1/auth/callback"
             - name: ALLOWED_ORIGINS
               value: "https://learn-kro.eks.aws.dev"
+            - name: MAX_DUNGEONS_PER_USER
+              value: "50"
           envFrom:
             - secretRef:
                 name: krombat-github-oauth
