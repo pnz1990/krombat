@@ -28,9 +28,6 @@ if (!KROMBAT_TEST_TOKEN) {
   }
 }
 
-const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
-const FILTER = process.env.FILTER || (process.argv[2] ? process.argv[2].replace('--filter=', '') : null);
-
 const journeyDir = path.join(__dirname, 'journeys');
 const allFiles = fs.readdirSync(journeyDir)
   .filter(f => /^\d{2}-.*\.js$/.test(f))
