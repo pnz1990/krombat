@@ -174,6 +174,33 @@ async function run() {
       fail('Ternary expression: no result within timeout');
     }
 
+    // ── Live eval: cel.bind() macro — the key new capability ────────────────
+    // cel.bind() was not available in the old hand-rolled parser.
+    // Now that we use the real kro CEL env, it must work correctly.
+    console.log('\n  [Live eval: cel.bind() macro]');
+    const bindResult = await evalExpression(page, 'cel.bind(x, schema.spec.heroHP, x > 0 ? "alive" : "dead")');
+    if (bindResult !== null) {
+      ok(`cel.bind() evaluated (result: "${bindResult}")`);
+      bindResult === 'alive' || bindResult === '"alive"'
+        ? ok('cel.bind() result "alive" — kro real CEL env confirmed working')
+        : warn(`cel.bind() result: "${bindResult}" — expected "alive"`);
+    } else {
+      fail('cel.bind(): no result within timeout (real kro CEL env may not be active)');
+    }
+
+    // ── Live eval: random.seededInt ──────────────────────────────────────────
+    console.log('\n  [Live eval: random.seededInt]');
+    const randResult = await evalExpression(page, 'random.seededInt(0, 100, "test-seed")');
+    if (randResult !== null) {
+      ok(`random.seededInt(0, 100, "test-seed") evaluated (result: "${randResult}")`);
+      // Deterministic: same seed always produces 56
+      randResult === '56'
+        ? ok('random.seededInt result 56 — deterministic seeded random confirmed')
+        : warn(`random.seededInt result: "${randResult}" — expected 56 for seed "test-seed"`);
+    } else {
+      fail('random.seededInt: no result within timeout');
+    }
+
     // ── Live eval: invalid expression shows error ─────────────────────────────
     console.log('\n  [Live eval: invalid expression → error result]');
     const input = page.locator('textarea.kro-playground-input');
