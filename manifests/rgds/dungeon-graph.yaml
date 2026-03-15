@@ -300,22 +300,21 @@ spec:
         abilityProcessedSeq: "${schema.spec.attackSeq}"
         lastAbility: "${''}"
 
-     # --- DoT tick: decrement poison/burn/stun and apply HP damage, once per attack turn ---
-     # Gate: attackSeq has advanced past dotProcessedSeq AND combatResolve has fired first
-     # (dotProcessedSeq < combatProcessedSeq prevents firing the same reconcile cycle that
-     # applied the DoT via counter-attack, which would give an extra tick)
-     # AND at least one DoT is active
-     # AND lastAttackTarget is empty (combatResolve already ran and cleared the target)
-     # AND lastAbility is empty.
+      # --- DoT tick: decrement poison/burn and apply HP damage, once per attack turn ---
+      # Gate: attackSeq has advanced past dotProcessedSeq AND combatResolve has fired first
+      # (dotProcessedSeq < combatProcessedSeq prevents firing the same reconcile cycle that
+      # applied the DoT via counter-attack, which would give an extra tick)
+      # AND at least one DoT is active (poison or burn only — stun is consumed by combatResolve)
+      # AND lastAttackTarget is empty (combatResolve already ran and cleared the target)
+      # AND lastAbility is empty.
     - id: tickDoT
       type: specPatch
       includeWhen:
-        - "${schema.spec.attackSeq > schema.spec.dotProcessedSeq && schema.spec.dotProcessedSeq < schema.spec.combatProcessedSeq && (schema.spec.poisonTurns > 0 || schema.spec.burnTurns > 0 || schema.spec.stunTurns > 0) && schema.spec.lastAttackTarget == '' && schema.spec.lastAbility == ''}"
+        - "${schema.spec.attackSeq > schema.spec.dotProcessedSeq && schema.spec.dotProcessedSeq < schema.spec.combatProcessedSeq && (schema.spec.poisonTurns > 0 || schema.spec.burnTurns > 0) && schema.spec.lastAttackTarget == '' && schema.spec.lastAbility == ''}"
       patch:
         heroHP: "${schema.spec.heroHP - (schema.spec.poisonTurns > 0 ? 5 : 0) - (schema.spec.burnTurns > 0 ? 8 : 0) < 0 ? 0 : schema.spec.heroHP - (schema.spec.poisonTurns > 0 ? 5 : 0) - (schema.spec.burnTurns > 0 ? 8 : 0)}"
         poisonTurns: "${schema.spec.poisonTurns > 0 ? schema.spec.poisonTurns - 1 : 0}"
         burnTurns: "${schema.spec.burnTurns > 0 ? schema.spec.burnTurns - 1 : 0}"
-        stunTurns: "${schema.spec.stunTurns > 0 ? schema.spec.stunTurns - 1 : 0}"
         dotProcessedSeq: "${schema.spec.attackSeq}"
 
     # --- Taunt advancement: 1→2 (protecting) → 0 (expired), once per attack turn ---
@@ -600,7 +599,9 @@ spec:
             : bt
           ))))))}
 
-        # --- Stun: boss stun (15%) OR archer stun (20% per alive archer, boots resist) ---
+        # --- Stun: consume existing stun OR apply new stun from boss (15%) / archer (20%) ---
+        # When hero is already stunned (wasStunned), consume one turn (st-1).
+        # When not stunned, check for new stun infliction.
         stunTurns: >-
           ${cel.bind(s, schema.spec.lastAttackSeed,
           cel.bind(st, schema.spec.stunTurns,
@@ -609,8 +610,9 @@ spec:
           cel.bind(effectRoll, random.seededInt(0, 100, s + '-fx'),
           cel.bind(resistRoll, random.seededInt(0, 100, s + '-boots-resist'),
           cel.bind(resisted, schema.spec.bootsBonus > 0 && resistRoll < schema.spec.bootsBonus,
-            isBoss ?
-              (effectRoll < 15 && st == 0 && !wasStunned && !resisted ? 1 : st)
+            wasStunned ? st - 1
+            : isBoss ?
+              (effectRoll < 15 && !resisted ? 1 : st)
             : cel.bind(idx, schema.spec.lastAttackIndex,
               cel.bind(diff, schema.spec.difficulty,
               cel.bind(baseDmg,
@@ -636,7 +638,7 @@ spec:
                   schema.spec.monsterHP[idx] - finalDmg < 0 ? 0 : schema.spec.monsterHP[idx] - finalDmg)
                 : schema.spec.monsterHP,
               cel.bind(postAlive, postArr.filter(h, h > 0).size(),
-                postAlive > 0 && st == 0 && !wasStunned ?
+                postAlive > 0 ?
                   cel.bind(archerResistRoll, random.seededInt(0, 100, s + '-boots-resist-archer'),
                   cel.bind(archerResisted, schema.spec.bootsBonus > 0 && archerResistRoll < schema.spec.bootsBonus,
                   cel.bind(archerHit,
