@@ -587,6 +587,37 @@ grep -q "krombat.io/owner" manifests/system/admission-policy.yaml && pass "#422:
 grep -q "maxEquipBonus\|equip.*50\|50.*equip" backend/internal/handlers/handlers.go && pass "#423: maxEquipBonus constant present in CreateDungeon" || fail "#423: maxEquipBonus missing from CreateDungeon"
 grep -q "maximum=50" manifests/rgds/dungeon-graph.yaml && pass "#423: dungeon-graph RGD has maximum=50 on bonus fields" || fail "#423: dungeon-graph RGD missing maximum=50 on bonus fields"
 
+# --- Security P3 guardrails (#424-#429) ---
+echo "=== Security P3 guardrails"
+
+# #424: GitHub Actions must be pinned to SHA (no floating @v4 or @master)
+# Use grep -v '#' to skip comment lines when checking for mutable tags.
+grep -v '#' .github/workflows/build-images.yml | grep -q "actions/checkout@v4" && fail "#424: actions/checkout still using mutable @v4 tag" || pass "#424: actions/checkout pinned to SHA"
+grep -v '#' .github/workflows/build-images.yml | grep -q "aws-actions/configure-aws-credentials@v4" && fail "#424: configure-aws-credentials still using mutable @v4 tag" || pass "#424: configure-aws-credentials pinned to SHA"
+grep -v '#' .github/workflows/build-images.yml | grep -q "azure/setup-kubectl@v4" && fail "#424: setup-kubectl still using mutable @v4 tag" || pass "#424: setup-kubectl pinned to SHA"
+grep -v '#' .github/workflows/build-images.yml | grep -q "amazon-ecr-login@v2" && fail "#424: amazon-ecr-login still using mutable @v2 tag" || pass "#424: amazon-ecr-login pinned to SHA"
+grep -v '#' .github/workflows/build-images.yml | grep -q "codeql-action/upload-sarif@v3" && fail "#424: codeql upload-sarif still using mutable @v3 tag" || pass "#424: codeql upload-sarif pinned to SHA"
+
+# #425: Terraform S3 backend must have encrypt=true and dynamodb_table
+grep -q "encrypt.*=.*true" infra/main.tf && pass "#425: Terraform S3 backend has encrypt=true" || fail "#425: Terraform S3 backend missing encrypt=true"
+grep -q "dynamodb_table" infra/main.tf && pass "#425: Terraform S3 backend has DynamoDB locking" || fail "#425: Terraform S3 backend missing dynamodb_table"
+
+# #426: ECR repositories must have scan_on_push and KMS encryption
+grep -q "scan_on_push.*=.*true" infra/ecr.tf && pass "#426: ECR has scan_on_push = true" || fail "#426: ECR missing scan_on_push"
+grep -q 'encryption_type.*=.*"KMS"' infra/ecr.tf && pass "#426: ECR has KMS encryption" || fail "#426: ECR missing KMS encryption"
+
+# #427: dungeon reaper must use namespaced Role, not ClusterRole
+grep -q "kind: ClusterRole" manifests/system/dungeon-reaper.yaml && fail "#427: dungeon-reaper still using ClusterRole (should be namespaced Role)" || pass "#427: dungeon-reaper uses namespaced Role"
+grep -q "kind: Role$" manifests/system/dungeon-reaper.yaml && pass "#427: dungeon-reaper has namespaced Role" || fail "#427: dungeon-reaper missing namespaced Role"
+
+ # #428: OAuth callback URL must not be hardcoded in auth.go (comments are ok)
+ grep -v '//' backend/internal/handlers/auth.go | grep -q 'learn-kro.eks.aws.dev/api/v1/auth/callback' && fail "#428: hardcoded OAuth callback URL still in auth.go code" || pass "#428: hardcoded OAuth callback URL removed from auth.go"
+ grep -q "GITHUB_CALLBACK_URL.*not set\|required env var" backend/cmd/main.go && pass "#428: main.go fails fast if GITHUB_CALLBACK_URL absent" || fail "#428: main.go missing GITHUB_CALLBACK_URL fail-fast"
+
+# #429: session TTL must be <= 4h
+grep -q "sessionTTL.*=.*4.*time.Hour\|4.*time.Hour.*sessionTTL" backend/internal/handlers/auth.go && pass "#429: session TTL reduced to 4h" || fail "#429: session TTL not reduced to 4h"
+grep -q '"j".*jti\|Jti.*string\|jti.*nonce' backend/internal/handlers/auth.go && pass "#429: session payload has jti field for future revocation" || fail "#429: session payload missing jti field"
+
 # --- Summary ---
 
 echo ""

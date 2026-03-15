@@ -19,7 +19,8 @@ jobs:
   build-backend:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      # #424: pinned to SHA — actions/checkout@v4.2.2
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
       - run: docker build -t krombat/backend:test backend/
       # Step 1: Generate SARIF for security dashboards (never blocks).
       - name: Scan backend image (SARIF upload)
@@ -34,7 +35,8 @@ jobs:
           ignore-unfixed: true
           trivyignores: '.trivyignore'
       - name: Upload backend Trivy results
-        uses: github/codeql-action/upload-sarif@v3
+        # #424: pinned to SHA — github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@820e3160e279568db735cee8ed8f8e77a6da7818
         if: always()
         with:
           sarif_file: 'trivy-backend.sarif'
@@ -51,12 +53,14 @@ jobs:
           ignore-unfixed: true
           trivyignores: '.trivyignore'
       - if: github.event_name == 'push'
-        uses: aws-actions/configure-aws-credentials@v4
+        # #424: pinned to SHA — aws-actions/configure-aws-credentials@v4.0.2
+        uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
       - if: github.event_name == 'push'
-        uses: aws-actions/amazon-ecr-login@v2
+        # #424: pinned to SHA — aws-actions/amazon-ecr-login@v2.0.1
+        uses: aws-actions/amazon-ecr-login@062b18b96a7aff071d4dc91bc00c4c1a7945b076
       - if: github.event_name == 'push'
         run: |
           docker tag krombat/backend:test $REGISTRY/krombat/backend:${{ github.sha }}
@@ -65,7 +69,8 @@ jobs:
   build-frontend:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      # #424: pinned to SHA — actions/checkout@v4.2.2
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
       - run: docker build -t krombat/frontend:test frontend/
       # Step 1: Generate SARIF for security dashboards (never blocks).
       - name: Scan frontend image (SARIF upload)
@@ -80,7 +85,8 @@ jobs:
           ignore-unfixed: true
           trivyignores: '.trivyignore'
       - name: Upload frontend Trivy results
-        uses: github/codeql-action/upload-sarif@v3
+        # #424: pinned to SHA — github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@820e3160e279568db735cee8ed8f8e77a6da7818
         if: always()
         with:
           sarif_file: 'trivy-frontend.sarif'
@@ -97,12 +103,14 @@ jobs:
           ignore-unfixed: true
           trivyignores: '.trivyignore'
       - if: github.event_name == 'push'
-        uses: aws-actions/configure-aws-credentials@v4
+        # #424: pinned to SHA — aws-actions/configure-aws-credentials@v4.0.2
+        uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
       - if: github.event_name == 'push'
-        uses: aws-actions/amazon-ecr-login@v2
+        # #424: pinned to SHA — aws-actions/amazon-ecr-login@v2.0.1
+        uses: aws-actions/amazon-ecr-login@062b18b96a7aff071d4dc91bc00c4c1a7945b076
       - if: github.event_name == 'push'
         run: |
           docker tag krombat/frontend:test $REGISTRY/krombat/frontend:${{ github.sha }}
@@ -113,12 +121,15 @@ jobs:
     needs: [build-backend, build-frontend]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: aws-actions/configure-aws-credentials@v4
+      # #424: pinned to SHA — actions/checkout@v4.2.2
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      # #424: pinned to SHA — aws-actions/configure-aws-credentials@v4.0.2
+      - uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: us-west-2
-      - uses: azure/setup-kubectl@v4
+      # #424: pinned to SHA — azure/setup-kubectl@v4
+      - uses: azure/setup-kubectl@776406bce94f63e41d621b960d78ee25c8b76ede
       - run: aws eks update-kubeconfig --region us-west-2 --name krombat
       # #413: update manifests to use commit-SHA image tags (immutable) instead of :latest.
       - name: Update image tags in manifests
