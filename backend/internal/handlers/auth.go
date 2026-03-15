@@ -4,129 +4,110 @@ package handlers
 //
 // Flow:
 //   1. Frontend calls GET /api/v1/auth/login  → redirect to GitHub OAuth
+//      A short-lived HttpOnly cookie "krombat_oauth_state" is set on the browser.
 //   2. GitHub redirects to GET /api/v1/auth/callback?code=...&state=...
-//      → backend exchanges code for token, fetches user identity, sets cookie
-//   3. Frontend calls GET /api/v1/auth/me     → returns {login, avatarUrl} or 401
-//   4. GET /api/v1/auth/logout               → clears cookie
+//      The state param is compared to the cookie value (CSRF guard that works
+//      across all pods — no shared in-memory store needed).
+//   3. Backend exchanges code for token, fetches user identity, sets a signed
+//      session cookie "krombat_session" containing login+avatarUrl+expiry,
+//      HMAC-signed with SESSION_SECRET.  Any pod can verify it independently.
+//   4. Frontend calls GET /api/v1/auth/me  → decodes cookie, returns identity or 401
+//   5. GET /api/v1/auth/logout             → clears cookie
 //
-// Sessions are kept in-memory (map protected by mutex) with a 24h TTL.
-// No external store needed — pods restart clean, sessions are re-established
-// via re-login.  With 3 replicas each pod has its own session store; the ALB's
-// sticky-session is NOT used, so after any pod restart the user will be asked
-// to log in again (acceptable for a demo).
-//
-// The session token is a 32-byte random value (hex-encoded) set as an
-// HttpOnly, Secure, SameSite=Lax cookie.
+// This design is stateless across pods: no shared store, no sticky sessions.
+// The session cookie carries all state; the HMAC prevents tampering.
 //
 // Required env vars:
 //   GITHUB_CLIENT_ID      — from krombat-github-oauth Secret
 //   GITHUB_CLIENT_SECRET  — from krombat-github-oauth Secret
+//   SESSION_SECRET        — random ≥32-byte string for HMAC signing
 //   GITHUB_CALLBACK_URL   — e.g. https://learn-kro.eks.aws.dev/api/v1/auth/callback
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
-	"sync"
+	"strings"
 	"time"
 )
 
 const (
-	sessionCookieName = "krombat_session"
-	sessionTTL        = 24 * time.Hour
-	oauthStateTTL     = 10 * time.Minute
+	sessionCookieName    = "krombat_session"
+	oauthStateCookieName = "krombat_oauth_state"
+	sessionTTL           = 24 * time.Hour
 )
 
-// Session holds an authenticated user's identity.
-type Session struct {
-	Login     string
-	AvatarURL string
-	ExpiresAt time.Time
+// sessionPayload is the data encoded in the session cookie.
+type sessionPayload struct {
+	Login     string `json:"l"`
+	AvatarURL string `json:"a"`
+	ExpiresAt int64  `json:"e"` // unix seconds
 }
 
-// sessionStore is an in-memory session registry.
-type sessionStore struct {
-	mu   sync.RWMutex
-	data map[string]*Session
-}
-
-func newSessionStore() *sessionStore {
-	s := &sessionStore{data: make(map[string]*Session)}
-	go s.reapLoop()
-	return s
-}
-
-func (s *sessionStore) set(token string, sess *Session) {
-	s.mu.Lock()
-	s.data[token] = sess
-	s.mu.Unlock()
-}
-
-func (s *sessionStore) get(token string) (*Session, bool) {
-	s.mu.RLock()
-	sess, ok := s.data[token]
-	s.mu.RUnlock()
-	if !ok || time.Now().After(sess.ExpiresAt) {
-		return nil, false
+// sessionSecret returns the HMAC key from env, falling back to a random value
+// (which means sessions don't survive pod restarts when the env var is absent).
+var sessionSecret = func() []byte {
+	if s := os.Getenv("SESSION_SECRET"); s != "" {
+		return []byte(s)
 	}
-	return sess, true
-}
-
-func (s *sessionStore) delete(token string) {
-	s.mu.Lock()
-	delete(s.data, token)
-	s.mu.Unlock()
-}
-
-func (s *sessionStore) reapLoop() {
-	for range time.Tick(15 * time.Minute) {
-		s.mu.Lock()
-		now := time.Now()
-		for t, sess := range s.data {
-			if now.After(sess.ExpiresAt) {
-				delete(s.data, t)
-			}
-		}
-		s.mu.Unlock()
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		panic("auth: cannot generate session secret: " + err.Error())
 	}
-}
+	return b
+}()
 
-// oauthStateStore prevents CSRF during OAuth dance.
-type oauthStateStore struct {
-	mu   sync.Mutex
-	data map[string]time.Time
-}
-
-func newOAuthStateStore() *oauthStateStore {
-	return &oauthStateStore{data: make(map[string]time.Time)}
-}
-
-func (o *oauthStateStore) add(state string) {
-	o.mu.Lock()
-	o.data[state] = time.Now().Add(oauthStateTTL)
-	o.mu.Unlock()
-}
-
-func (o *oauthStateStore) consume(state string) bool {
-	o.mu.Lock()
-	defer o.mu.Unlock()
-	exp, ok := o.data[state]
-	if !ok || time.Now().After(exp) {
-		return false
+// signToken encodes payload as JSON, appends an HMAC-SHA256 signature, and
+// returns "<hex-json>.<hex-sig>" — safe for use as a cookie value.
+func signToken(p sessionPayload) (string, error) {
+	data, err := json.Marshal(p)
+	if err != nil {
+		return "", err
 	}
-	delete(o.data, state)
-	return true
+	encoded := hex.EncodeToString(data)
+	mac := hmac.New(sha256.New, sessionSecret)
+	mac.Write([]byte(encoded))
+	sig := hex.EncodeToString(mac.Sum(nil))
+	return encoded + "." + sig, nil
 }
 
-// package-level singletons
-var (
-	sessions    = newSessionStore()
-	oauthStates = newOAuthStateStore()
-)
+// verifyToken parses and verifies a token produced by signToken.
+// Returns nil if the token is invalid or expired.
+func verifyToken(token string) *sessionPayload {
+	parts := strings.SplitN(token, ".", 2)
+	if len(parts) != 2 {
+		return nil
+	}
+	encoded, sig := parts[0], parts[1]
+	// Verify HMAC
+	mac := hmac.New(sha256.New, sessionSecret)
+	mac.Write([]byte(encoded))
+	expected := hex.EncodeToString(mac.Sum(nil))
+	if !hmac.Equal([]byte(sig), []byte(expected)) {
+		return nil
+	}
+	// Decode payload
+	data, err := hex.DecodeString(encoded)
+	if err != nil {
+		return nil
+	}
+	var p sessionPayload
+	if err := json.Unmarshal(data, &p); err != nil {
+		return nil
+	}
+	// Check expiry
+	if time.Now().Unix() > p.ExpiresAt {
+		return nil
+	}
+	return &p
+}
 
 // randomHex generates a cryptographically random hex string of `n` bytes.
 func randomHex(n int) (string, error) {
@@ -135,6 +116,12 @@ func randomHex(n int) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(b), nil
+}
+
+// Session holds an authenticated user's identity (attached to request context).
+type Session struct {
+	Login     string
+	AvatarURL string
 }
 
 // contextKey is used to attach session data to request contexts.
@@ -151,31 +138,26 @@ func sessionFromCtx(ctx context.Context) *Session {
 	return v.(*Session)
 }
 
-// AuthMiddleware extracts the session cookie, validates it, and injects the
-// Session into the request context.  Always calls next — endpoints that
-// require auth check sessionFromCtx themselves.
+// AuthMiddleware decodes the session cookie and injects the Session into the
+// request context.  Always calls next — endpoints that require auth check
+// sessionFromCtx themselves.
 //
 // Test bypass: if KROMBAT_TEST_USER env var is set and the request carries
 // X-Test-User header matching the env value, a synthetic session is injected.
-// This is used by integration tests to bypass OAuth without live GitHub creds.
 func AuthMiddleware(next http.Handler) http.Handler {
 	testUser := os.Getenv("KROMBAT_TEST_USER")
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Test bypass (only active when KROMBAT_TEST_USER is configured)
 		if testUser != "" && r.Header.Get("X-Test-User") == testUser {
-			synthetic := &Session{
-				Login:     testUser,
-				AvatarURL: "",
-				ExpiresAt: time.Now().Add(24 * time.Hour),
-			}
+			synthetic := &Session{Login: testUser, AvatarURL: ""}
 			r = r.WithContext(context.WithValue(r.Context(), sessionContextKey, synthetic))
 			next.ServeHTTP(w, r)
 			return
 		}
-		// Normal cookie-based session lookup
-		cookie, err := r.Cookie(sessionCookieName)
-		if err == nil && cookie.Value != "" {
-			if sess, ok := sessions.get(cookie.Value); ok {
+		// Normal cookie-based session
+		if cookie, err := r.Cookie(sessionCookieName); err == nil && cookie.Value != "" {
+			if p := verifyToken(cookie.Value); p != nil {
+				sess := &Session{Login: p.Login, AvatarURL: p.AvatarURL}
 				r = r.WithContext(context.WithValue(r.Context(), sessionContextKey, sess))
 			}
 		}
@@ -183,7 +165,7 @@ func AuthMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// LoginHandler redirects the browser to GitHub's OAuth authorize page.
+// LoginHandler sets a short-lived state cookie and redirects to GitHub OAuth.
 func LoginHandler(w http.ResponseWriter, r *http.Request) {
 	clientID := os.Getenv("GITHUB_CLIENT_ID")
 	if clientID == "" {
@@ -195,28 +177,57 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	oauthStates.add(state)
+	// Store state in a short-lived HttpOnly cookie so any pod can verify it
+	// at callback time — no shared in-memory store needed.
+	http.SetCookie(w, &http.Cookie{
+		Name:     oauthStateCookieName,
+		Value:    state,
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   600, // 10 minutes
+	})
 	callbackURL := os.Getenv("GITHUB_CALLBACK_URL")
 	if callbackURL == "" {
 		callbackURL = "https://learn-kro.eks.aws.dev/api/v1/auth/callback"
 	}
-	redirectURL := "https://github.com/login/oauth/authorize" +
-		"?client_id=" + clientID +
-		"&redirect_uri=" + callbackURL +
-		"&scope=read:user" +
-		"&state=" + state
+	redirectURL := fmt.Sprintf(
+		"https://github.com/login/oauth/authorize?client_id=%s&redirect_uri=%s&scope=read:user&state=%s",
+		clientID, callbackURL, state,
+	)
 	http.Redirect(w, r, redirectURL, http.StatusFound)
 }
 
-// CallbackHandler exchanges the OAuth code for a token, fetches the GitHub
-// user, and sets a session cookie.
+// CallbackHandler verifies the OAuth state cookie, exchanges the code for a
+// token, fetches the GitHub user, and sets a signed session cookie.
 func CallbackHandler(w http.ResponseWriter, r *http.Request) {
-	state := r.URL.Query().Get("state")
+	stateParam := r.URL.Query().Get("state")
 	code := r.URL.Query().Get("code")
-	if !oauthStates.consume(state) {
+
+	// Verify state against the cookie (CSRF guard, works across all pods)
+	stateCookie, err := r.Cookie(oauthStateCookieName)
+	if err != nil || stateCookie.Value == "" || stateCookie.Value != stateParam {
+		slog.Warn("oauth state mismatch", "param", stateParam, "cookie", func() string {
+			if err != nil {
+				return "(missing)"
+			}
+			return stateCookie.Value
+		}())
 		http.Error(w, "invalid oauth state", http.StatusBadRequest)
 		return
 	}
+	// Clear the state cookie immediately
+	http.SetCookie(w, &http.Cookie{
+		Name:     oauthStateCookieName,
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   -1,
+	})
+
 	if code == "" {
 		http.Error(w, "missing oauth code", http.StatusBadRequest)
 		return
@@ -280,17 +291,17 @@ func CallbackHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create session
-	token, err := randomHex(32)
+	// Build a signed session token (stateless — no shared store needed)
+	payload := sessionPayload{
+		Login:     ghUser.Login,
+		AvatarURL: ghUser.AvatarURL,
+		ExpiresAt: time.Now().Add(sessionTTL).Unix(),
+	}
+	token, err := signToken(payload)
 	if err != nil {
 		http.Error(w, "session create failed", http.StatusInternalServerError)
 		return
 	}
-	sessions.set(token, &Session{
-		Login:     ghUser.Login,
-		AvatarURL: ghUser.AvatarURL,
-		ExpiresAt: time.Now().Add(sessionTTL),
-	})
 
 	slog.Info("user logged in", "component", "auth", "login", ghUser.Login)
 
@@ -324,12 +335,8 @@ func MeHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// LogoutHandler clears the session cookie and deletes the session.
+// LogoutHandler clears the session cookie.
 func LogoutHandler(w http.ResponseWriter, r *http.Request) {
-	cookie, err := r.Cookie(sessionCookieName)
-	if err == nil && cookie.Value != "" {
-		sessions.delete(cookie.Value)
-	}
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookieName,
 		Value:    "",
