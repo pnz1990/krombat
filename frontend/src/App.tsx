@@ -808,18 +808,6 @@ function DungeonList({ dungeons, onSelect, onDelete, deleting, lastDungeon }: {
   )
 }
 
-const OUTCOME_ICON: Record<string, string> = {
-  victory: 'VICTORY',
-  defeat: 'DEFEAT',
-  'room1-cleared': 'ROOM 1',
-  'in-progress': '...',
-}
-const OUTCOME_COLOR: Record<string, string> = {
-  victory: '#f5c518',
-  defeat: '#e94560',
-  'room1-cleared': '#00ff41',
-  'in-progress': '#888',
-}
 const CLASS_ICON: Record<string, string> = { warrior: 'sword', mage: 'mana', rogue: 'dagger' }
 
 function LeaderboardPanel({ entries, loading, onClose }: {
@@ -843,33 +831,27 @@ function LeaderboardPanel({ entries, loading, onClose }: {
             <thead>
               <tr>
                 <th>#</th>
-                <th>Dungeon</th>
+                <th>Player</th>
                 <th>Class</th>
                 <th>Difficulty</th>
-                <th>Outcome</th>
                 <th>Turns</th>
-                <th>Room</th>
               </tr>
             </thead>
             <tbody>
               {entries.map((e, i) => (
-                <tr key={`${e.timestamp}-${e.dungeonName}`} className={`lb-row lb-${e.outcome}`}>
+                <tr key={`${e.timestamp}-${e.dungeonName}`} className="lb-row lb-victory">
                   <td className="lb-rank">{i + 1}</td>
                   <td className="lb-name">{e.dungeonName}</td>
                   <td><PixelIcon name={CLASS_ICON[e.heroClass] ?? 'sword'} size={10} /></td>
                   <td><span className={`tag tag-${e.difficulty}`}>{e.difficulty}</span></td>
-                  <td style={{ color: OUTCOME_COLOR[e.outcome] ?? '#888', fontWeight: 'bold' }}>
-                    {OUTCOME_ICON[e.outcome] ?? e.outcome}
-                  </td>
                   <td className="lb-turns">{e.totalTurns}</td>
-                  <td>{e.currentRoom ?? 1}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         )}
         <div style={{ fontSize: '7px', color: 'var(--text-dim)', marginTop: 8, textAlign: 'center' }}>
-          Sorted by fewest turns. Stored in the <code>krombat-leaderboard</code> ConfigMap in <code>rpg-system</code>.
+          Victory runs only, sorted by fewest turns. Stored in the <code>krombat-leaderboard</code> ConfigMap in <code>rpg-system</code>.
         </div>
       </div>
     </div>
