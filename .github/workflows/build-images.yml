@@ -8,7 +8,7 @@ on:
 
 permissions:
   id-token: write
-  contents: read
+  contents: write   # needed to push image-tag commit on main
   security-events: write
 
 env:
@@ -21,20 +21,35 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: docker build -t krombat/backend:test backend/
-      - name: Scan backend image for vulnerabilities
-        uses: aquasecurity/trivy-action@master
+      # Step 1: Generate SARIF for security dashboards (never blocks).
+      - name: Scan backend image (SARIF upload)
+        # #414: pinned to SHA — aquasecurity/trivy-action@0.35.0
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
         with:
           image-ref: krombat/backend:test
           format: 'sarif'
           output: 'trivy-backend.sarif'
           severity: 'CRITICAL,HIGH'
           exit-code: '0'
+          ignore-unfixed: true
+          trivyignores: '.trivyignore'
       - name: Upload backend Trivy results
         uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
           sarif_file: 'trivy-backend.sarif'
           category: 'backend'
+      # Step 2: Block on CRITICAL CVEs not in .trivyignore (table format, reliable exit-code).
+      - name: Block on backend CRITICAL CVEs
+        # #414: exit-code 1 causes CI to fail on critical CVEs not in .trivyignore.
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
+        with:
+          image-ref: krombat/backend:test
+          format: 'table'
+          severity: 'CRITICAL'
+          exit-code: '1'
+          ignore-unfixed: true
+          trivyignores: '.trivyignore'
       - if: github.event_name == 'push'
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -45,29 +60,42 @@ jobs:
       - if: github.event_name == 'push'
         run: |
           docker tag krombat/backend:test $REGISTRY/krombat/backend:${{ github.sha }}
-          docker tag krombat/backend:test $REGISTRY/krombat/backend:latest
           docker push $REGISTRY/krombat/backend:${{ github.sha }}
-          docker push $REGISTRY/krombat/backend:latest
 
   build-frontend:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - run: docker build -t krombat/frontend:test frontend/
-      - name: Scan frontend image for vulnerabilities
-        uses: aquasecurity/trivy-action@master
+      # Step 1: Generate SARIF for security dashboards (never blocks).
+      - name: Scan frontend image (SARIF upload)
+        # #414: pinned to SHA — aquasecurity/trivy-action@0.35.0
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
         with:
           image-ref: krombat/frontend:test
           format: 'sarif'
           output: 'trivy-frontend.sarif'
           severity: 'CRITICAL,HIGH'
           exit-code: '0'
+          ignore-unfixed: true
+          trivyignores: '.trivyignore'
       - name: Upload frontend Trivy results
         uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
           sarif_file: 'trivy-frontend.sarif'
           category: 'frontend'
+      # Step 2: Block on CRITICAL CVEs not in .trivyignore (table format, reliable exit-code).
+      - name: Block on frontend CRITICAL CVEs
+        # #414: exit-code 1 causes CI to fail on critical CVEs not in .trivyignore.
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
+        with:
+          image-ref: krombat/frontend:test
+          format: 'table'
+          severity: 'CRITICAL'
+          exit-code: '1'
+          ignore-unfixed: true
+          trivyignores: '.trivyignore'
       - if: github.event_name == 'push'
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -78,21 +106,30 @@ jobs:
       - if: github.event_name == 'push'
         run: |
           docker tag krombat/frontend:test $REGISTRY/krombat/frontend:${{ github.sha }}
-          docker tag krombat/frontend:test $REGISTRY/krombat/frontend:latest
           docker push $REGISTRY/krombat/frontend:${{ github.sha }}
-          docker push $REGISTRY/krombat/frontend:latest
 
   rollout:
     if: github.event_name == 'push'
     needs: [build-backend, build-frontend]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: us-west-2
       - uses: azure/setup-kubectl@v4
       - run: aws eks update-kubeconfig --region us-west-2 --name krombat
+      # #413: update manifests to use commit-SHA image tags (immutable) instead of :latest.
+      - name: Update image tags in manifests
+        run: |
+          sed -i "s|krombat/backend:.*|krombat/backend:${{ github.sha }}|g" manifests/system/backend.yaml
+          sed -i "s|krombat/frontend:.*|krombat/frontend:${{ github.sha }}|g" manifests/system/frontend.yaml
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add manifests/system/backend.yaml manifests/system/frontend.yaml
+          git diff --cached --quiet || git commit -m "chore: pin images to ${{ github.sha }} [skip ci]"
+          git push
       - run: |
           kubectl rollout restart deployment/rpg-backend deployment/rpg-frontend -n rpg-system
           kubectl rollout status deployment/rpg-backend -n rpg-system --timeout=120s

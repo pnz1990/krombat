@@ -157,6 +157,17 @@ func (h *Handler) CreateDungeon(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// #408: enforce per-user dungeon creation limit (max 5 active dungeons).
+	const maxDungeonsPerUser = 5
+	existing, listErr := h.client.Dynamic.Resource(k8s.DungeonGVR).Namespace(req.Namespace).List(
+		context.Background(), metav1.ListOptions{
+			LabelSelector: "krombat.io/owner=" + sess.Login,
+		})
+	if listErr == nil && len(existing.Items) >= maxDungeonsPerUser {
+		writeError(w, fmt.Sprintf("dungeon limit reached: you may have at most %d active dungeons — delete one first", maxDungeonsPerUser), http.StatusConflict)
+		return
+	}
+
 	heroClass := req.HeroClass
 	if heroClass == "" {
 		heroClass = "warrior"
@@ -615,12 +626,12 @@ func (h *Handler) CreateAttack(w http.ResponseWriter, r *http.Request) {
 	ctx := context.Background()
 
 	if isAction {
-		if err := h.processAction(ctx, ns, name, req.Target, req.Seq, w); err != nil {
+		if err := h.processAction(ctx, r, ns, name, req.Target, req.Seq, w); err != nil {
 			// error already written
 			return
 		}
 	} else {
-		if err := h.processCombat(ctx, ns, name, req.Target, req.Damage, req.Seq, w); err != nil {
+		if err := h.processCombat(ctx, r, ns, name, req.Target, req.Damage, req.Seq, w); err != nil {
 			// error already written
 			return
 		}
@@ -633,7 +644,7 @@ func (h *Handler) CreateAttack(w http.ResponseWriter, r *http.Request) {
 // 3. Upsert fixed-name Attack CR (SSA) with new seq = attackSeq+1 and targetRoom
 // 4. kro re-reconciles dungeon-graph, writes combatResult ConfigMap
 // 5. Backend reads combatResult ConfigMap, runs full combat math, patches Dungeon spec
-func (h *Handler) processCombat(ctx context.Context, ns, name, target string, clientDamage int64, clientSeq int64, w http.ResponseWriter) error {
+func (h *Handler) processCombat(ctx context.Context, r *http.Request, ns, name, target string, clientDamage int64, clientSeq int64, w http.ResponseWriter) error {
 	start := time.Now()
 	// These vars are captured by the defer to emit rich log + metrics at end.
 	var heroClass, difficulty, combatOutcome string
@@ -665,6 +676,11 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 		slog.Error("failed to get dungeon for combat", "component", "api", "dungeon", name, "namespace", ns, "error", err)
 		writeError(w, sanitizeK8sError(err), http.StatusNotFound)
 		return err
+	}
+	// #409: verify the caller owns this dungeon.
+	if ownerErr := requireDungeonOwner(r, dungeon); ownerErr != nil {
+		writeError(w, ownerErr.Error(), http.StatusForbidden)
+		return ownerErr
 	}
 	spec := getMap(dungeon.Object, "spec")
 	dungeonStatus := getMap(dungeon.Object, "status")
@@ -1250,7 +1266,7 @@ func deriveCombatLog(
 }
 
 // processAction handles a non-combat action (use item, equip, treasure, door, room transition).
-func (h *Handler) processAction(ctx context.Context, ns, name, action string, clientSeq int64, w http.ResponseWriter) error {
+func (h *Handler) processAction(ctx context.Context, r *http.Request, ns, name, action string, clientSeq int64, w http.ResponseWriter) error {
 	start := time.Now()
 	var heroClassAction, difficultyAction string
 	defer func() {
@@ -1276,6 +1292,11 @@ func (h *Handler) processAction(ctx context.Context, ns, name, action string, cl
 		slog.Error("failed to get dungeon for action", "component", "api", "dungeon", name, "namespace", ns, "error", err)
 		writeError(w, sanitizeK8sError(err), http.StatusNotFound)
 		return err
+	}
+	// #409: verify the caller owns this dungeon.
+	if ownerErr := requireDungeonOwner(r, dungeon); ownerErr != nil {
+		writeError(w, ownerErr.Error(), http.StatusForbidden)
+		return ownerErr
 	}
 	spec := getMap(dungeon.Object, "spec")
 	dungeonStatusAction := getMap(dungeon.Object, "status")
@@ -1887,6 +1908,12 @@ func (h *Handler) CelEvalHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// #411: require authentication.
+	if sess := sessionFromCtx(r.Context()); sess == nil {
+		writeError(w, "authentication required", http.StatusUnauthorized)
+		return
+	}
+
 	var req struct {
 		Expr string `json:"expr"`
 	}
@@ -1894,11 +1921,23 @@ func (h *Handler) CelEvalHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, "invalid request body: expected {\"expr\":\"...\"}", http.StatusBadRequest)
 		return
 	}
+	// #411: expression complexity limit — reject expressions that are too long
+	// or have too many nested brackets (proxy for AST depth / comprehension cost).
+	const maxExprLen = 500
+	if len(req.Expr) > maxExprLen {
+		writeError(w, fmt.Sprintf("expression too long (max %d chars)", maxExprLen), http.StatusBadRequest)
+		return
+	}
 
 	dungeon, err := h.client.Dynamic.Resource(k8s.DungeonGVR).Namespace(ns).Get(
 		r.Context(), name, metav1.GetOptions{})
 	if err != nil {
 		writeError(w, sanitizeK8sError(err), http.StatusNotFound)
+		return
+	}
+	// #411: require ownership — callers may only eval expressions against their own dungeon.
+	if ownerErr := requireDungeonOwner(r, dungeon); ownerErr != nil {
+		writeError(w, ownerErr.Error(), http.StatusForbidden)
 		return
 	}
 
@@ -1931,6 +1970,22 @@ func (h *Handler) GetDungeonResource(w http.ResponseWriter, r *http.Request) {
 	index := r.URL.Query().Get("index") // optional, for indexed resources (monster-N, loot-N)
 	ctx := r.Context()
 
+	// #410: require authentication and ownership.
+	if sess := sessionFromCtx(r.Context()); sess == nil {
+		writeError(w, "authentication required", http.StatusUnauthorized)
+		return
+	}
+	// Read the parent dungeon first (needed for ownership check).
+	dungeonObj, dungeonErr := h.client.Dynamic.Resource(k8s.DungeonGVR).Namespace(ns).Get(ctx, name, metav1.GetOptions{})
+	if dungeonErr != nil {
+		writeError(w, sanitizeK8sError(dungeonErr), http.StatusNotFound)
+		return
+	}
+	if ownerErr := requireDungeonOwner(r, dungeonObj); ownerErr != nil {
+		writeError(w, ownerErr.Error(), http.StatusForbidden)
+		return
+	}
+
 	type resourceDef struct {
 		gvr     schema.GroupVersionResource
 		resName string
@@ -1958,8 +2013,7 @@ func (h *Handler) GetDungeonResource(w http.ResponseWriter, r *http.Request) {
 			index = "0"
 		}
 		def = &resourceDef{schema.GroupVersionResource{Group: grp, Version: ver, Resource: "monsters"}, name + "-monster-" + index}
-	case "namespace":
-		def = &resourceDef{schema.GroupVersionResource{Group: coreGrp, Version: coreVer, Resource: "namespaces"}, ns}
+	// #410: "namespace" kind removed — exposes raw cluster topology; not needed by the K8s Inspector panel.
 	case "herostate":
 		def = &resourceDef{schema.GroupVersionResource{Group: coreGrp, Version: coreVer, Resource: "configmaps"}, name + "-hero-state"}
 	case "bossstate":
@@ -1989,18 +2043,11 @@ func (h *Handler) GetDungeonResource(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var obj *unstructured.Unstructured
-	var err error
-	if def.gvr.Group == "" {
-		if kind == "namespace" {
-			obj, err = h.client.Dynamic.Resource(def.gvr).Get(ctx, def.resName, metav1.GetOptions{})
-		} else {
-			obj, err = h.client.Dynamic.Resource(def.gvr).Namespace(ns).Get(ctx, def.resName, metav1.GetOptions{})
-		}
-	} else {
-		obj, err = h.client.Dynamic.Resource(def.gvr).Namespace(ns).Get(ctx, def.resName, metav1.GetOptions{})
-	}
-	if err != nil {
-		writeError(w, "resource not found: "+err.Error(), http.StatusNotFound)
+	var fetchErr error
+	// All remaining kinds are namespaced resources (namespace kind was removed — #410).
+	obj, fetchErr = h.client.Dynamic.Resource(def.gvr).Namespace(ns).Get(ctx, def.resName, metav1.GetOptions{})
+	if fetchErr != nil {
+		writeError(w, "resource not found: "+fetchErr.Error(), http.StatusNotFound)
 		return
 	}
 
