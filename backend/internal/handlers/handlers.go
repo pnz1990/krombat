@@ -416,6 +416,11 @@ func (h *Handler) recordLeaderboard(spec map[string]interface{}, kroStatus map[s
 		"current_room", currentRoom,
 		"run_count", runCount,
 	)
+	// Only persist victories to the leaderboard — defeats, room1-cleared and
+	// in-progress deletions are noise that would clutter the top-runs list.
+	if outcome != "victory" {
+		return
+	}
 	entry := LeaderboardEntry{
 		DungeonName: dungeonName,
 		HeroClass:   heroClass,
