@@ -491,26 +491,9 @@ func (h *Handler) recordLeaderboard(spec map[string]interface{}, kroStatus map[s
 			}
 		}
 	} else {
-		// kro status unavailable — derive from spec fields directly
-		heroHP := getInt(spec, "heroHP")
-		bossHP := getInt(spec, "bossHP")
-		if heroHP <= 0 {
-			outcome = "defeat"
-		} else {
-			monsterHPRaw, _ := spec["monsterHP"].([]interface{})
-			allDead := true
-			for _, v := range monsterHPRaw {
-				if sliceInt(v) > 0 {
-					allDead = false
-					break
-				}
-			}
-			if bossHP <= 0 && allDead && currentRoom >= 2 {
-				outcome = "victory"
-			} else if bossHP <= 0 && allDead {
-				outcome = "room1-cleared"
-			}
-		}
+		// #402: kro status unavailable — do not fall back to raw-HP derivation.
+		// Outcome stays "in-progress"; only victories are persisted, so this is a no-op.
+		slog.Debug("recordLeaderboard: kro status unavailable, skipping raw-HP fallback (#402)", "dungeon", dungeonName)
 	}
 
 	totalTurns := attackSeq + actionSeq
@@ -783,31 +766,14 @@ func (h *Handler) recordProfile(login string, spec map[string]interface{}, kroSt
 			}
 		}
 	} else {
-		heroHP := getInt(spec, "heroHP")
-		bossHP := getInt(spec, "bossHP")
-		if heroHP <= 0 {
-			outcome = "defeat"
-		} else {
-			monsterHPRaw, _ := spec["monsterHP"].([]interface{})
-			allDead := true
-			for _, v := range monsterHPRaw {
-				if sliceInt(v) > 0 {
-					allDead = false
-					break
-				}
-			}
-			if bossHP <= 0 && allDead && getInt(spec, "currentRoom") >= 2 {
-				outcome = "victory"
-			} else if bossHP <= 0 && allDead {
-				outcome = "room1-cleared"
-			}
-		}
+		// #402: kro status unavailable — do not fall back to raw-HP derivation.
+		// Outcome stays "in-progress"; profile update is best-effort, not critical.
+		slog.Debug("updateUserProfile: kro status unavailable, skipping raw-HP fallback (#402)")
 	}
 
+	// Load existing profiles CM or start fresh.
 	ctx := context.Background()
 	cmClient := h.client.Dynamic.Resource(leaderboardGVR).Namespace(leaderboardNamespace)
-
-	// Load existing profiles CM or start fresh.
 	var profile UserProfile
 	existing, err := cmClient.Get(ctx, profileCMName, metav1.GetOptions{})
 	var data map[string]interface{}
@@ -1121,13 +1087,10 @@ func (h *Handler) processCombat(ctx context.Context, r *http.Request, ns, name, 
 	heroHP := getInt(spec, "heroHP")
 	heroClass = getString(spec, "heroClass", "warrior")
 	difficulty = getString(spec, "difficulty", "normal")
-	maxHeroHPStatus, _ := strconv.ParseInt(getString(dungeonStatus, "maxHeroHP", ""), 10, 64)
-	if maxHeroHPStatus <= 0 {
-		maxHeroHPStatus = classMaxHP(heroClass)
-	}
-	maxHeroManaStatus, _ := strconv.ParseInt(getString(dungeonStatus, "maxHeroMana", ""), 10, 64)
-	if maxHeroManaStatus < 0 {
-		maxHeroManaStatus = classMaxMana(heroClass)
+	// #399: reject if kro has not yet provided maxHeroHP (hero-graph not reconciled yet)
+	if maxHeroHPStr := getString(dungeonStatus, "maxHeroHP", ""); maxHeroHPStr == "" {
+		writeError(w, "dungeon initializing — hero max HP not yet computed by kro, please retry", http.StatusServiceUnavailable)
+		return fmt.Errorf("hero maxHeroHP not yet available from kro")
 	}
 	heroMana := getInt(spec, "heroMana")
 	attackSeq := getInt(spec, "attackSeq")
@@ -1172,9 +1135,8 @@ func (h *Handler) processCombat(ctx context.Context, r *http.Request, ns, name, 
 			writeError(w, "not enough mana", http.StatusBadRequest)
 			return fmt.Errorf("not enough mana")
 		}
-		maxHP := maxHeroHPStatus
-		newHP := min64(heroHP+40, maxHP)
-		heroAction := fmt.Sprintf("Mage heals for %d HP! (Mana: %d)", newHP-heroHP, heroMana-2)
+		// #400: log text uses pre-state HP; kro abilityResolve is authoritative for actual HP mutation
+		heroAction := fmt.Sprintf("Mage heals! HP: %d -> (healing...) (Mana: %d -> (spending...))", heroHP, heroMana)
 		patch := map[string]interface{}{
 			"spec": map[string]interface{}{
 				"lastAbility":     "mage-heal",
@@ -1637,17 +1599,18 @@ func deriveCombatLog(
 		}
 	}
 
-	// DoT inflictions
+	// DoT inflictions — #401: removed hardcoded per-turn damage amounts (-5/-8 HP/turn)
+	// Turn counts are read from spec diff (pre→post); damage amounts are defined in dungeon-graph tickDoT CEL.
 	var effectNotes []string
 	if postPoisonTurns > prePoisonTurns {
 		if isBossTarget {
-			effectNotes = append(effectNotes, fmt.Sprintf("Bat Boss inflicts POISON! (%d turns, -5 HP/turn)", postPoisonTurns))
+			effectNotes = append(effectNotes, fmt.Sprintf("Bat Boss inflicts POISON! (%d turns)", postPoisonTurns))
 		} else {
-			effectNotes = append(effectNotes, fmt.Sprintf("Monsters inflict POISON! (%d turns, -5 HP/turn)", postPoisonTurns))
+			effectNotes = append(effectNotes, fmt.Sprintf("Monsters inflict POISON! (%d turns)", postPoisonTurns))
 		}
 	}
 	if postBurnTurns > preBurnTurns {
-		effectNotes = append(effectNotes, fmt.Sprintf("Boss inflicts BURN! (%d turns, -8 HP/turn)", postBurnTurns))
+		effectNotes = append(effectNotes, fmt.Sprintf("Boss inflicts BURN! (%d turns)", postBurnTurns))
 	}
 	if postStunTurns > preStunTurns {
 		if isBossTarget {
@@ -1750,13 +1713,10 @@ func (h *Handler) processAction(ctx context.Context, r *http.Request, ns, name, 
 	heroClass := getString(spec, "heroClass", "warrior")
 	heroClassAction = heroClass
 	difficultyAction = getString(spec, "difficulty", "normal")
-	maxHeroHPAction, _ := strconv.ParseInt(getString(dungeonStatusAction, "maxHeroHP", ""), 10, 64)
-	if maxHeroHPAction <= 0 {
-		maxHeroHPAction = classMaxHP(heroClass)
-	}
-	maxHeroManaAction, _ := strconv.ParseInt(getString(dungeonStatusAction, "maxHeroMana", ""), 10, 64)
-	if maxHeroManaAction < 0 {
-		maxHeroManaAction = classMaxMana(heroClass)
+	// #399: reject if kro has not yet provided maxHeroHP (hero-graph not reconciled yet)
+	if maxHeroHPStr := getString(dungeonStatusAction, "maxHeroHP", ""); maxHeroHPStr == "" {
+		writeError(w, "dungeon initializing — hero max HP not yet computed by kro, please retry", http.StatusServiceUnavailable)
+		return fmt.Errorf("hero maxHeroHP not yet available from kro")
 	}
 	inventory := getString(spec, "inventory", "")
 	bossHP := getInt(spec, "bossHP")
@@ -1823,43 +1783,35 @@ func (h *Handler) processAction(ctx context.Context, r *http.Request, ns, name, 
 
 		switch item {
 		case "hppotion-common":
-			maxHP := maxHeroHPAction
-			newHP := min64(heroHP+20, maxHP)
-			patchSpec["lastHeroAction"] = fmt.Sprintf("Used %s! HP: %d -> %d", item, heroHP, newHP)
+			// #400: no hardcoded heal amounts — log text uses pre-state HP; kro actionResolve is authoritative for actual HP mutation
+			patchSpec["lastHeroAction"] = fmt.Sprintf("Used %s! HP: %d -> (healing...)", item, heroHP)
 			patchSpec["lastEnemyAction"] = "Item used"
 		case "hppotion-rare":
-			maxHP := maxHeroHPAction
-			newHP := min64(heroHP+40, maxHP)
-			patchSpec["lastHeroAction"] = fmt.Sprintf("Used %s! HP: %d -> %d", item, heroHP, newHP)
+			patchSpec["lastHeroAction"] = fmt.Sprintf("Used %s! HP: %d -> (healing...)", item, heroHP)
 			patchSpec["lastEnemyAction"] = "Item used"
 		case "hppotion-epic":
-			maxHP := maxHeroHPAction
-			newHP := min64(heroHP+999, maxHP)
-			patchSpec["lastHeroAction"] = fmt.Sprintf("Used %s! HP: %d -> %d", item, heroHP, newHP)
+			patchSpec["lastHeroAction"] = fmt.Sprintf("Used %s! HP: %d -> (healing...)", item, heroHP)
 			patchSpec["lastEnemyAction"] = "Item used"
 		case "manapotion-common":
 			if heroClass != "mage" {
 				writeError(w, "mana potions can only be used by Mage", http.StatusBadRequest)
 				return fmt.Errorf("mana potion non-mage")
 			}
-			newMana := min64(heroMana+2, maxHeroManaAction)
-			patchSpec["lastHeroAction"] = fmt.Sprintf("Used %s! Mana: %d -> %d", item, heroMana, newMana)
+			patchSpec["lastHeroAction"] = fmt.Sprintf("Used %s! Mana: %d -> (restoring...)", item, heroMana)
 			patchSpec["lastEnemyAction"] = "Item used"
 		case "manapotion-rare":
 			if heroClass != "mage" {
 				writeError(w, "mana potions can only be used by Mage", http.StatusBadRequest)
 				return fmt.Errorf("mana potion non-mage")
 			}
-			newMana := min64(heroMana+3, maxHeroManaAction)
-			patchSpec["lastHeroAction"] = fmt.Sprintf("Used %s! Mana: %d -> %d", item, heroMana, newMana)
+			patchSpec["lastHeroAction"] = fmt.Sprintf("Used %s! Mana: %d -> (restoring...)", item, heroMana)
 			patchSpec["lastEnemyAction"] = "Item used"
 		case "manapotion-epic":
 			if heroClass != "mage" {
 				writeError(w, "mana potions can only be used by Mage", http.StatusBadRequest)
 				return fmt.Errorf("mana potion non-mage")
 			}
-			newMana := min64(heroMana+8, maxHeroManaAction)
-			patchSpec["lastHeroAction"] = fmt.Sprintf("Used %s! Mana: %d -> %d", item, heroMana, newMana)
+			patchSpec["lastHeroAction"] = fmt.Sprintf("Used %s! Mana: %d -> (restoring...)", item, heroMana)
 			patchSpec["lastEnemyAction"] = "Item used"
 		default:
 			writeError(w, "unknown item: "+item, http.StatusBadRequest)
@@ -2271,26 +2223,6 @@ func sanitizeK8sError(err error) string {
 	}
 }
 
-func classMaxHP(heroClass string) int64 {
-	switch heroClass {
-	case "warrior":
-		return 200
-	case "mage":
-		return 120
-	case "rogue":
-		return 150
-	}
-	return 100
-}
-
-func classMaxMana(heroClass string) int64 {
-	switch heroClass {
-	case "mage":
-		return 8
-	}
-	return 0
-}
-
 func inventoryContains(inventory, item string) bool {
 	for _, v := range strings.Split(inventory, ",") {
 		if v == item {
@@ -2312,36 +2244,6 @@ func inventoryCount(inventory string) int {
 		}
 	}
 	return count
-}
-
-// inventoryAdd appends an item to inventory if under the cap (8 items).
-// Returns the updated inventory and whether the item was added.
-const inventoryCap = 8
-
-func inventoryAdd(inventory, item string) (string, bool) {
-	if inventoryCount(inventory) >= inventoryCap {
-		return inventory, false
-	}
-	if inventory != "" {
-		return inventory + "," + item, true
-	}
-	return item, true
-}
-
-func inventoryRemove(inventory, item string) string {
-	parts := strings.Split(inventory, ",")
-	result := []string{}
-	removed := false
-	for _, v := range parts {
-		if v == item && !removed {
-			removed = true
-			continue
-		}
-		if v != "" {
-			result = append(result, v)
-		}
-	}
-	return strings.Join(result, ",")
 }
 
 func getMap(obj map[string]interface{}, key string) map[string]interface{} {
