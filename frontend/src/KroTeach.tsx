@@ -58,9 +58,9 @@ export const KRO_CONCEPTS: Record<KroConceptId, KroConcept> = {
   'rgd': {
     id: 'rgd',
     title: 'ResourceGraphDefinition (RGD)',
-    tagline: 'One CR. Seven resources. Zero imperative code.',
+    tagline: 'One CR. Sixteen resources. Zero imperative code.',
     body: `A ResourceGraphDefinition is a kro custom resource that describes a graph of Kubernetes resources.
-When you applied the Dungeon CR, kro read the dungeon-graph RGD and automatically created a Namespace, Hero CR, Monster CRs, Boss CR, Treasure CR, Modifier CR, and two ConfigMaps — all from a single \`kubectl apply\`.`,
+When you applied the Dungeon CR, kro read the dungeon-graph RGD and automatically created a Namespace, Hero CR, Monster CRs, Boss CR, Treasure CR, Modifier CR, 1 GameConfig ConfigMap, and 9 specPatch nodes — all from a single \`kubectl apply\`.`,
     snippet: `# manifests/rgds/dungeon-graph.yaml
 apiVersion: kro.run/v1alpha1
 kind: ResourceGraphDefinition
@@ -170,7 +170,7 @@ The damage you just dealt was computed by CEL inside a specPatch node in dungeon
     # Dice roll seeded by lastAttackSeed for deterministic replay
     monsterHP: >-
       \${schema.spec.difficulty == 'easy'
-        ? lists.setIndex(schema.spec.monsterHP, idx,
+        ? lists.set(schema.spec.monsterHP, idx,
             schema.spec.monsterHP[idx] - (roll + 2))
         : ...}
     combatProcessedSeq: "\${schema.spec.attackSeq}"`,
@@ -439,8 +439,8 @@ status:
 
 1. **Watch** — kro's controller detects the Dungeon CR spec changed (attackSeq incremented)
 2. **CEL eval** — dungeon-graph re-evaluates all CEL expressions: dice rolls, HP calculations, loot includeWhen checks
-3. **Resource write** — kro writes the combatResult ConfigMap with the results
-4. **Backend read** — the Go backend polls until attackSeq in the ConfigMap matches, then reads the results
+3. **spec write** — kro's combatResolve specPatch writes new HP values directly to \`spec.monsterHP\`, \`spec.bossHP\`
+4. **Backend read** — the Go backend polls the Dungeon CR until attackSeq in spec matches, then reads the updated spec
 5. **Frontend update** — the React app receives the updated CR and re-renders
 
 This is standard Kubernetes controller-reconciler pattern. Every controller in your cluster does the same loop — Deployments, StatefulSets, HPA — just for different resource types.`,
@@ -448,12 +448,12 @@ This is standard Kubernetes controller-reconciler pattern. Every controller in y
 for {
   cr, _ := client.Get(ctx, dungeonName)
   if cr.Spec.AttackSeq > prevSeq {
-    // kro has reconciled — read results
+    // kro has reconciled — read updated spec fields
     break
   }
   time.Sleep(500 * time.Millisecond)
 }`,
-    learnMore: 'backend/internal/handlers/handlers.go — processCombat poll loop',
+    learnMore: 'manifests/rgds/dungeon-graph.yaml — combatResolve specPatch node',
   },
 
   'resourceGroup-api': {
@@ -540,25 +540,23 @@ metadata:
     learnMore: 'kubectl get hero,cm,secret -n default -o yaml | grep -A5 ownerReferences',
   },
 
-  'spec-mutation': {
-    id: 'spec-mutation',
-    title: 'Spec Mutation Triggers Full Reconcile',
-    tagline: 'One patch to spec → kro reconciles the entire resource graph.',
-    body: `When you enter Room 2, the backend patches a single field — \`currentRoom: 2\` — on the Dungeon CR spec. kro watches the Dungeon CR and immediately re-evaluates all CEL expressions in dungeon-graph.
-This causes new Monster CRs (room2MonsterHP), a new Boss CR (room2BossHP), and updated ConfigMaps to be created or updated — all from a single spec field change. Kubernetes becomes the state machine.`,
-    snippet: `# Backend Go code — one PATCH drives the whole transition
+   'spec-mutation': {
+     id: 'spec-mutation',
+     title: 'Spec Mutation Triggers Full Reconcile',
+     tagline: 'One patch to spec → kro reconciles the entire resource graph.',
+     body: `When you enter Room 2, the Go backend calls the Kubernetes API to patch the Dungeon CR spec with \`lastAction: 'enter-room-2'\` and increments \`actionSeq\`. kro watches the Dungeon CR and immediately re-evaluates all CEL expressions in dungeon-graph.
+kro's \`enterRoom2Resolve\` specPatch node detects the action and computes the new \`monsterHP\`, \`bossHP\`, \`room2MonsterHP\`, \`room2BossHP\` values via CEL — writing them back to \`spec.*\` directly. New Monster CRs and an updated Boss CR are then created from those spec values. Kubernetes becomes the state machine.`,
+     snippet: `# Backend writes only the trigger — kro does the rest
 patch := map[string]interface{}{
   "spec": map[string]interface{}{
-    "currentRoom":    2,
-    "monsterHP":      room2MonsterHP,
-    "bossHP":         room2BossHP,
-    "attackSeq":      newSeq,
-    // kro re-evaluates ALL dungeon-graph CEL with these new values
+    "lastAction": "enter-room-2",
+    "actionSeq":  newSeq,
+    // kro's enterRoom2Resolve specPatch computes new HP values via CEL
   },
 }
 // manifests/rgds/dungeon-graph.yaml reacts automatically`,
-    learnMore: 'backend/internal/handlers/handlers.go and dungeon-graph.yaml',
-  },
+     learnMore: 'manifests/rgds/dungeon-graph.yaml — enterRoom2Resolve specPatch node',
+   },
 
   'cel-playground': {
     id: 'cel-playground',
@@ -572,7 +570,7 @@ This means every kro extension is available in the Playground:
 - \`cel.bind(x, schema.spec.heroHP, x * 2)\` — bind macro (same as dungeon-graph.yaml)
 - \`random.seededInt(0, 20, "seed")\` — deterministic random (same RNG kro uses)
 - \`csv.add(schema.spec.inventory, "sword", 5)\` — CSV item manipulation
-- \`lists.setIndex([1, 2, 3], 0, 99)\` — list mutation
+- \`lists.set([1, 2, 3], 0, 99)\` — list mutation
 - \`schema.spec.heroClass.startsWith("war")\` — string functions
 
 Try expressions that mirror real kro RGD patterns:
@@ -679,7 +677,7 @@ export function getInsightForEvent(event: string): InsightTrigger | null {
   if (event === 'spec-schema') return { conceptId: 'spec-schema', headline: 'kro validated your difficulty/heroClass fields against spec.schema enums' }
   if (event === 'schema-validated') return { conceptId: 'schema-validation', headline: 'kro compiled your spec.schema into a CRD — the API server now rejects invalid dungeons' }
   if (event === 'resource-chaining') return { conceptId: 'resource-chaining', headline: 'Hero CR status (maxHP, class) flowed up through dungeon-graph resource chaining' }
-  if (event === 'first-attack') return { conceptId: 'cel-basics', headline: 'Your damage was computed by a CEL expression in a ConfigMap' }
+   if (event === 'first-attack') return { conceptId: 'cel-basics', headline: 'Your damage was computed by a CEL expression in the combatResolve specPatch node' }
   if (event === 'monster-killed') return { conceptId: 'includeWhen', headline: 'A Loot CR appeared because monster HP hit 0 (includeWhen)' }
   if (event === 'boss-ready') return { conceptId: 'cel-ternary', headline: 'Boss transitioned pending → ready via a CEL ternary in boss-graph' }
   if (event === 'boss-killed') return { conceptId: 'cel-filter', headline: 'kro ran .filter() on all Monster CRs to re-aggregate livingMonsters to 0' }
@@ -689,7 +687,7 @@ export function getInsightForEvent(event: string): InsightTrigger | null {
   if (event === 'modifier-present') return { conceptId: 'readyWhen', headline: 'dungeon-graph waited for modifier-graph via readyWhen before proceeding' }
   if (event === 'forEach') return { conceptId: 'forEach', headline: 'kro created one Monster CR per entry in monsterHP[] via forEach' }
   if (event === 'loot-drop') return { conceptId: 'seeded-random', headline: 'Loot type and rarity rolled via random.seededString() in monster-graph' }
-  if (event === 'loot-drop-string-ops') return { conceptId: 'cel-string-ops', headline: 'That seed was built with int(name, 36) — CEL base-36 string → int coercion' }
+  if (event === 'loot-drop-string-ops') return { conceptId: 'cel-string-ops', headline: 'Loot seed = dungeonName + \'-m\' + string(index) — string() converts int index to string for seed concatenation' }
   if (event === 'attack-cr') return { conceptId: 'empty-rgd', headline: 'Attack CR is defined by an RGD with resources:[] — a CRD factory' }
   if (event === 'externalRef') return { conceptId: 'externalRef', headline: 'Your attack created an Attack CR — kro watched it and re-reconciled the dungeon graph' }
   if (event === 'status-conditions') return { conceptId: 'status-conditions', headline: 'kro is reporting its reconcile status via status.conditions — the Kubernetes health contract' }
@@ -925,8 +923,10 @@ export function kroAnnotate(cmd: string, yaml: string): KroAnnotation | null {
 - id: actionResolve
   type: specPatch
   patch:
-    weaponBonus: "\${action == 'equip-weapon-rare' ? 5
-      : action == 'equip-weapon-epic' ? 10 : 3}"`,
+    weaponBonus: "\${a == 'equip-weapon-common' ? 5
+      : a == 'equip-weapon-rare' ? 10
+      : a == 'equip-weapon-epic' ? 20
+      : schema.spec.weaponBonus}"`,
       concept: 'empty-rgd',
     }
   }
@@ -935,9 +935,14 @@ export function kroAnnotate(cmd: string, yaml: string): KroAnnotation | null {
       what: 'Item use is also an Action CR. The actionResolve specPatch in dungeon-graph computes the new heroHP after applying the potion and writes it back to spec.',
       rgd: 'action-graph (empty RGD) + dungeon-graph (actionResolve specPatch)',
       cel: `# actionResolve specPatch — HP potion CEL
-heroHP: "\${lastAction == 'use-hppotion-epic'
-  ? maxHeroHP
-  : min(heroHP + healAmt, maxHeroHP)}"`,
+heroHP: "\${cel.bind(a, schema.spec.lastAction,
+  cel.bind(hp, schema.spec.heroHP,
+  cel.bind(maxHP, ...,
+    a == 'use-hppotion-common' ? (hp + 20 > maxHP ? maxHP : hp + 20)
+    : a == 'use-hppotion-rare'  ? (hp + 40 > maxHP ? maxHP : hp + 40)
+    : a == 'use-hppotion-epic'  ? maxHP
+    : hp
+  ))}"`,
       concept: 'empty-rgd',
     }
   }
@@ -1054,29 +1059,35 @@ export function CelTrace({ data, onLearnMore }: { data: CelTraceData; onLearnMor
     let modResult = ''
     let modNote = ''
     if (data.modifier === 'curse-darkness') {
-      modExpr = `spec.modifier == 'curse-darkness' ? damage * 0.75 : damage`
+      // #447: correct CEL uses schema.spec.modifier (not spec.modifier)
+      modExpr = `schema.spec.modifier == 'curse-darkness' ? classMult * 3 / 4 : classMult`
       modResult = '× 0.75'
       modNote = 'Curse of Darkness: hero deals 25% less damage'
     } else if (data.modifier === 'blessing-strength') {
-      modExpr = `spec.modifier == 'blessing-strength' ? damage * 1.25 : damage`
-      modResult = '× 1.25'
-      modNote = 'Blessing of Strength: hero deals 25% more damage'
+      // #447: actual multiplier is 3/2 = 1.5 (not 1.25)
+      modExpr = `schema.spec.modifier == 'blessing-strength' ? classMult * 3 / 2 : classMult`
+      modResult = '× 1.5'
+      modNote = 'Blessing of Strength: hero deals 50% more damage'
     } else if (data.modifier === 'blessing-fortune') {
-      modExpr = `spec.modifier == 'blessing-fortune' ? damage * 1.15 : damage`
-      modResult = '× 1.15'
-      modNote = 'Blessing of Fortune: hero deals 15% more damage'
+      // #447: actual mechanic is 20% crit → 2× damage (not flat 1.15)
+      modExpr = `random.seededInt(0, 100, s+'-crit') < 20 ? classMult * 2 : classMult`
+      modResult = '20% crit → × 2.0'
+      modNote = 'Blessing of Fortune: 20% chance to deal 2× damage'
     } else if (data.modifier === 'curse-fury') {
-      modExpr = `spec.modifier == 'curse-fury' ? counter * 1.25 : counter`
-      modResult = '× 1.25 (enemy)'
-      modNote = 'Curse of Fury: enemies deal 25% more damage'
+      // #447: actual multiplier is phased * 2 = 2.0× boss counter (not 1.25)
+      modExpr = `schema.spec.modifier == 'curse-fury' ? phased * 2 : phased`
+      modResult = '× 2.0 (boss counter doubled)'
+      modNote = 'Curse of Fury: boss counter-attack doubled'
     } else if (data.modifier === 'curse-fortitude') {
-      modExpr = `spec.modifier == 'curse-fortitude' ? counter * 1.15 : counter`
-      modResult = '× 1.15 (enemy)'
-      modNote = 'Curse of Fortitude: enemies deal 15% more damage'
+      // #447: does NOT affect counter-attack — increases monster spawn HP by 50%
+      modExpr = `# dungeonInit: mod == 'curse-fortitude' ? base * 3 / 2 : base`
+      modResult = '× 1.5 HP at spawn'
+      modNote = 'Curse of Fortitude: monsters spawn with 50% more HP (applied at dungeon creation)'
     } else if (data.modifier === 'blessing-resilience') {
-      modExpr = `spec.modifier == 'blessing-resilience' ? counter * 0.85 : counter`
-      modResult = '× 0.85 (enemy)'
-      modNote = 'Blessing of Resilience: take 15% less damage'
+      // #447: actual multiplier is phased / 2 = 0.5× counter (not 0.85)
+      modExpr = `schema.spec.modifier == 'blessing-resilience' ? phased / 2 : phased`
+      modResult = '× 0.5 (counter halved)'
+      modNote = 'Blessing of Resilience: counter-attack halved'
     }
     if (modExpr) {
       celLines.push({ expr: modExpr, result: modResult, note: modNote })
@@ -1087,7 +1098,8 @@ export function CelTrace({ data, onLearnMore }: { data: CelTraceData; onLearnMor
   if ((data.helmetBonus ?? 0) > 0) {
     const critFired = data.heroAction.includes('CRIT') || data.heroAction.includes('Critical')
     celLines.push({
-      expr: `seededRoll(uid+'-helmet-crit', 100) < spec.helmetBonus`,
+      // #446: correct function is random.seededInt(0, N, seed); seed var is s = schema.spec.lastAttackSeed
+      expr: `random.seededInt(0, 100, s + '-helmet-crit') < schema.spec.helmetBonus`,
       result: critFired ? 'true → 2x damage' : 'false',
       note: `${data.helmetBonus}% crit chance (helmet)`,
     })
@@ -1097,7 +1109,8 @@ export function CelTrace({ data, onLearnMore }: { data: CelTraceData; onLearnMor
   if ((data.pantsBonus ?? 0) > 0) {
     const dodgeFired = data.heroAction.includes('dodged') || data.heroAction.includes('Pants dodge')
     celLines.push({
-      expr: `seededRoll(uid+'-pants-dodge', 100) < spec.pantsBonus`,
+      // #446: correct function is random.seededInt(0, N, seed); seed var is s = schema.spec.lastAttackSeed
+      expr: `random.seededInt(0, 100, s + '-pants-dodge') < schema.spec.pantsBonus`,
       result: dodgeFired ? 'true → counter = 0' : 'false',
       note: `${data.pantsBonus}% extra dodge (pants)`,
     })
@@ -1140,7 +1153,8 @@ export function CelTrace({ data, onLearnMore }: { data: CelTraceData; onLearnMor
   // Rogue dodge
   if (data.heroAction.includes('dodged') || data.heroAction.includes('Rogue dodged')) {
     celLines.push({
-      expr: `schema.spec.heroClass == 'rogue' && seededRoll < 25`,
+      // #446: correct function is random.seededInt(0, N, seed + suffix)
+      expr: `schema.spec.heroClass == 'rogue' && random.seededInt(0, 100, s + '-dodge-monster') < 25`,
       result: 'true',
       note: '25% dodge chance — counter-attack negated',
     })
@@ -1149,7 +1163,8 @@ export function CelTrace({ data, onLearnMore }: { data: CelTraceData; onLearnMor
   // Backstab
   if (data.heroAction.includes('Backstab') || data.heroAction.includes('backstab')) {
     celLines.push({
-      expr: `schema.spec.backstabCooldown == 0 ? damage * 3 : damage`,
+      // #446: trigger field is schema.spec.lastAttackIsBackstab (not backstabCooldown == 0)
+      expr: `schema.spec.lastAttackIsBackstab ? baseDmg * 3 : baseDmg`,
       result: dmgMatch ? String(Number(dmgMatch[1])) : '3x',
       note: 'Backstab: 3× damage, sets cooldown=3',
     })
@@ -1158,12 +1173,14 @@ export function CelTrace({ data, onLearnMore }: { data: CelTraceData; onLearnMor
   // Boss phase — show CEL ternary when fighting boss
   if ((data.bossHP ?? 0) > 0 && (data.maxBossHP ?? 0) > 0) {
     const pct = Math.round(((data.bossHP!) / (data.maxBossHP!)) * 100)
-    const phase = pct <= 25 ? 'BERSERK' : pct <= 50 ? 'ENRAGED' : 'normal'
-    const phaseResult = phase === 'BERSERK' ? '"berserk" (3x dmg)' : phase === 'ENRAGED' ? '"enraged" (2x dmg)' : '"normal"'
+    // #446: actual boss-graph uses integer arithmetic (×100 / maxHP), outputs 'phase1'/'phase2'/'phase3'
+    // damageMultiplier stored as integer ×10: phase1=10 (1.0×), phase2=15 (1.5×), phase3=20 (2.0×)
+    const phase = pct <= 25 ? 'phase3' : pct <= 50 ? 'phase2' : 'phase1'
+    const phaseResult = phase === 'phase3' ? '"phase3" (2.0× dmg)' : phase === 'phase2' ? '"phase2" (1.5× dmg)' : '"phase1" (1.0× dmg)'
     celLines.push({
-      expr: `bossHP <= maxBossHP*0.25 ? "berserk" : bossHP <= maxBossHP*0.5 ? "enraged" : "normal"`,
+      expr: `hp * 100 / maxHP > 50 ? 'phase1' : hp * 100 / maxHP > 25 ? 'phase2' : 'phase3'`,
       result: phaseResult,
-      note: `boss at ${pct}% HP → ${phase} phase`,
+      note: `boss at ${pct}% HP → ${phase}`,
     })
   }
 
@@ -1285,38 +1302,45 @@ spec:
   heroClass: warrior`,
   },
   {
-    title: 'kro Creates 7 Resources From One CR',
-    body: "kro's dungeon-graph RGD watches your Dungeon CR. The moment you apply it, kro automatically creates a Namespace, Hero CR, Monster CRs, Boss CR, Treasure CR, and two ConfigMaps — all from a single spec.",
+    title: 'kro Creates 16 Resources From One CR',
+    // #451: updated from "7 resources + 2 ConfigMaps" to reflect current architecture
+    body: "kro's dungeon-graph RGD watches your Dungeon CR. The moment you apply it, kro automatically creates a Namespace, Hero CR, Monster CRs, Boss CR, Treasure CR, 1 GameConfig CM, and 9 specPatch nodes (combatResolve, actionResolve, etc.) that write CEL-computed values directly back to spec — all from a single CR.",
     snippet: `# dungeon-graph RGD orchestrates:
 resources:
-  - id: ns          # Namespace
-  - id: heroCR      # Hero CR → hero-graph
-  - id: monsterCRs  # Monster CR ×N (forEach)
-  - id: bossCR      # Boss CR → boss-graph
-  - id: treasureCR  # Treasure CR → treasure-graph
-  - id: gameConfig  # ConfigMap
-  - id: combatResult # ConfigMap (CEL combat engine)`,
+  - id: ns           # Namespace
+  - id: heroCR       # Hero CR → hero-graph
+  - id: monsterCRs   # Monster CR ×N (forEach)
+  - id: bossCR       # Boss CR → boss-graph
+  - id: treasureCR   # Treasure CR → treasure-graph
+  - id: gameConfig   # ConfigMap (1 ConfigMap)
+  - id: combatResolve  # specPatch (CEL combat engine → writes spec.*)
+  - id: actionResolve  # specPatch (equip/use/room logic → writes spec.*)`,
   },
   {
-    title: 'Every Action is a kubectl patch',
-    body: 'When you attack, equip an item, or open a door, the backend runs a kubectl patch on the Dungeon CR spec. kro watches the change and re-reconciles the entire resource graph within seconds.',
-    snippet: `# Attack → backend patches Dungeon CR
-kubectl patch dungeon my-dungeon --type=merge \\
-  -p '{"spec": {"bossHP": 350, "heroHP": 180,
-       "lastHeroAction": "Hero deals 50 damage"}}'
-# kro re-evaluates all CEL → updates ConfigMaps`,
+    title: 'Every Action Triggers a kro Reconcile',
+    // #451: remove "backend runs kubectl patch" — the backend uses the Go K8s API client
+    body: 'When you attack, equip an item, or open a door, the Go backend calls the Kubernetes API to patch the Dungeon CR spec (attackSeq, lastAction, etc.). kro watches the change and re-reconciles the entire resource graph within ~1 second — running all CEL specPatch nodes.',
+    snippet: `# Attack → backend patches Dungeon CR via Go K8s API
+// The kubectl commands shown in the K8s log tab are
+// simulated for teaching — the actual mechanism is:
+client.Resource(dungeonGVR).Namespace(ns).Patch(ctx,
+  name, types.MergePatchType,
+  []byte(\`{"spec": {"attackSeq": N, "lastAttackTarget": "boss"}}\`),
+  metav1.PatchOptions{})
+# kro re-evaluates all CEL → writes to spec.* via specPatch`,
   },
   {
     title: 'Watch the kro Tab as You Play',
-    body: "Open the kro tab in the event log to see concepts unlock in real time. Each game event maps to a kro pattern. By the end of the dungeon, you'll have seen 15 core kro concepts in action.",
+    // #451: "15 concepts" → 23 concepts; "9 more" → "17 more"
+    body: "Open the kro tab in the event log to see concepts unlock in real time. Each game event maps to a kro pattern. By the end of the dungeon, you'll have seen 23 core kro concepts in action.",
     snippet: `# Concepts you'll unlock:
 ✓ ResourceGraphDefinition (RGD)
 ✓ spec.schema validation
 ✓ forEach fan-out
 ✓ includeWhen conditional resources
 ✓ CEL expressions
-✓ externalRef watch loop
-  ... and 9 more`,
+✓ specPatch — CEL writes back to spec
+  ... and 17 more`,
   },
 ]
 

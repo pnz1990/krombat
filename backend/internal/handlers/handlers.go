@@ -2095,9 +2095,11 @@ func (h *Handler) GetDungeonResource(w http.ResponseWriter, r *http.Request) {
 		def = &resourceDef{schema.GroupVersionResource{Group: grp, Version: ver, Resource: "monsters"}, name + "-monster-" + index}
 	// #410: "namespace" kind removed — exposes raw cluster topology; not needed by the K8s Inspector panel.
 	case "herostate":
-		def = &resourceDef{schema.GroupVersionResource{Group: coreGrp, Version: coreVer, Resource: "configmaps"}, name + "-hero-state"}
+		// #436: correct CM name is {name}-hero (hero-graph.yaml:34), not {name}-hero-state
+		def = &resourceDef{schema.GroupVersionResource{Group: coreGrp, Version: coreVer, Resource: "configmaps"}, name + "-hero"}
 	case "bossstate":
-		def = &resourceDef{schema.GroupVersionResource{Group: coreGrp, Version: coreVer, Resource: "configmaps"}, name + "-boss-state"}
+		// #436: correct CM name is {name}-boss (boss-graph.yaml:31), not {name}-boss-state
+		def = &resourceDef{schema.GroupVersionResource{Group: coreGrp, Version: coreVer, Resource: "configmaps"}, name + "-boss"}
 	case "monsterstate":
 		if index == "" {
 			index = "0"
@@ -2105,16 +2107,13 @@ func (h *Handler) GetDungeonResource(w http.ResponseWriter, r *http.Request) {
 		def = &resourceDef{schema.GroupVersionResource{Group: coreGrp, Version: coreVer, Resource: "configmaps"}, name + "-monster-" + index}
 	case "gameconfig":
 		def = &resourceDef{schema.GroupVersionResource{Group: coreGrp, Version: coreVer, Resource: "configmaps"}, name + "-game-config"}
-	case "combatresult":
-		def = &resourceDef{schema.GroupVersionResource{Group: coreGrp, Version: coreVer, Resource: "configmaps"}, name + "-combat-result"}
-	case "combatcm":
-		def = &resourceDef{schema.GroupVersionResource{Group: coreGrp, Version: coreVer, Resource: "configmaps"}, name + "-combat-result"}
+	// #441: combatresult, combatcm, actioncm cases removed — these ConfigMaps no longer exist
+	// after combat/action resolution migrated to specPatch nodes in dungeon-graph.
 	case "modifiercm":
 		def = &resourceDef{schema.GroupVersionResource{Group: coreGrp, Version: coreVer, Resource: "configmaps"}, name + "-modifier-state"}
-	case "actioncm":
-		def = &resourceDef{schema.GroupVersionResource{Group: coreGrp, Version: coreVer, Resource: "configmaps"}, name + "-action-state"}
 	case "treasurecm":
-		def = &resourceDef{schema.GroupVersionResource{Group: coreGrp, Version: coreVer, Resource: "configmaps"}, name + "-treasure"}
+		// #436: correct CM name is {name}-treasure-state (treasure-graph.yaml:25), not {name}-treasure
+		def = &resourceDef{schema.GroupVersionResource{Group: coreGrp, Version: coreVer, Resource: "configmaps"}, name + "-treasure-state"}
 	case "treasuresecret":
 		def = &resourceDef{schema.GroupVersionResource{Group: coreGrp, Version: coreVer, Resource: "secrets"}, name + "-treasure-secret"}
 	default:
