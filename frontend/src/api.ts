@@ -175,7 +175,10 @@ export class ApiError extends Error {
 const VALID_RESOURCE_KINDS = [
   'dungeon', 'hero', 'herostate', 'boss', 'bossstate', 'namespace', 'gameconfig',
   'monster', 'monsterstate', 'treasure', 'treasurecm', 'treasuresecret', 'modifier',
-  'combatresult', 'combatcm', 'modifiercm', 'actioncm',
+  'modifiercm',
+  // #437: Loot CR and loot-graph children
+  'loot', 'lootinfo', 'lootsecret',
+  'bossloot', 'bosslootinfo', 'bosslootsecret',
 ] as const
 export type ResourceKind = typeof VALID_RESOURCE_KINDS[number]
 
