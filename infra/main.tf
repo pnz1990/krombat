@@ -13,6 +13,16 @@ terraform {
     key     = "krombat/terraform.tfstate"
     region  = "us-west-2"
     profile = "319279230668-Admin"
+    # #425: enable server-side encryption and state locking.
+    # The DynamoDB table "krombat-terraform-locks" must be bootstrapped once:
+    #   aws dynamodb create-table \
+    #     --table-name krombat-terraform-locks \
+    #     --attribute-definitions AttributeName=LockID,AttributeType=S \
+    #     --key-schema AttributeName=LockID,KeyType=HASH \
+    #     --billing-mode PAY_PER_REQUEST \
+    #     --region us-west-2 --profile 319279230668-Admin
+    encrypt        = true
+    dynamodb_table = "krombat-terraform-locks"
   }
 }
 

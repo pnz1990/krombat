@@ -28,6 +28,16 @@ func main() {
 		os.Exit(1)
 	}
 
+	// #428: OAuth env vars must be set — remove hardcoded production URL fallback.
+	// Any misconfigured deployment fails immediately rather than silently sending
+	// OAuth tokens to the production server.
+	for _, v := range []string{"GITHUB_CLIENT_ID", "GITHUB_CLIENT_SECRET", "GITHUB_CALLBACK_URL"} {
+		if os.Getenv(v) == "" {
+			slog.Error("required env var not set — cannot start", "var", v)
+			os.Exit(1)
+		}
+	}
+
 	client, err := k8s.NewClient()
 	if err != nil {
 		slog.Error("failed to create k8s client", "error", err)

@@ -4,22 +4,26 @@ metadata:
   name: dungeon-reaper
   namespace: rpg-system
 ---
+# #427: namespaced Role instead of ClusterRole — reaper only needs access to
+# the default namespace where dungeons live. Reduces blast radius if compromised.
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
+kind: Role
 metadata:
   name: dungeon-reaper
+  namespace: default
 rules:
   - apiGroups: [game.k8s.example]
     resources: [dungeons, attacks, actions]
     verbs: [get, list, delete]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
+kind: RoleBinding
 metadata:
   name: dungeon-reaper
+  namespace: default
 roleRef:
   apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
+  kind: Role
   name: dungeon-reaper
 subjects:
   - kind: ServiceAccount
@@ -74,9 +78,10 @@ spec:
 
                   echo "Reaping dungeons older than ${MAX_AGE_HOURS}h..."
 
-                  kubectl get dungeons --all-namespaces -o json | jq -r '
+                  # #427: role is now namespaced to default only — use -n default
+                  kubectl get dungeons -n default -o json | jq -r '
                     .items[] |
-                    "\(.metadata.namespace)/\(.metadata.name) \(.metadata.creationTimestamp)"
+                    "default/\(.metadata.name) \(.metadata.creationTimestamp)"
                   ' | while read -r DUNGEON TS; do
                     CREATED=$(date -d "$TS" +%s 2>/dev/null || date -jf "%Y-%m-%dT%H:%M:%SZ" "$TS" +%s 2>/dev/null || echo 0)
                     AGE=$((NOW - CREATED))

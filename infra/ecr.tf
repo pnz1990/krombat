@@ -1,16 +1,37 @@
 resource "aws_ecr_repository" "backend" {
   count = var.enable_ecr ? 1 : 0
   name  = "krombat/backend"
+  # #426: enable scan-on-push (Amazon Inspector) and KMS encryption
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+  encryption_configuration {
+    encryption_type = "KMS"
+  }
 }
 
 resource "aws_ecr_repository" "frontend" {
   count = var.enable_ecr ? 1 : 0
   name  = "krombat/frontend"
+  # #426: enable scan-on-push (Amazon Inspector) and KMS encryption
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+  encryption_configuration {
+    encryption_type = "KMS"
+  }
 }
 
 resource "aws_ecr_repository" "kro" {
   count = var.enable_ecr ? 1 : 0
   name  = "krombat/kro"
+  # #426: enable scan-on-push (Amazon Inspector) and KMS encryption
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+  encryption_configuration {
+    encryption_type = "KMS"
+  }
 }
 
 resource "aws_ecr_lifecycle_policy" "backend" {

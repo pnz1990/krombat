@@ -41,14 +41,18 @@ import (
 const (
 	sessionCookieName    = "krombat_session"
 	oauthStateCookieName = "krombat_oauth_state"
-	sessionTTL           = 24 * time.Hour
+	// #429: reduced from 24h to 4h — limits stolen-cookie exposure window.
+	sessionTTL = 4 * time.Hour
 )
 
 // sessionPayload is the data encoded in the session cookie.
+// #429: Jti (JWT ID) is a per-session nonce for future revocation support.
+// When a revocation store is added, Jti values can be blocklisted at logout.
 type sessionPayload struct {
 	Login     string `json:"l"`
 	AvatarURL string `json:"a"`
 	ExpiresAt int64  `json:"e"` // unix seconds
+	Jti       string `json:"j"` // per-session nonce for revocation
 }
 
 // sessionSecret returns the HMAC key from SESSION_SECRET env var.
@@ -190,9 +194,8 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 		MaxAge:   600, // 10 minutes
 	})
 	callbackURL := os.Getenv("GITHUB_CALLBACK_URL")
-	if callbackURL == "" {
-		callbackURL = "https://learn-kro.eks.aws.dev/api/v1/auth/callback"
-	}
+	// #428: main.go validates GITHUB_CALLBACK_URL is non-empty at startup.
+	// No fallback here — a missing callback URL is a misconfiguration.
 	redirectURL := fmt.Sprintf(
 		"https://github.com/login/oauth/authorize?client_id=%s&redirect_uri=%s&scope=read:user&state=%s",
 		clientID, callbackURL, state,
@@ -237,10 +240,8 @@ func CallbackHandler(w http.ResponseWriter, r *http.Request) {
 	// Exchange code for access token
 	clientID := os.Getenv("GITHUB_CLIENT_ID")
 	clientSecret := os.Getenv("GITHUB_CLIENT_SECRET")
+	// #428: main.go validates GITHUB_CALLBACK_URL at startup — no fallback needed here.
 	callbackURL := os.Getenv("GITHUB_CALLBACK_URL")
-	if callbackURL == "" {
-		callbackURL = "https://learn-kro.eks.aws.dev/api/v1/auth/callback"
-	}
 
 	tokenURL := "https://github.com/login/oauth/access_token"
 	req, _ := http.NewRequestWithContext(r.Context(), http.MethodPost, tokenURL, nil)
@@ -293,10 +294,16 @@ func CallbackHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Build a signed session token (stateless — no shared store needed)
+	jti, err := randomHex(16)
+	if err != nil {
+		http.Error(w, "session create failed", http.StatusInternalServerError)
+		return
+	}
 	payload := sessionPayload{
 		Login:     ghUser.Login,
 		AvatarURL: ghUser.AvatarURL,
 		ExpiresAt: time.Now().Add(sessionTTL).Unix(),
+		Jti:       jti,
 	}
 	token, err := signToken(payload)
 	if err != nil {
@@ -372,6 +379,7 @@ func TestLoginHandler(w http.ResponseWriter, r *http.Request) {
 		Login:     testUser,
 		AvatarURL: "",
 		ExpiresAt: time.Now().Add(sessionTTL).Unix(),
+		Jti:       "test", // test sessions use a fixed jti — not revocable
 	}
 	signed, err := signToken(payload)
 	if err != nil {
