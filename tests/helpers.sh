@@ -45,14 +45,18 @@ BACKEND_URL="${BACKEND_URL:-http://localhost:8089}"
 INTEGRATION_PF_PID=""
 setup_backend_pf() {
   local port="${1:-8089}"
-  BACKEND_URL="http://localhost:${port}"
-  if ! curl -s --max-time 3 "${BACKEND_URL}/healthz" &>/dev/null; then
-    kctl port-forward svc/rpg-backend -n rpg-system "${port}:8080" > /dev/null 2>&1 &
-    INTEGRATION_PF_PID=$!
-    for i in $(seq 1 15); do
-      sleep 1
-      if curl -s --max-time 2 "${BACKEND_URL}/healthz" &>/dev/null; then break; fi
-    done
+  # If BACKEND_URL is already set to a non-localhost URL (e.g. prod), use it as-is.
+  # Only set up a port-forward if BACKEND_URL is unset or points to localhost.
+  if echo "${BACKEND_URL:-}" | grep -q "localhost"; then
+    BACKEND_URL="http://localhost:${port}"
+    if ! curl -s --max-time 3 "${BACKEND_URL}/healthz" &>/dev/null; then
+      kctl port-forward svc/rpg-backend -n rpg-system "${port}:8080" > /dev/null 2>&1 &
+      INTEGRATION_PF_PID=$!
+      for i in $(seq 1 15); do
+        sleep 1
+        if curl -s --max-time 2 "${BACKEND_URL}/healthz" &>/dev/null; then break; fi
+      done
+    fi
   fi
 }
 teardown_backend_pf() {
