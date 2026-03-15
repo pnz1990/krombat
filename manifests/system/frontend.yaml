@@ -22,7 +22,7 @@ spec:
               app: rpg-frontend
       containers:
         - name: frontend
-          image: 319279230668.dkr.ecr.us-west-2.amazonaws.com/krombat/frontend:latest
+          image: 319279230668.dkr.ecr.us-west-2.amazonaws.com/krombat/frontend:5a0b6d54e1deeb81f2882a68cc2bcfb4c0d82d10
           ports:
             - containerPort: 3000
           readinessProbe:
