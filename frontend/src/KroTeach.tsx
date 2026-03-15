@@ -564,18 +564,24 @@ patch := map[string]interface{}{
     id: 'cel-playground',
     title: 'CEL Playground — Live Expression Sandbox',
     tagline: 'Type any CEL expression and evaluate it against your live dungeon spec — the same way kro evaluates RGD expressions during reconcile.',
-    body: `The CEL Playground sends your expression to the backend, which evaluates it against the real Kubernetes spec of your dungeon using the same CEL engine kro uses.
+    body: `The CEL Playground sends your expression to the backend, which evaluates it using the exact same CEL environment that kro uses during reconcile — imported directly from the kro fork running in this cluster.
 
-Under the hood: \`POST /api/v1/dungeons/{ns}/{name}/cel-eval\` with \`{"expr":"..."}\`. The handler reads the live spec, binds each field as a CEL variable, and returns the result — exactly what kro does on every reconcile.
+Under the hood: \`POST /api/v1/dungeons/{ns}/{name}/cel-eval\` with \`{"expr":"..."}\`. The backend reads the live Dungeon spec, binds it as \`schema.spec.*\` (matching kro's RGD variable layout), and evaluates via \`cel.NewEnv(krocel.BaseDeclarations()...)\`.
+
+This means every kro extension is available in the Playground:
+- \`cel.bind(x, schema.spec.heroHP, x * 2)\` — bind macro (same as dungeon-graph.yaml)
+- \`random.seededInt(0, 20, "seed")\` — deterministic random (same RNG kro uses)
+- \`csv.add(schema.spec.inventory, "sword", 5)\` — CSV item manipulation
+- \`lists.setIndex([1, 2, 3], 0, 99)\` — list mutation
+- \`schema.spec.heroClass.startsWith("war")\` — string functions
 
 Try expressions that mirror real kro RGD patterns:
 - \`schema.spec.heroHP > 100\` → \`true\` or \`false\`
 - \`schema.spec.difficulty == "hard" ? "big dice" : "small dice"\`
-- \`schema.spec.bossHP * 2\`
+- \`cel.bind(hp, schema.spec.heroHP, hp > 100 ? "healthy" : "injured")\`
 - \`schema.spec.heroClass == "mage" && schema.spec.heroMana > 0\`
-- \`schema.spec.heroHP\` → returns the exact integer from your live spec
 
-This is how you become fluent in CEL: not by reading docs, but by experimenting against real data. The dungeon-graph RGD has 40+ CEL expressions. Now you can write your own.`,
+This is how you become fluent in CEL: not by reading docs, but by experimenting against real data. The dungeon-graph RGD has 40+ CEL expressions using these exact functions.`,
     snippet: `# In kro RGDs, expressions appear inside \${...} blocks:
 status:
   bossState: >-
@@ -583,13 +589,15 @@ status:
       ? (schema.spec.livingMonsters == 0 ? 'ready' : 'pending')
       : 'defeated'}
 
-# In the Playground you type the inner expression directly
-# and the backend evaluates it against your live dungeon spec:
-schema.spec.bossHP > 0
-  ? (schema.spec.livingMonsters == 0 ? "ready" : "pending")
-  : "defeated"
+# In the Playground you type the inner expression directly.
+# All kro extensions are available, including cel.bind():
+cel.bind(alive, schema.spec.livingMonsters > 0,
+  cel.bind(bossReady, schema.spec.bossHP > 0 && !alive,
+    bossReady ? "ready" : (alive ? "pending" : "defeated")
+  )
+)
 
-# Result: "pending" (monsters still alive) or "ready" (all dead)`,
+# Result: "pending", "ready", or "defeated"`,
     learnMore: 'manifests/rgds/dungeon-graph.yaml — any CEL expression in the status block',
   },
 

@@ -1498,10 +1498,11 @@ func sliceInt(v interface{}) int64 {
 	return 0
 }
 
-// CelEvalHandler evaluates a CEL expression against the live dungeon spec.
+// CelEvalHandler evaluates a CEL expression against the live dungeon spec
+// using the real kro CEL environment (same libraries as kro reconcile).
 // POST /api/v1/dungeons/{namespace}/{name}/cel-eval
-// Body: { "expr": "schema.spec.heroHP > 100" }
-// Returns: { "result": "true" } or { "error": "..." }
+// Body: { "expr": "cel.bind(x, schema.spec.heroHP, x * 2)" }
+// Returns: { "result": "300" } or { "error": "..." }
 func (h *Handler) CelEvalHandler(w http.ResponseWriter, r *http.Request) {
 	ns := r.PathValue("namespace")
 	name := r.PathValue("name")
@@ -1525,12 +1526,12 @@ func (h *Handler) CelEvalHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	spec := getMap(dungeon.Object, "spec")
-	// Flatten spec into string-keyed interface{} map, keeping int64/string/bool types.
-	bindings := make(map[string]interface{}, len(spec)+4)
+	// Pass spec + metadata to EvalCEL, which builds the nested schema.spec / schema.metadata
+	// activation matching kro's RGD variable layout.
+	bindings := make(map[string]interface{}, len(spec)+2)
 	for k, v := range spec {
 		bindings[k] = v
 	}
-	// Expose metadata as well
 	bindings["name"] = dungeon.GetName()
 	bindings["namespace"] = dungeon.GetNamespace()
 
