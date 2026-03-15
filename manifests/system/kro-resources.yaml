@@ -2,6 +2,10 @@
 # Helm-managed kro Deployment. Terraform EKS capability module owns the Helm
 # release (image tag, initial install); this manifest owns resource limits and
 # concurrency env vars so they are tracked in Git and survive helm upgrades.
+#
+# Resource policy (#473):
+#   memory request == limit (8Gi) → Guaranteed QoS → last pod evicted under pressure
+#   cpu request = 4, no cpu limit → guaranteed 4 cores, can burst freely
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -14,11 +18,11 @@ spec:
         - name: kro
           resources:
             requests:
-              cpu: "1"
-              memory: "1Gi"
-            limits:
               cpu: "4"
               memory: "8Gi"
+            limits:
+              memory: "8Gi"
+              # No CPU limit — allow bursting above 4 cores during reconcile spikes
           env:
             - name: KRO_RESOURCE_GROUP_CONCURRENT_RECONCILES
               value: "16"
