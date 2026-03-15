@@ -21,11 +21,25 @@ spec:
           labelSelector:
             matchLabels:
               app: rpg-backend
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: backend
           image: 319279230668.dkr.ecr.us-west-2.amazonaws.com/krombat/backend:a2a58c4d215cc3ccad7f7bf5249a6c72ce62e7e9
           ports:
             - containerPort: 8080
+            - containerPort: 9090
+              name: metrics
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
           env:
             - name: GITHUB_CALLBACK_URL
               value: "https://learn-kro.eks.aws.dev/api/v1/auth/callback"
@@ -36,7 +50,7 @@ spec:
           envFrom:
             - secretRef:
                 name: krombat-github-oauth
-                optional: true   # pod still starts without the secret; OAuth simply returns 503
+                # #418: SESSION_SECRET must be present; pod will fail-fast in main.go if absent
             - secretRef:
                 name: krombat-test-auth
                 optional: true   # pod still starts without the secret; test bypass disabled if absent
@@ -69,5 +83,10 @@ spec:
   selector:
     app: rpg-backend
   ports:
-    - port: 8080
+    - name: http
+      port: 8080
       targetPort: 8080
+    # #416: metrics port — internal only, not routed through ALB
+    - name: metrics
+      port: 9090
+      targetPort: 9090

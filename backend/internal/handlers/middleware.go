@@ -71,6 +71,12 @@ func AccessLog(next http.Handler) http.Handler {
 			reqID = uuid.NewString()
 		}
 		w.Header().Set("X-Request-Id", reqID)
+
+		// #417: HTTP security headers on all API responses
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+
 		ctx := context.WithValue(r.Context(), ctxKeyRequestID, reqID)
 
 		rw := &responseWriter{ResponseWriter: w, status: http.StatusOK}

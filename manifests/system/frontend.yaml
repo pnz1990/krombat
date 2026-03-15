@@ -20,11 +20,32 @@ spec:
           labelSelector:
             matchLabels:
               app: rpg-frontend
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: frontend
+          # #415: nginxinc/nginx-unprivileged runs as UID 101 (non-root).
+          # Listens on port 8080 instead of privileged 80.
           image: 319279230668.dkr.ecr.us-west-2.amazonaws.com/krombat/frontend:a2a58c4d215cc3ccad7f7bf5249a6c72ce62e7e9
           ports:
             - containerPort: 3000
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 101
+            runAsGroup: 101
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: nginx-cache
+              mountPath: /var/cache/nginx
+            - name: nginx-run
+              mountPath: /var/run
+            - name: nginx-tmp
+              mountPath: /tmp
           readinessProbe:
             httpGet:
               path: /
@@ -45,6 +66,13 @@ spec:
             limits:
               memory: "256Mi"
               cpu: "500m"
+      volumes:
+        - name: nginx-cache
+          emptyDir: {}
+        - name: nginx-run
+          emptyDir: {}
+        - name: nginx-tmp
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service

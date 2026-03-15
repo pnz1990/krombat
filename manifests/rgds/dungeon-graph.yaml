@@ -21,15 +21,15 @@ spec:
       backstabCooldown: integer | default=0
       modifier: string | default="none"
       inventory: string | default=""
-      weaponBonus: integer | default=0
+      weaponBonus: integer | default=0 minimum=0 maximum=50
       weaponUses: integer | default=0
-      armorBonus: integer | default=0
-      shieldBonus: integer | default=0
-      helmetBonus: integer | default=0
-      pantsBonus: integer | default=0
-      bootsBonus: integer | default=0
-      ringBonus: integer | default=0
-      amuletBonus: integer | default=0
+      armorBonus: integer | default=0 minimum=0 maximum=50
+      shieldBonus: integer | default=0 minimum=0 maximum=50
+      helmetBonus: integer | default=0 minimum=0 maximum=50
+      pantsBonus: integer | default=0 minimum=0 maximum=50
+      bootsBonus: integer | default=0 minimum=0 maximum=50
+      ringBonus: integer | default=0 minimum=0 maximum=50
+      amuletBonus: integer | default=0 minimum=0 maximum=50
       poisonTurns: integer | default=0
       burnTurns: integer | default=0
       stunTurns: integer | default=0
