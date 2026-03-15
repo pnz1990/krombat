@@ -10,6 +10,8 @@ apiVersion: game.k8s.example/v1alpha1
 kind: Dungeon
 metadata:
   name: $D
+  labels:
+    krombat.io/owner: test-infra
 spec: {monsters: 1, difficulty: easy, monsterHP: [30], bossHP: 200, heroHP: 150, heroClass: warrior, modifier: none}
 EOF
 

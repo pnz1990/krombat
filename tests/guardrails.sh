@@ -466,8 +466,16 @@ echo "=== Boss loot invariants"
 grep -q "boss-typ\|boss.*loot\|bossLoot\|boss-rar" manifests/rgds/dungeon-graph.yaml manifests/rgds/boss-graph.yaml 2>/dev/null && pass "Boss loot logic lives in kro RGDs (not Go backend)" || fail "Boss loot not found in RGDs"
 # Verify Go backend does NOT contain loot computation functions (clean separation)
 ! grep -q "computeBossLoot\|computeMonsterLoot\|kroSeededRoll\|seededRoll" backend/internal/handlers/handlers.go && pass "Go backend has no loot/RNG math (kro is authoritative)" || fail "Go backend still contains loot/RNG math functions — not fully cleaned up"
-# classMaxHP must cover all 3 valid hero classes — ensure no fallthrough for known classes
-grep -q '"warrior"' backend/internal/handlers/handlers.go && grep -q '"mage"' backend/internal/handlers/handlers.go && grep -q '"rogue"' backend/internal/handlers/handlers.go && pass "classMaxHP covers all 3 hero classes (warrior/mage/rogue)" || fail "classMaxHP missing a hero class branch"
+# Hero class validation must cover all 3 valid hero classes — ensure no fallthrough for known classes
+grep -q '"warrior"' backend/internal/handlers/handlers.go && grep -q '"mage"' backend/internal/handlers/handlers.go && grep -q '"rogue"' backend/internal/handlers/handlers.go && pass "Hero class handling covers warrior/mage/rogue" || fail "Hero class handling missing a branch"
+# #399: classMaxHP/classMaxMana fallback functions must NOT exist — kro hero-graph is authoritative; backend must reject if maxHeroHP is absent
+! grep -q "func classMaxHP\|func classMaxMana" backend/internal/handlers/handlers.go && pass "#399: classMaxHP/classMaxMana fallback functions removed (kro is authoritative)" || fail "#399: classMaxHP/classMaxMana fallback functions still exist — remove them"
+# #402: leaderboard/profile must not fall back to raw-HP derivation when kro status is nil
+! grep -q "kro status unavailable.*derive from spec" backend/internal/handlers/handlers.go && pass "#402: no raw-HP fallback in leaderboard/profile when kro status absent" || fail "#402: raw-HP fallback still present in leaderboard/profile — remove it"
+# #403: dead inventory helper functions must not exist
+! grep -q "func inventoryAdd\|func inventoryRemove" backend/internal/handlers/handlers.go && pass "#403: dead inventoryAdd/inventoryRemove functions removed" || fail "#403: inventoryAdd or inventoryRemove still exist — delete them"
+# #401: no hardcoded per-turn DoT damage in log string literals (comment references are ok)
+! grep -q '"-5 HP/turn\|-8 HP/turn"' backend/internal/handlers/handlers.go && pass "#401: no hardcoded per-turn DoT amounts in log string literals" || fail "#401: hardcoded -5/-8 HP/turn still in log string literals — remove them"
 
 # --- Mana potion class guard ---
 echo "=== Mana potion class guard"
