@@ -29,6 +29,7 @@ func (rl *rateLimiter) Allow(key string) bool {
 func (rl *rateLimiter) Wrap(next http.HandlerFunc, keyFn func(*http.Request) string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !rl.Allow(keyFn(r)) {
+			attacksRateLimited.Inc()
 			http.Error(w, "rate limit exceeded, try again shortly", http.StatusTooManyRequests)
 			return
 		}

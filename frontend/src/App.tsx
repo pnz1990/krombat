@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { DungeonSummary, DungeonCR, listDungeons, getDungeon, createDungeon, createNewGamePlus, submitAttack, deleteDungeon, ApiError, LeaderboardEntry, getLeaderboard } from './api'
+import { DungeonSummary, DungeonCR, listDungeons, getDungeon, createDungeon, createNewGamePlus, submitAttack, deleteDungeon, ApiError, LeaderboardEntry, getLeaderboard, reportError, trackEvent } from './api'
 import { useWebSocket, WSEvent } from './useWebSocket'
 
 import { Sprite, getMonsterSprite, getMonsterName, SpriteAction, ItemSprite } from './Sprite'
@@ -254,6 +254,7 @@ export default function App() {
     setError('')
     try {
       await createDungeon(name, monsters, difficulty, heroClass, 'default')
+      trackEvent('dungeon_created', { monsters, difficulty, heroClass })
       addK8s(`kubectl apply -f dungeon.yaml`, 'dungeon.game.k8s.example created',
         `apiVersion: game.k8s.example/v1alpha1\nkind: Dungeon\nmetadata:\n  name: ${name}\nspec:\n  monsters: ${monsters}\n  difficulty: ${difficulty}\n  heroClass: ${heroClass}`)
       triggerInsight('dungeon-created')
@@ -265,7 +266,7 @@ export default function App() {
       setTimeout(() => triggerInsight('schema-validated'), 5000)
       localStorage.setItem('lastDungeon', JSON.stringify({ ns: 'default', name }))
       navigate(`/dungeon/default/${name}`)
-    } catch (e: any) { setError(e.message) }
+    } catch (e: any) { reportError('create-dungeon', e); setError(e.message) }
   }
 
   const addEvent = (icon: string, msg: string) => {
@@ -302,6 +303,14 @@ export default function App() {
 
       await submitAttack(selected.ns, selected.name, target, damage,
         isItem ? (detail?.spec.actionSeq ?? -1) : (detail?.spec.attackSeq ?? -1))
+      // Track interaction for CloudWatch game event log
+      if (isItem) {
+        trackEvent('item_used', { item: target, heroClass: detail?.spec.heroClass })
+      } else if (isAbility) {
+        trackEvent('action_used', { action: target, heroClass: detail?.spec.heroClass })
+      } else {
+        trackEvent('attack_submitted', { target: shortTarget, heroClass: detail?.spec.heroClass, difficulty: detail?.spec.difficulty })
+      }
       setReconciling(true)
       const crKind = isItem ? 'Action' : 'Attack'
       const crField = isItem ? `action: ${target}` : `target: ${target}\n  damage: ${damage}`
@@ -499,6 +508,7 @@ export default function App() {
         } catch { /* best-effort */ }
         setError('State changed — dungeon refreshed. Please retry your action.')
       } else {
+        reportError('attack', e)
         setError(e.message)
       }
       setCombatModal(null)
@@ -540,6 +550,7 @@ export default function App() {
     setDeleting(prev => new Set(prev).add(delName))
     try {
       await deleteDungeon(delNs, delName)
+      trackEvent('dungeon_deleted', { outcome: detail?.status?.victory ? 'victory' : detail?.status?.defeated ? 'defeat' : 'in-progress', totalTurns: (detail?.spec.attackSeq ?? 0) + (detail?.spec.actionSeq ?? 0) })
       triggerInsight('dungeon-deleted')
       if (selected?.name === delName) navigate('/')
       // Clear last dungeon from localStorage if it was the deleted one
@@ -564,7 +575,7 @@ export default function App() {
         setDeleting(prev => { const s = new Set(prev); s.delete(delName); return s })
       }
       poll() // fire and forget — don't block UI
-    } catch (e: any) { setError(e.message); setDeleting(prev => { const s = new Set(prev); s.delete(delName); return s }) }
+    } catch (e: any) { reportError('delete-dungeon', e); setError(e.message); setDeleting(prev => { const s = new Set(prev); s.delete(delName); return s }) }
   }
 
   const handleOpenLeaderboard = async () => {
@@ -603,7 +614,8 @@ export default function App() {
         amuletBonus: spec.amuletBonus,
       }, ns)
       navigate(`/dungeon/${ns}/${newName}`)
-    } catch (e: any) { setError(e.message) }
+      trackEvent('dungeon_created', { monsters: spec.monsters ?? 3, difficulty: spec.difficulty ?? 'normal', heroClass: spec.heroClass ?? 'warrior', runCount })
+    } catch (e: any) { reportError('create-new-game-plus', e); setError(e.message) }
   }
 
   return (

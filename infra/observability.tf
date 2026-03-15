@@ -403,3 +403,110 @@ resource "aws_cloudwatch_metric_alarm" "reaper_failure" {
   treat_missing_data  = "breaching"
   alarm_description   = "Dungeon reaper has not completed successfully in 15 minutes — possible CronJob failure"
 }
+
+# --- New Log Metric Filters (Issue #356) ---
+
+# Counts HTTP 4xx/5xx errors logged by the access-log middleware.
+resource "aws_cloudwatch_log_metric_filter" "http_errors" {
+  name           = "${var.cluster_name}-http-errors"
+  log_group_name = aws_cloudwatch_log_group.rpg_system.name
+  pattern        = "{ $.msg = \"http_request\" && $.status >= 400 }"
+
+  metric_transformation {
+    name          = "HttpErrors"
+    namespace     = "Krombat/Game"
+    value         = "1"
+    default_value = "0"
+    unit          = "Count"
+  }
+}
+
+# Counts frontend errors reported via POST /api/v1/client-error.
+resource "aws_cloudwatch_log_metric_filter" "frontend_errors" {
+  name           = "${var.cluster_name}-frontend-errors"
+  log_group_name = aws_cloudwatch_log_group.rpg_system.name
+  pattern        = "frontend_error"
+
+  metric_transformation {
+    name          = "FrontendErrors"
+    namespace     = "Krombat/Game"
+    value         = "1"
+    default_value = "0"
+    unit          = "Count"
+  }
+}
+
+# Counts Web Vital reports where LCP rating = "poor".
+resource "aws_cloudwatch_log_metric_filter" "web_vital_poor_lcp" {
+  name           = "${var.cluster_name}-poor-lcp"
+  log_group_name = aws_cloudwatch_log_group.rpg_system.name
+  pattern        = "{ $.msg = \"web_vital\" && $.name = \"LCP\" && $.rating = \"poor\" }"
+
+  metric_transformation {
+    name          = "PoorLCP"
+    namespace     = "Krombat/Game"
+    value         = "1"
+    default_value = "0"
+    unit          = "Count"
+  }
+}
+
+# Counts Web Vital reports where CLS rating = "poor".
+resource "aws_cloudwatch_log_metric_filter" "web_vital_poor_cls" {
+  name           = "${var.cluster_name}-poor-cls"
+  log_group_name = aws_cloudwatch_log_group.rpg_system.name
+  pattern        = "{ $.msg = \"web_vital\" && $.name = \"CLS\" && $.rating = \"poor\" }"
+
+  metric_transformation {
+    name          = "PoorCLS"
+    namespace     = "Krombat/Game"
+    value         = "1"
+    default_value = "0"
+    unit          = "Count"
+  }
+}
+
+# Counts WebSocket connection events.
+resource "aws_cloudwatch_log_metric_filter" "ws_connected" {
+  name           = "${var.cluster_name}-ws-connected"
+  log_group_name = aws_cloudwatch_log_group.rpg_system.name
+  pattern        = "websocket connected"
+
+  metric_transformation {
+    name          = "WsConnected"
+    namespace     = "Krombat/Game"
+    value         = "1"
+    default_value = "0"
+    unit          = "Count"
+  }
+}
+
+# Counts WebSocket disconnection events.
+resource "aws_cloudwatch_log_metric_filter" "ws_disconnected" {
+  name           = "${var.cluster_name}-ws-disconnected"
+  log_group_name = aws_cloudwatch_log_group.rpg_system.name
+  pattern        = "websocket disconnected"
+
+  metric_transformation {
+    name          = "WsDisconnected"
+    namespace     = "Krombat/Game"
+    value         = "1"
+    default_value = "0"
+    unit          = "Count"
+  }
+}
+
+# Counts 429 rate-limit responses.
+resource "aws_cloudwatch_log_metric_filter" "rate_limited" {
+  name           = "${var.cluster_name}-rate-limited"
+  log_group_name = aws_cloudwatch_log_group.rpg_system.name
+  pattern        = "{ $.status = 429 }"
+
+  metric_transformation {
+    name          = "RateLimited"
+    namespace     = "Krombat/Game"
+    value         = "1"
+    default_value = "0"
+    unit          = "Count"
+  }
+}

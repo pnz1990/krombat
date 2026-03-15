@@ -142,3 +142,29 @@ export async function submitAttack(ns: string, dungeon: string, target: string, 
   if (!r.ok) throw new ApiError(r.status, await r.text())
   return r.json()
 }
+
+/**
+ * reportError sends a structured error report to the backend for CloudWatch.
+ * Fire-and-forget — never throws.
+ */
+export function reportError(context: string, err: unknown) {
+  const message = err instanceof Error ? err.message : String(err)
+  fetch('/api/v1/client-error', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ context, message, url: window.location.href, timestamp: new Date().toISOString() }),
+  }).catch(() => {})
+}
+
+/**
+ * trackEvent sends a game interaction event to the backend for CloudWatch.
+ * Fire-and-forget — never throws.
+ */
+export function trackEvent(event: string, props: Record<string, unknown> = {}) {
+  fetch('/api/v1/events-track', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ event, ...props, ts: Date.now() }),
+    keepalive: true,
+  }).catch(() => {})
+}
