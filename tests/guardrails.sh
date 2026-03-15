@@ -667,6 +667,38 @@ grep -q 'ENRAGED ×1\.5\|BERSERK ×2\.0\|phaseNote.*1\.5\|phaseNote.*2\.0' backe
 # boss-graph damageMultiplier must use 13/16 (not 15/20) — check only the damageMultiplier CEL block
 grep -A6 "damageMultiplier:" manifests/rgds/boss-graph.yaml | grep -q "'15'\|'20'" && fail "#398: boss-graph damageMultiplier still uses 15/20 (should be 13/16)" || pass "#398: boss-graph damageMultiplier uses correct 13/16"
 
+# --- Teaching T2 guardrails (#437, #439, #440, #444, #449, #450, #452, #453) ---
+echo "=== Teaching T2 guardrails"
+
+# #437: lootInfo CM node must exist in KroGraph; boss-loot edge from boss not boss-cm
+grep -q "loot-info-m\${i}\|'loot-info-m'" frontend/src/KroGraph.tsx && pass "#437: lootInfo CM node added to KroGraph" || fail "#437: lootInfo CM node missing from KroGraph"
+grep -q "from: 'boss-cm'.*boss-loot\|boss-cm.*boss-loot" frontend/src/KroGraph.tsx && fail "#440: boss-loot edge source still boss-cm" || pass "#440: boss-loot edge source fixed to boss"
+
+# #437: loot/lootinfo/lootsecret kinds must be in VALID_RESOURCE_KINDS
+grep -q "'loot'" frontend/src/api.ts && pass "#437: 'loot' kind in VALID_RESOURCE_KINDS" || fail "#437: 'loot' kind missing from VALID_RESOURCE_KINDS"
+grep -q "'lootinfo'" frontend/src/api.ts && pass "#437: 'lootinfo' kind in VALID_RESOURCE_KINDS" || fail "#437: 'lootinfo' kind missing"
+grep -q "'lootsecret'" frontend/src/api.ts && pass "#437: 'lootsecret' kind in VALID_RESOURCE_KINDS" || fail "#437: 'lootsecret' kind missing"
+# #437: loot/lootinfo/lootsecret handler cases must exist in GetDungeonResource
+grep -q '"loot":$\|case "loot"' backend/internal/handlers/handlers.go && pass "#437: 'loot' case in GetDungeonResource" || fail "#437: 'loot' case missing from GetDungeonResource"
+
+# #439: actionResolve node concept must be spec-mutation not empty-rgd
+grep -A5 "actionResolve" frontend/src/KroGraph.tsx | grep -q "concept: 'empty-rgd'" && fail "#439: actionResolve node still uses concept: empty-rgd" || pass "#439: actionResolve node uses concept: spec-mutation"
+
+# #449: InsightCard dungeon-created must not say '7 resources'
+grep -q "kro created 7 resources" frontend/src/KroTeach.tsx && fail "#449: dungeon-created InsightCard still says '7 resources'" || pass "#449: dungeon-created InsightCard updated"
+
+# #450: spec-patch concept must exist in KroConceptId and CONCEPT_ORDER
+grep -q "'spec-patch'" frontend/src/KroTeach.tsx && pass "#450: spec-patch concept exists in KroTeach" || fail "#450: spec-patch concept missing from KroTeach"
+grep -q "dot-applied" frontend/src/App.tsx && pass "#450: dot-applied event triggers spec-patch insight" || fail "#450: dot-applied event missing from App.tsx"
+
+# #452: help modal boss phase table must show correct multipliers (1.3x/1.6x not 1.5x/2.0x)
+grep -v '^\s*//' frontend/src/App.tsx | grep -v '{/\*.*#452' | grep -q "1\.5x\|2\.0x\|1\.5×\|2\.0×" && fail "#452: help modal still shows 1.5x/2.0x boss phase multipliers" || pass "#452: help modal shows correct 1.3x/1.6x"
+grep -v '^\s*//' frontend/src/App.tsx | grep -v '{/\*.*#452' | grep -q "Special Chance" && fail "#452: help modal still shows 'Special Chance' column (misleading)" || pass "#452: Special Chance column removed from help modal"
+
+# #453: CEL playground examples — no 'self.spec', must use 'schema.spec'; no wrong boss state expr
+grep -q "'self\.spec\.\?modifier\|self\.spec\.bossHP" frontend/src/KroTeach.tsx && fail "#453: CEL playground still uses self.spec (should be schema.spec)" || pass "#453: CEL playground uses schema.spec"
+grep -q "schema\.spec\.monsters == 0" frontend/src/KroTeach.tsx && fail "#453: boss state ternary still uses schema.spec.monsters == 0 (wrong)" || pass "#453: boss state ternary uses monsterHP.all()"
+
 # --- Summary ---
 
 echo ""

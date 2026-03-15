@@ -37,6 +37,7 @@ export type KroConceptId =
   | 'cel-playground'
   | 'cel-filter'
   | 'cel-string-ops'
+  | 'spec-patch'
 
 export interface KroConcept {
   id: KroConceptId
@@ -668,12 +669,38 @@ stringData:
   description: "\${'A ' + schema.spec.rarity + ' weapon (+' + string(schema.spec.stat) + ' dmg)'}"`,
     learnMore: 'manifests/rgds/monster-graph.yaml (itemType) and loot-graph.yaml (stringData)',
   },
+
+  // #450: specPatch concept — central kro mechanism driving 9 of 16 dungeon-graph nodes
+  'spec-patch': {
+    id: 'spec-patch',
+    title: 'specPatch — CEL State Machine',
+    tagline: 'kro writes computed values back into the same CR it is watching',
+    body: `\`type: specPatch\` is an RGD resource entry that evaluates a CEL expression and writes the result directly to \`spec.*\` fields on the parent CR. This triggers another reconcile loop iteration — enabling stateful game logic (combat, cooldowns, DoT, room transitions) with no backend code.
+
+9 of dungeon-graph's 16 resource entries are specPatch nodes: \`dungeonInit\`, \`abilityResolve\`, \`tickDoT\`, \`advanceTaunt\`, \`tickCooldown\`, \`regenRing\`, \`combatResolve\`, \`actionResolve\`, \`enterRoom2Resolve\`. Together they implement the entire game engine via CEL — the Go backend only patches trigger fields (\`attackSeq\`, \`lastAbility\`, etc.) and reads the results.`,
+    snippet: `# dungeon-graph.yaml — tickDoT specPatch
+# Fires each attack turn when DoT is active.
+# Reads spec.poisonTurns/burnTurns → writes heroHP, decrements counters.
+- id: tickDoT
+  type: specPatch
+  includeWhen:
+    - "\${schema.spec.poisonTurns > 0 || schema.spec.burnTurns > 0}"
+  patch:
+    heroHP: "\${schema.spec.heroHP
+      - (schema.spec.poisonTurns > 0 ? 5 : 0)
+      - (schema.spec.burnTurns > 0 ? 8 : 0) < 0 ? 0
+      : schema.spec.heroHP - (schema.spec.poisonTurns > 0 ? 5 : 0)
+      - (schema.spec.burnTurns > 0 ? 8 : 0)}"
+    poisonTurns: "\${schema.spec.poisonTurns > 0 ? schema.spec.poisonTurns - 1 : 0}"
+    burnTurns:   "\${schema.spec.burnTurns > 0   ? schema.spec.burnTurns - 1   : 0}"`,
+    learnMore: 'manifests/rgds/dungeon-graph.yaml — all 9 specPatch nodes',
+  },
 }
 // ─── end KRO_CONCEPTS ────────────────────────────────────────────────────────
 
 /** Map game events to insight triggers */
 export function getInsightForEvent(event: string): InsightTrigger | null {
-  if (event === 'dungeon-created') return { conceptId: 'rgd', headline: 'kro created 7 resources from your one Dungeon CR' }
+  if (event === 'dungeon-created') return { conceptId: 'rgd', headline: 'kro built a full resource graph from your one Dungeon CR — 16 managed entries' }
   if (event === 'spec-schema') return { conceptId: 'spec-schema', headline: 'kro validated your difficulty/heroClass fields against spec.schema enums' }
   if (event === 'schema-validated') return { conceptId: 'schema-validation', headline: 'kro compiled your spec.schema into a CRD — the API server now rejects invalid dungeons' }
   if (event === 'resource-chaining') return { conceptId: 'resource-chaining', headline: 'Hero CR status (maxHP, class) flowed up through dungeon-graph resource chaining' }
@@ -693,9 +720,11 @@ export function getInsightForEvent(event: string): InsightTrigger | null {
   if (event === 'status-conditions') return { conceptId: 'status-conditions', headline: 'kro is reporting its reconcile status via status.conditions — the Kubernetes health contract' }
   if (event === 'second-attack') return { conceptId: 'reconcile-loop', headline: 'The ~1s pause after every action is the kro reconcile loop: watch → CEL eval → write' }
   if (event === 'dungeon-created-2nd') return { conceptId: 'resourceGroup-api', headline: 'kro registered Dungeon as a real Kubernetes API — kubectl get dungeon works natively' }
-  if (event === 'boots-equipped') return { conceptId: 'cel-has-macro', headline: 'has() lets CEL safely access optional spec fields — used throughout dungeon-graph readyWhen' }
+   if (event === 'boots-equipped') return { conceptId: 'cel-has-macro', headline: 'has() lets CEL safely access optional spec fields — used throughout dungeon-graph readyWhen' }
   if (event === 'dungeon-deleted') return { conceptId: 'ownerReferences', headline: 'Deleting the Dungeon CR triggered cascading deletion of all 9 child resources via ownerReferences' }
   if (event === 'cel-playground-unlocked') return { conceptId: 'cel-playground', headline: 'Open the CEL Playground to write and evaluate live kro expressions against your dungeon' }
+  // #450: spec-patch concept fires on first DoT tick — most visible specPatch in action
+  if (event === 'dot-applied') return { conceptId: 'spec-patch', headline: 'tickDoT specPatch fired: CEL decremented heroHP and poisonTurns/burnTurns directly in spec' }
   return null
 }
 
@@ -806,7 +835,7 @@ const CONCEPT_ORDER: KroConceptId[] = [
   'seeded-random', 'secret-output', 'empty-rgd', 'spec-mutation',
   'externalRef', 'status-conditions', 'reconcile-loop',
   'resourceGroup-api', 'cel-has-macro', 'ownerReferences', 'cel-playground',
-  'cel-filter', 'cel-string-ops',
+  'cel-filter', 'cel-string-ops', 'spec-patch',
 ]
 
 interface KroGlossaryProps {
@@ -1388,9 +1417,11 @@ const CEL_EXAMPLES = [
   { label: 'Hero HP check', expr: 'schema.spec.heroHP > 100' },
   { label: 'Difficulty branch', expr: 'schema.spec.difficulty == "hard" ? "big dice" : "small dice"' },
   { label: 'Mage mana', expr: 'schema.spec.heroClass == "mage" && schema.spec.heroMana > 0' },
-  { label: 'Boss state ternary', expr: 'schema.spec.bossHP > 0 ? (schema.spec.monsters == 0 ? "ready" : "pending") : "defeated"' },
+  // #453: schema.spec.monsterHP.all(...) — correct check for all-monsters-dead (schema.spec.monsters is immutable count, not current state)
+  { label: 'Boss state ternary', expr: 'schema.spec.bossHP > 0 ? (schema.spec.monsterHP.all(hp, hp <= 0) ? "ready" : "pending") : "defeated"' },
   { label: 'Damage × 1.3 (mage)', expr: 'schema.spec.heroClass == "mage" ? schema.spec.heroHP * 13 / 10 : schema.spec.heroHP' },
-  { label: 'Optional field', expr: 'self.spec.?modifier.orValue("none")' },
+  // #453: self → schema (kro binds root as 'schema', not 'self')
+  { label: 'Optional field', expr: 'schema.spec.?modifier.orValue("none")' },
   { label: 'String concat', expr: 'string(schema.spec.heroHP) + " / " + string(schema.spec.monsters)' },
   { label: 'Room 2 check', expr: 'schema.spec.currentRoom == 2' },
 ]
@@ -1473,7 +1504,13 @@ export function KroCelPlayground({ dungeonNs, dungeonName, onLearnConcept, onClo
         <div className="kro-playground-body">
           {/* Left: editor + examples */}
           <div className="kro-playground-left">
-            <div className="kro-playground-editor-label">Expression <span className="kro-playground-hint">Ctrl+Enter to run</span></div>
+            <div className="kro-playground-editor-label">
+              Expression <span className="kro-playground-hint">Ctrl+Enter to run</span>
+              {/* #453: show character counter against 500-char backend limit */}
+              <span style={{ marginLeft: 'auto', fontSize: 9, color: expr.length > 450 ? '#e74c3c' : '#888' }}>
+                {expr.length}/500
+              </span>
+            </div>
             <textarea
               ref={inputRef}
               className="kro-playground-input"
@@ -1543,7 +1580,8 @@ export function KroCelPlayground({ dungeonNs, dungeonName, onLearnConcept, onClo
           </button>
           <div style={{ flex: 1 }} />
           <div className="kro-playground-supported">
-            Supported: field access · arithmetic · comparisons · ternary · string() · int() · size()
+            {/* #453: list all kro CEL extensions registered in BaseDeclarations() */}
+            Supported: field access · arithmetic · ternary · string() · int() · size() · has() · cel.bind() · random.seededInt/String() · lists.set/range/filter() · csv.add/remove() · maps.* · 500 char limit
           </div>
         </div>
       </div>

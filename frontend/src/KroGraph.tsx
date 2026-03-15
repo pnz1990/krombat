@@ -175,6 +175,19 @@ export function buildGraph(cr: DungeonCR, reconciling: boolean): { nodes: GraphN
     })
     edges.push({ from: mcmId, to: lootId, label: 'includeWhen', dashed: true })
 
+    // lootInfo ConfigMap (created by loot-graph — item description text)
+    const lootInfoId = `loot-info-m${i}`
+    nodes.push({
+      id: lootInfoId,
+      label: 'LootInfo',
+      kind: 'ConfigMap',
+      state: lootExists ? 'ok' : 'locked',
+      exists: lootExists,
+      concept: 'cel-basics',
+      detail: lootExists ? 'item description CM' : 'created by loot-graph',
+    })
+    edges.push({ from: lootId, to: lootInfoId, label: 'loot-graph', dashed: !lootExists })
+
     // lootSecret Secret (created by loot-graph when Loot CR exists)
     const lootSecretId = `loot-secret-m${i}`
     nodes.push({
@@ -241,7 +254,19 @@ export function buildGraph(cr: DungeonCR, reconciling: boolean): { nodes: GraphN
     concept: 'includeWhen',
     detail: bossLootExists ? 'guaranteed drop' : 'includeWhen: hp==0',
   })
-  edges.push({ from: 'boss-cm', to: 'boss-loot', label: 'includeWhen', dashed: true })
+  edges.push({ from: 'boss', to: 'boss-loot', label: 'boss-graph', dashed: !bossLootExists })
+
+  // Boss lootInfo ConfigMap (created by loot-graph — item description text)
+  nodes.push({
+    id: 'boss-loot-info',
+    label: 'BossLootInfo',
+    kind: 'ConfigMap',
+    state: bossLootExists ? 'ok' : 'locked',
+    exists: bossLootExists,
+    concept: 'cel-basics',
+    detail: bossLootExists ? 'boss item description CM' : 'created by loot-graph',
+  })
+  edges.push({ from: 'boss-loot', to: 'boss-loot-info', label: 'loot-graph', dashed: !bossLootExists })
 
   // Boss lootSecret Secret (created by loot-graph)
   nodes.push({
@@ -338,9 +363,8 @@ export function buildGraph(cr: DungeonCR, reconciling: boolean): { nodes: GraphN
     kind: 'specPatch',
     state: reconciling ? 'reconciling' : 'ok',
     exists: true,
-    concept: 'empty-rgd',
+    concept: 'spec-mutation',
     detail: 'equip/use/door/room logic',
-    pulse: reconciling,
   })
   edges.push({ from: 'dungeon', to: 'action-cm', label: 'specPatch' })
 
@@ -859,14 +883,19 @@ export function KroGraphPanel({ cr, prevCr, reconciling, onViewConcept }: KroGra
       'treasure-secret': 'treasuresecret',
       'modifier': 'modifier',
       'modifier-cm': 'modifiercm',     // Modifier state ConfigMap
+      // #437: boss loot nodes
+      'boss-loot': 'bossloot',
+      'boss-loot-info': 'bosslootinfo',
+      'boss-loot-secret': 'bosslootsecret',
       // combat-cm / action-cm are specPatch virtual nodes — no persistent K8s resource, skip
       // attack-cr / action-cr are empty RGD CRs — no managed resources, skip
     }
 
-    // Extract index from monster-N / monster-cm-N / loot-mN / loot-secret-mN node IDs
+    // Extract index from monster-N / monster-cm-N / loot-mN / loot-info-mN / loot-secret-mN node IDs
     const monsterMatch = nodeId.match(/^monster-(\d+)$/)
     const monsterCmMatch = nodeId.match(/^monster-cm-(\d+)$/)
     const lootMatch = nodeId.match(/^loot-m(\d+)$/)
+    const lootInfoMatch = nodeId.match(/^loot-info-m(\d+)$/)
     const lootSecretMatch = nodeId.match(/^loot-secret-m(\d+)$/)
 
     let kind: ResourceKind | undefined
@@ -877,9 +906,11 @@ export function KroGraphPanel({ cr, prevCr, reconciling, onViewConcept }: KroGra
     } else if (monsterCmMatch) {
       kind = 'monsterstate'; index = parseInt(monsterCmMatch[1])
     } else if (lootMatch) {
-      kind = 'monster'; index = parseInt(lootMatch[1])  // loot node maps to its Monster CR
+      kind = 'loot'; index = parseInt(lootMatch[1])       // #437: Loot CR
+    } else if (lootInfoMatch) {
+      kind = 'lootinfo'; index = parseInt(lootInfoMatch[1])  // #437: LootInfo CM
     } else if (lootSecretMatch) {
-      kind = 'monster'; index = parseInt(lootSecretMatch[1])
+      kind = 'lootsecret'; index = parseInt(lootSecretMatch[1])  // #437: LootSecret
     } else {
       kind = kindMap[nodeId] as ResourceKind | undefined
     }

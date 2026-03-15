@@ -2538,6 +2538,29 @@ func (h *Handler) GetDungeonResource(w http.ResponseWriter, r *http.Request) {
 		def = &resourceDef{schema.GroupVersionResource{Group: coreGrp, Version: coreVer, Resource: "configmaps"}, name + "-treasure-state"}
 	case "treasuresecret":
 		def = &resourceDef{schema.GroupVersionResource{Group: coreGrp, Version: coreVer, Resource: "secrets"}, name + "-treasure-secret"}
+	// #437: Loot CR and its loot-graph children (lootInfo CM + lootSecret Secret)
+	case "loot":
+		if index == "" {
+			index = "0"
+		}
+		def = &resourceDef{schema.GroupVersionResource{Group: grp, Version: ver, Resource: "loots"}, name + "-monster-" + index + "-loot"}
+	case "lootinfo":
+		if index == "" {
+			index = "0"
+		}
+		def = &resourceDef{schema.GroupVersionResource{Group: coreGrp, Version: coreVer, Resource: "configmaps"}, name + "-monster-" + index + "-loot-info"}
+	case "lootsecret":
+		if index == "" {
+			index = "0"
+		}
+		def = &resourceDef{schema.GroupVersionResource{Group: coreGrp, Version: coreVer, Resource: "secrets"}, name + "-monster-" + index + "-loot"}
+	// #437: Boss loot CR and its loot-graph children
+	case "bossloot":
+		def = &resourceDef{schema.GroupVersionResource{Group: grp, Version: ver, Resource: "loots"}, name + "-boss-loot"}
+	case "bosslootinfo":
+		def = &resourceDef{schema.GroupVersionResource{Group: coreGrp, Version: coreVer, Resource: "configmaps"}, name + "-boss-loot-info"}
+	case "bosslootsecret":
+		def = &resourceDef{schema.GroupVersionResource{Group: coreGrp, Version: coreVer, Resource: "secrets"}, name + "-boss-loot"}
 	default:
 		writeError(w, "unknown kind: "+kind, http.StatusBadRequest)
 		return
