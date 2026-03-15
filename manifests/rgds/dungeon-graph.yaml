@@ -62,6 +62,7 @@ spec:
       runCount: integer | default=0
       monsterTypes: "[]string"
       initProcessedSeq: integer | default=0
+      xpEarned: integer | default=0
     status:
       livingMonsters: "${size(monsterCRs.filter(m, m.status.?entityState.orValue('alive') == 'alive'))}"
       bossState: "${bossCR.status.?entityState.orValue('pending')}"

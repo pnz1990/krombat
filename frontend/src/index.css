@@ -878,6 +878,22 @@ body {
   z-index: 10;
 }
 
+/* XP gain popup — floats up from hero and fades (#360) */
+.floating-xp {
+  position: absolute;
+  top: -30px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 9px;
+  font-weight: bold;
+  color: #f0e060;
+  text-shadow: 1px 1px 0 #000;
+  animation: floatUp 1.2s ease-out forwards;
+  pointer-events: none;
+  z-index: 11;
+  white-space: nowrap;
+}
+
 /* Dungeon props */
 .dungeon-prop {
   position: absolute;
@@ -885,6 +901,38 @@ body {
   opacity: 0.9;
   image-rendering: pixelated;
   pointer-events: none;
+}
+
+/* XP earned summary on victory/defeat screens (#360) */
+.xp-summary {
+  background: rgba(255,215,0,0.06);
+  border: 1px solid rgba(255,215,0,0.25);
+  border-radius: 3px;
+  padding: 6px 10px;
+  margin: 8px auto;
+  max-width: 220px;
+  font-size: 7px;
+}
+.xp-summary-title {
+  color: var(--gold);
+  font-size: 7px;
+  letter-spacing: 0.05em;
+  margin-bottom: 4px;
+  text-align: center;
+}
+.xp-summary-row {
+  display: flex;
+  justify-content: space-between;
+  color: var(--text-dim);
+  padding: 1px 0;
+}
+.xp-summary-total {
+  border-top: 1px solid rgba(255,215,0,0.3);
+  margin-top: 4px;
+  padding-top: 4px;
+  color: var(--gold);
+  font-weight: bold;
+  text-align: right;
 }
 
 /* Flying bats */
