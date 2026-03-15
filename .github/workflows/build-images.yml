@@ -21,16 +21,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: docker build -t krombat/backend:test backend/
-      - name: Scan backend image for vulnerabilities
+      # Step 1: Generate SARIF for security dashboards (never blocks).
+      - name: Scan backend image (SARIF upload)
         # #414: pinned to SHA — aquasecurity/trivy-action@0.35.0
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
         with:
           image-ref: krombat/backend:test
           format: 'sarif'
           output: 'trivy-backend.sarif'
-          severity: 'CRITICAL'
-          # #414: exit-code 1 causes CI to fail on critical CVEs.
-          exit-code: '1'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'
           ignore-unfixed: true
           trivyignores: '.trivyignore'
       - name: Upload backend Trivy results
@@ -39,6 +39,17 @@ jobs:
         with:
           sarif_file: 'trivy-backend.sarif'
           category: 'backend'
+      # Step 2: Block on CRITICAL CVEs not in .trivyignore (table format, reliable exit-code).
+      - name: Block on backend CRITICAL CVEs
+        # #414: exit-code 1 causes CI to fail on critical CVEs not in .trivyignore.
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
+        with:
+          image-ref: krombat/backend:test
+          format: 'table'
+          severity: 'CRITICAL'
+          exit-code: '1'
+          ignore-unfixed: true
+          trivyignores: '.trivyignore'
       - if: github.event_name == 'push'
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -56,16 +67,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: docker build -t krombat/frontend:test frontend/
-      - name: Scan frontend image for vulnerabilities
+      # Step 1: Generate SARIF for security dashboards (never blocks).
+      - name: Scan frontend image (SARIF upload)
         # #414: pinned to SHA — aquasecurity/trivy-action@0.35.0
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
         with:
           image-ref: krombat/frontend:test
           format: 'sarif'
           output: 'trivy-frontend.sarif'
-          severity: 'CRITICAL'
-          # #414: exit-code 1 causes CI to fail on critical CVEs.
-          exit-code: '1'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'
           ignore-unfixed: true
           trivyignores: '.trivyignore'
       - name: Upload frontend Trivy results
@@ -74,6 +85,17 @@ jobs:
         with:
           sarif_file: 'trivy-frontend.sarif'
           category: 'frontend'
+      # Step 2: Block on CRITICAL CVEs not in .trivyignore (table format, reliable exit-code).
+      - name: Block on frontend CRITICAL CVEs
+        # #414: exit-code 1 causes CI to fail on critical CVEs not in .trivyignore.
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
+        with:
+          image-ref: krombat/frontend:test
+          format: 'table'
+          severity: 'CRITICAL'
+          exit-code: '1'
+          ignore-unfixed: true
+          trivyignores: '.trivyignore'
       - if: github.event_name == 'push'
         uses: aws-actions/configure-aws-credentials@v4
         with:
