@@ -9,13 +9,13 @@ setup_backend_pf 8090
 
 log "Creating ability dungeons"
 curl -s -X POST "${BACKEND_URL}/api/v1/dungeons" \
-  -H "Content-Type: application/json" \
+  -H "Content-Type: application/json" "${TEST_USER_HEADER[@]}" \
   -d "{\"name\":\"test-heal-$TS\",\"monsters\":1,\"difficulty\":\"easy\",\"heroClass\":\"mage\"}" -o /dev/null
 curl -s -X POST "${BACKEND_URL}/api/v1/dungeons" \
-  -H "Content-Type: application/json" \
+  -H "Content-Type: application/json" "${TEST_USER_HEADER[@]}" \
   -d "{\"name\":\"test-taunt-$TS\",\"monsters\":1,\"difficulty\":\"easy\",\"heroClass\":\"warrior\"}" -o /dev/null
 curl -s -X POST "${BACKEND_URL}/api/v1/dungeons" \
-  -H "Content-Type: application/json" \
+  -H "Content-Type: application/json" "${TEST_USER_HEADER[@]}" \
   -d "{\"name\":\"test-backstab-$TS\",\"monsters\":1,\"difficulty\":\"easy\",\"heroClass\":\"rogue\"}" -o /dev/null
 
 wait_dungeon_ready "test-heal-$TS"

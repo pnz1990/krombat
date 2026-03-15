@@ -40,6 +40,10 @@ wait_dungeon_ready() {
 # BACKEND_URL is set by each test or defaults to port-forwarded backend.
 BACKEND_URL="${BACKEND_URL:-http://localhost:8089}"
 
+# Auth bypass header for integration tests.  The backend accepts X-Test-User when
+# KROMBAT_TEST_USER env var matches the header value (set to "test-player" in prod).
+TEST_USER_HEADER=(-H "X-Test-User: test-player")
+
 # Setup port-forward for backend if not already running on BACKEND_URL port
 # Call once per test group; stores PF_PID for cleanup
 INTEGRATION_PF_PID=""
@@ -73,7 +77,7 @@ submit_attack() {
   local prev_seq
   prev_seq=$(kctl get dungeon "$dname" -o jsonpath='{.spec.attackSeq}' 2>/dev/null || echo "0")
   curl -s -X POST "${BACKEND_URL}/api/v1/dungeons/default/${dname}/attacks" \
-    -H "Content-Type: application/json" \
+    -H "Content-Type: application/json" "${TEST_USER_HEADER[@]}" \
     -d "{\"target\":\"${target}\",\"damage\":${damage},\"seq\":${prev_seq}}" -o /dev/null
   # Wait for attackSeq to increment (backend wrote triggers)
   wait_for "${dname} attackSeq > ${prev_seq}" \
@@ -92,7 +96,7 @@ submit_action() {
   local prev_seq
   prev_seq=$(kctl get dungeon "$dname" -o jsonpath='{.spec.actionSeq}' 2>/dev/null || echo "0")
   curl -s -X POST "${BACKEND_URL}/api/v1/dungeons/default/${dname}/attacks" \
-    -H "Content-Type: application/json" \
+    -H "Content-Type: application/json" "${TEST_USER_HEADER[@]}" \
     -d "{\"target\":\"${action}\",\"damage\":0,\"seq\":${prev_seq}}" -o /dev/null
   # Wait for actionSeq > prevSeq (backend wrote triggers) AND lastAction == '' (kro finished)
   wait_for "${dname} action processed" \

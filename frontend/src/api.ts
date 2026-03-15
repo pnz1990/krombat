@@ -1,5 +1,8 @@
 const BASE = '/api/v1'
 
+// Shared fetch options — include credentials (session cookie) on all API calls.
+const CREDS: RequestInit = { credentials: 'include' }
+
 export interface DungeonSummary {
   name: string; namespace: string; difficulty: string
   livingMonsters: number | null; bossState: string | null; victory: boolean | null
@@ -16,7 +19,7 @@ export interface KroCondition {
 }
 
 export interface DungeonCR {
-  metadata: { name: string; namespace: string; creationTimestamp?: string }
+  metadata: { name: string; namespace: string; creationTimestamp?: string; labels?: Record<string, string> }
   spec: {
     monsters: number; difficulty: string
     monsterHP: number[]; bossHP: number; heroHP: number
@@ -47,21 +50,42 @@ export interface DungeonCR {
   }
 }
 
+// Auth types
+export interface AuthUser {
+  login: string
+  avatarUrl: string
+}
+
+export async function getMe(): Promise<AuthUser | null> {
+  try {
+    const r = await fetch(`${BASE}/auth/me`, CREDS)
+    if (r.status === 401) return null
+    if (!r.ok) return null
+    return r.json()
+  } catch {
+    return null
+  }
+}
+
+export async function logout(): Promise<void> {
+  await fetch(`${BASE}/auth/logout`, CREDS)
+}
+
 export async function listDungeons(): Promise<DungeonSummary[]> {
-  const r = await fetch(`${BASE}/dungeons`)
+  const r = await fetch(`${BASE}/dungeons`, CREDS)
   if (!r.ok) throw new Error(await r.text())
   return r.json()
 }
 
 export async function getDungeon(ns: string, name: string): Promise<DungeonCR> {
-  const r = await fetch(`${BASE}/dungeons/${ns}/${name}`)
+  const r = await fetch(`${BASE}/dungeons/${ns}/${name}`, CREDS)
   if (!r.ok) throw new Error(await r.text())
   return r.json()
 }
 
 export async function createDungeon(name: string, monsters: number, difficulty: string, heroClass: string = 'warrior', namespace: string = 'default') {
   const r = await fetch(`${BASE}/dungeons`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    ...CREDS, method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name, monsters, difficulty, heroClass, namespace }),
   })
   if (!r.ok) throw new Error(await r.text())
@@ -79,14 +103,14 @@ export async function createNewGamePlus(
   opts: NewGamePlusOptions, namespace: string = 'default'
 ) {
   const r = await fetch(`${BASE}/dungeons`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    ...CREDS, method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name, monsters, difficulty, heroClass, namespace, ...opts }),
   })
   if (!r.ok) throw new Error(await r.text())
   return r.json()
 }
 export async function deleteDungeon(ns: string, name: string) {
-  const r = await fetch(`${BASE}/dungeons/${ns}/${name}`, { method: 'DELETE' })
+  const r = await fetch(`${BASE}/dungeons/${ns}/${name}`, { ...CREDS, method: 'DELETE' })
   if (!r.ok && r.status !== 204) throw new Error(await r.text())
 }
 
@@ -101,7 +125,7 @@ export interface LeaderboardEntry {
 }
 
 export async function getLeaderboard(): Promise<LeaderboardEntry[]> {
-  const r = await fetch(`${BASE}/leaderboard`)
+  const r = await fetch(`${BASE}/leaderboard`, CREDS)
   if (!r.ok) return []
   return r.json()
 }
@@ -128,14 +152,14 @@ export async function getDungeonResource(ns: string, name: string, kind: Resourc
   // Same-origin call to /api/v1 only. ns/name are K8s identifiers, sanitized.
   let url = `${BASE}/dungeons/${safePath(ns)}/${safePath(name)}/resources?kind=${kind}`
   if (index !== undefined) url += `&index=${index}`
-  const r = await fetch(url)
+  const r = await fetch(url, CREDS)
   if (!r.ok) return null
   return r.json()
 }
 
 export async function submitAttack(ns: string, dungeon: string, target: string, damage: number, seq?: number) {
   const r = await fetch(`${BASE}/dungeons/${ns}/${dungeon}/attacks`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    ...CREDS, method: 'POST', headers: { 'Content-Type': 'application/json' },
     // seq: send the last-known sequence so the backend can detect concurrent
     // writes. Omit (send -1) when seq is unknown to stay backward-compatible.
     body: JSON.stringify({ target, damage, seq: seq ?? -1 }),
@@ -151,6 +175,7 @@ export async function submitAttack(ns: string, dungeon: string, target: string, 
 export function reportError(context: string, err: unknown) {
   const message = err instanceof Error ? err.message : String(err)
   fetch('/api/v1/client-error', {
+    ...CREDS,
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ context, message, url: window.location.href, timestamp: new Date().toISOString() }),
@@ -163,9 +188,11 @@ export function reportError(context: string, err: unknown) {
  */
 export function trackEvent(event: string, props: Record<string, unknown> = {}) {
   fetch('/api/v1/events-track', {
+    ...CREDS,
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ event, ...props, ts: Date.now() }),
     keepalive: true,
   }).catch(() => {})
 }
+
