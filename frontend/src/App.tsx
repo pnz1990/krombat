@@ -112,7 +112,11 @@ export default function App() {
   useEffect(() => {
     if (authCheckedRef.current) return
     authCheckedRef.current = true
-    getMe().then(user => setAuthUser(user ?? false))
+    getMe().then(user => {
+      setAuthUser(user ?? false)
+      // #478: unauthenticated users always see the intro tour, regardless of localStorage
+      if (!user) setShowOnboarding(true)
+    })
   }, [])
 
   const handleLogout = useCallback(async () => {
@@ -120,6 +124,7 @@ export default function App() {
     setAuthUser(false)
     setDungeons([])
     setDetail(null)
+    setShowOnboarding(true) // re-show intro on logout
     navigate('/')
   }, [navigate])
 
@@ -736,13 +741,14 @@ export default function App() {
 
       {!selected ? (
         <>
-          {showOnboarding && <KroOnboardingOverlay onDismiss={() => setShowOnboarding(false)} />}
+          {showOnboarding && <KroOnboardingOverlay onDismiss={() => setShowOnboarding(false)} isAuthenticated={!!authUser} />}
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 4 }}>
             <div style={{ position: 'relative' }} onMouseLeave={() => setShowHamburger(false)}>
               <button className="hamburger-btn" aria-label="Menu" onClick={() => setShowHamburger(v => !v)}>☰</button>
               {showHamburger && (
                 <div className="hamburger-menu">
                   <button className="hamburger-item" onClick={() => { setShowHamburger(false); handleOpenLeaderboard() }}>Leaderboard</button>
+                  <button className="hamburger-item" onClick={() => { setShowHamburger(false); setShowOnboarding(true) }}>About kro</button>
                   {authUser && <button className="hamburger-item" onClick={() => { setShowHamburger(false); handleOpenProfile() }}>Profile @{authUser.login}</button>}
                   {authUser && <button className="hamburger-item" onClick={() => { setShowHamburger(false); handleLogout() }}>Logout @{authUser.login}</button>}
                 </div>
@@ -760,6 +766,11 @@ export default function App() {
             </div>
           )}
           <DungeonList dungeons={dungeons} onSelect={handleSelect} onDelete={handleDelete} deleting={deleting} lastDungeon={resumePrompt ?? undefined} />
+          {authUser && (
+            <div style={{ textAlign: 'center', marginTop: 8, fontSize: '7px', color: 'var(--text-dim)' }}>
+              Your dungeon data is kept for 30 days.
+            </div>
+          )}
         </>
       ) : loading ? (
         <div className="loading">Initializing dungeon</div>

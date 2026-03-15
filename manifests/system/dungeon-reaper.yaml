@@ -72,20 +72,38 @@ spec:
               args:
                 - |
                   set -e
-                  MAX_AGE_HOURS=${MAX_AGE_HOURS:-4}
-                  MAX_AGE_SECONDS=$((MAX_AGE_HOURS * 3600))
                   NOW=$(date +%s)
 
-                  echo "Reaping dungeons older than ${MAX_AGE_HOURS}h..."
+                  # #477: retention policy
+                  #   test-infra dungeons (krombat.io/owner=test-infra or no label): reap after 4h
+                  #   user dungeons (real GitHub login):                             reap after 30 days
+                  TEST_MAX_AGE=$((4 * 3600))
+                  USER_MAX_AGE=$((30 * 24 * 3600))
+
+                  echo "Reaping dungeons (test: 4h, user: 30d)..."
 
                   # #427: role is now namespaced to default only — use -n default
                   kubectl get dungeons -n default -o json | jq -r '
                     .items[] |
-                    "default/\(.metadata.name) \(.metadata.creationTimestamp)"
-                  ' | while read -r DUNGEON TS; do
+                    [
+                      "default/\(.metadata.name)",
+                      (.metadata.creationTimestamp),
+                      (.metadata.labels["krombat.io/owner"] // "")
+                    ] | @tsv
+                  ' | while IFS=$'\t' read -r DUNGEON TS OWNER; do
                     CREATED=$(date -d "$TS" +%s 2>/dev/null || date -jf "%Y-%m-%dT%H:%M:%SZ" "$TS" +%s 2>/dev/null || echo 0)
                     AGE=$((NOW - CREATED))
-                    if [ "$AGE" -gt "$MAX_AGE_SECONDS" ]; then
+
+                    # Determine max age by owner (#477)
+                    if [ "$OWNER" = "test-infra" ] || [ -z "$OWNER" ]; then
+                      MAX_AGE=$TEST_MAX_AGE
+                      POLICY="test (4h)"
+                    else
+                      MAX_AGE=$USER_MAX_AGE
+                      POLICY="user (30d)"
+                    fi
+
+                    if [ "$AGE" -gt "$MAX_AGE" ]; then
                       NS=$(echo "$DUNGEON" | cut -d/ -f1)
                       NAME=$(echo "$DUNGEON" | cut -d/ -f2)
 
@@ -99,15 +117,12 @@ spec:
                         continue
                       fi
 
-                      echo "Deleting dungeon $NAME (namespace $NS, age: $((AGE/3600))h)"
+                      echo "Deleting dungeon $NAME (namespace $NS, age: $((AGE/3600))h, policy: $POLICY)"
                       kubectl delete dungeon "$NAME" -n "$NS" --wait=false || true
                     fi
                   done
 
                   echo "Reaper complete."
-              env:
-                - name: MAX_AGE_HOURS
-                  value: "4"
               resources:
                 requests:
                   memory: "64Mi"

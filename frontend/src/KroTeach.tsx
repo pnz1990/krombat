@@ -1373,14 +1373,16 @@ client.Resource(dungeonGVR).Namespace(ns).Patch(ctx,
   },
 ]
 
-export function KroOnboardingOverlay({ onDismiss }: { onDismiss: () => void }) {
+export function KroOnboardingOverlay({ onDismiss, isAuthenticated }: { onDismiss: () => void; isAuthenticated: boolean }) {
   const [slide, setSlide] = useState(0)
   const total = ONBOARDING_SLIDES.length
   const s = ONBOARDING_SLIDES[slide]
   const isLast = slide === total - 1
 
   const handleDismiss = () => {
-    localStorage.setItem('kroOnboardingDone', '1')
+    // #478: only persist dismissal for authenticated users — unauthenticated users
+    // always see the tour on page load so conference/demo visitors can always learn
+    if (isAuthenticated) localStorage.setItem('kroOnboardingDone', '1')
     onDismiss()
   }
 

@@ -45,6 +45,8 @@ func (h *Handler) pollGameMetrics() {
 		if err == nil {
 			var alive, dead, bPend, bReady, bDef, wins, losses float64
 			activeDungeons.Set(float64(len(list.Items)))
+			// #475: emit structured log for CloudWatch active_dungeons metric filter
+			slog.Info("active_dungeons", "component", "game", "count", len(list.Items))
 			for _, d := range list.Items {
 				spec, _ := d.Object["spec"].(map[string]interface{})
 				status, _ := d.Object["status"].(map[string]interface{})
