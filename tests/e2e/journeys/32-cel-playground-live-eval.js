@@ -13,7 +13,7 @@
 // The frontend sends this request when the user clicks "Run" in the
 // CEL Playground modal. We verify the whole round-trip through the browser.
 const { chromium } = require('playwright');
-const { createDungeonUI, deleteDungeon } = require('./helpers');
+const { createDungeonUI, deleteDungeon , testLogin} = require('./helpers');
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 const TIMEOUT = 20000;
@@ -78,6 +78,8 @@ async function run() {
   page.on('console', msg => { if (msg.type() === 'error') consoleErrors.push(msg.text()); });
 
   try {
+    await testLogin(page, BASE_URL);
+
     await page.goto(BASE_URL, { timeout: TIMEOUT });
     await page.waitForSelector('input[placeholder="my-dungeon"]', { timeout: TIMEOUT });
 

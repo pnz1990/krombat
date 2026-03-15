@@ -3,7 +3,7 @@
 // Tests: mage creation, initial state, mana consumption per attack, mana regen on kill,
 //        heal enable/disable logic, heal result, zero-mana half-damage, no-counter on heal
 const { chromium } = require('playwright');
-const { createDungeonUI, waitForCombatResult, dismissLootPopup, navigateHome, deleteDungeon } = require('./helpers');
+const { createDungeonUI, waitForCombatResult, dismissLootPopup, navigateHome, deleteDungeon , testLogin} = require('./helpers');
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 const TIMEOUT = 15000;
@@ -65,6 +65,8 @@ async function run() {
   try {
     // === STEP 1: Create mage dungeon via UI ===
     console.log('=== Step 1: Create Mage Dungeon ===');
+    await testLogin(page, BASE_URL);
+
     await page.goto(BASE_URL, { timeout: TIMEOUT });
     await page.waitForTimeout(2000);
     // 6 monsters, normal — 6×2=12 dmg/round counter-attacks will push HP below 80 in ~4 attacks

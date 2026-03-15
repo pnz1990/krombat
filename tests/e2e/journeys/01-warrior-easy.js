@@ -1,6 +1,6 @@
 // Journey 1: Warrior Easy — Full UI Playthrough (UI-ONLY, no kubectl, no API)
 const { chromium } = require('playwright');
-const { createDungeonUI, attackMonster, attackBoss, dismissLootPopup, aliveMonsterCount, deadMonsterCount, getBodyText, waitForCombatResult } = require('./helpers');
+const { createDungeonUI, attackMonster, attackBoss, dismissLootPopup, aliveMonsterCount, deadMonsterCount, getBodyText, waitForCombatResult , testLogin} = require('./helpers');
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 const TIMEOUT = 15000;
@@ -34,6 +34,8 @@ async function run() {
   try {
     // === STEP 1: Create dungeon via UI ===
     console.log('=== Step 1: Create Dungeon ===');
+    await testLogin(page, BASE_URL);
+
     await page.goto(BASE_URL, { timeout: TIMEOUT });
     await page.waitForTimeout(2000);
     const created = await createDungeonUI(page, dName, { monsters: 2, difficulty: 'easy', heroClass: 'warrior' });

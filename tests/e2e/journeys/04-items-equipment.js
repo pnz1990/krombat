@@ -1,7 +1,7 @@
 // Journey 4: Items & Equipment — Full UI playthrough
 // UI-ONLY: no kubectl, no fetch/api, no execSync
 const { chromium } = require('playwright');
-const { createDungeonUI, attackMonster, attackBoss, waitForCombatResult, dismissLootPopup, useBackpackItem, navigateHome, deleteDungeon } = require('./helpers');
+const { createDungeonUI, attackMonster, attackBoss, waitForCombatResult, dismissLootPopup, useBackpackItem, navigateHome, deleteDungeon , testLogin} = require('./helpers');
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 const TIMEOUT = 15000;
@@ -72,6 +72,8 @@ async function run() {
   try {
     // === Setup: Create dungeon and farm loot by killing monsters ===
     console.log('=== Setup: Create Dungeon & Farm Loot ===');
+    await testLogin(page, BASE_URL);
+
     await page.goto(BASE_URL, { timeout: TIMEOUT });
     await page.waitForTimeout(2000);
     // Use easy + many monsters to maximize loot drops (easy = 60% drop rate)

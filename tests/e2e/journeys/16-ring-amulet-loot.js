@@ -9,7 +9,7 @@
 //   5. Optionally verify combat still works after equipping passives.
 
 const { chromium } = require('playwright');
-const { createDungeonUI, attackMonster, attackBoss, waitForCombatResult, dismissLootPopup, navigateHome, deleteDungeon } = require('./helpers');
+const { createDungeonUI, attackMonster, attackBoss, waitForCombatResult, dismissLootPopup, navigateHome, deleteDungeon , testLogin} = require('./helpers');
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 const TIMEOUT = 15000;
@@ -131,6 +131,8 @@ async function run() {
   try {
     // === Setup ===
     console.log('=== Setup: Create Easy Warrior Dungeon (1 monster) ===');
+    await testLogin(page, BASE_URL);
+
     await page.goto(BASE_URL, { timeout: TIMEOUT });
     await page.waitForTimeout(2000);
     const created = await createDungeonUI(page, dName, { monsters: 1, difficulty: 'easy', heroClass: 'warrior' });

@@ -6,7 +6,7 @@ const {
   createDungeonUI, attackMonster, attackBoss, waitForCombatResult,
   dismissLootPopup, aliveMonsterCount, deadMonsterCount,
   getBodyText, navigateHome, deleteDungeon,
-} = require('./helpers');
+, testLogin} = require('./helpers');
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 const TIMEOUT = 15000;
@@ -41,6 +41,8 @@ async function run() {
     // === STEP 1: Create dungeon ===
     // 1 monster, easy — minimises RNG variance so the hero reliably survives two rooms.
     console.log('=== Step 1: Create Dungeon ===');
+    await testLogin(page, BASE_URL);
+
     await page.goto(BASE_URL, { timeout: TIMEOUT });
     await page.waitForTimeout(2000);
     const created = await createDungeonUI(page, dName, { monsters: 1, difficulty: 'easy', heroClass: 'warrior' });

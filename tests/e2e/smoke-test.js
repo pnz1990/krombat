@@ -1,7 +1,28 @@
 const { chromium } = require('playwright');
+const { execSync } = require('child_process');
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 const TIMEOUT = 15000;
+
+// Read KROMBAT_TEST_TOKEN for the test-login bypass
+let KROMBAT_TEST_TOKEN = process.env.KROMBAT_TEST_TOKEN || '';
+if (!KROMBAT_TEST_TOKEN) {
+  try {
+    const ctx = process.env.KUBECTL_CONTEXT || 'arn:aws:eks:us-west-2:319279230668:cluster/krombat';
+    const raw = execSync(
+      `kubectl --context "${ctx}" get secret krombat-test-auth -n rpg-system -o jsonpath='{.data.KROMBAT_TEST_USER}'`,
+      { stdio: ['ignore', 'pipe', 'ignore'] }
+    ).toString().trim();
+    if (raw) KROMBAT_TEST_TOKEN = Buffer.from(raw, 'base64').toString('utf8').trim();
+  } catch (_) {}
+}
+
+async function testLogin(page) {
+  if (!KROMBAT_TEST_TOKEN) return;
+  const loginUrl = `${BASE_URL}/api/v1/auth/test-login?token=${encodeURIComponent(KROMBAT_TEST_TOKEN)}`;
+  await page.goto(loginUrl, { timeout: TIMEOUT });
+  await page.waitForTimeout(500);
+}
 
 let passed = 0;
 let failed = 0;
@@ -19,6 +40,9 @@ async function runTests() {
   });
 
   try {
+    // Authenticate via test bypass before any UI interaction
+    await testLogin(page);
+
     // === SECTION 1: Page Load ===
     console.log('=== Page Load ===');
     await page.goto(BASE_URL, { timeout: TIMEOUT });

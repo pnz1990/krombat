@@ -190,8 +190,34 @@ async function deleteDungeon(page, name) {
   return true;
 }
 
+// testLogin — navigates to the backend test-login endpoint to obtain a session
+// cookie without going through the full GitHub OAuth flow.
+// Requires KROMBAT_TEST_TOKEN env var (read from cluster secret by run-journeys.js).
+// If the endpoint returns 404 (no KROMBAT_TEST_USER configured) the test will
+// fail naturally when the login screen blocks the dungeon creation input.
+async function testLogin(page, baseUrl) {
+  const token = process.env.KROMBAT_TEST_TOKEN || '';
+  if (!token) {
+    // No token available — skip; test will fail if login screen is shown
+    return;
+  }
+  const loginUrl = `${baseUrl}/api/v1/auth/test-login?token=${encodeURIComponent(token)}`;
+  await page.goto(loginUrl, { timeout: 15000 });
+  // The endpoint redirects to '/' — wait for the main app to load
+  await page.waitForTimeout(1000);
+}
+
+// gotoApp — convenience wrapper: performs test-login first, then navigates to
+// the given URL (defaults to BASE_URL).  Replaces direct page.goto(BASE_URL)
+// in journey tests so auth is handled transparently.
+async function gotoApp(page, url) {
+  await testLogin(page, url.replace(/\/[^/]*$/, '') || url); // extract origin
+  await page.goto(url, { timeout: 15000 });
+  await page.waitForTimeout(500);
+}
+
 module.exports = {
   createDungeonUI, attackMonster, attackBoss, useAbility, useBackpackItem,
   waitForCombatResult, dismissLootPopup, aliveMonsterCount, deadMonsterCount,
-  getBodyText, navigateHome, deleteDungeon
+  getBodyText, navigateHome, deleteDungeon, testLogin, gotoApp
 };

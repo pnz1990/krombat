@@ -4,7 +4,7 @@
 // Each dungeon creation, attack, and item action should append a log entry
 // showing the simulated `kubectl` command + result.
 const { chromium } = require('playwright');
-const { createDungeonUI, waitForCombatResult, dismissLootPopup, navigateHome, deleteDungeon } = require('./helpers');
+const { createDungeonUI, waitForCombatResult, dismissLootPopup, navigateHome, deleteDungeon , testLogin} = require('./helpers');
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 const TIMEOUT = 15000;
@@ -64,6 +64,8 @@ async function run() {
   page.on('dialog', dialog => dialog.accept());
 
   try {
+    await testLogin(page, BASE_URL);
+
     await page.goto(BASE_URL, { timeout: TIMEOUT });
     await page.waitForTimeout(2000);
 

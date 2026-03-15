@@ -12,7 +12,7 @@
 // 3. Stale Room 1 attack guard — inRoomTransition logic prevents spurious victory
 //    from stale Room 1 attack results in Room 2.
 const { chromium } = require('playwright');
-const { createDungeonUI, attackMonster, attackBoss, waitForCombatResult, deleteDungeon } = require('./helpers');
+const { createDungeonUI, attackMonster, attackBoss, waitForCombatResult, deleteDungeon , testLogin} = require('./helpers');
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 const TIMEOUT = 20000;
@@ -33,6 +33,8 @@ async function run() {
   page.on('console', msg => { if (msg.type() === 'error') consoleErrors.push(msg.text()); });
 
   try {
+    await testLogin(page, BASE_URL);
+
     await page.goto(BASE_URL, { timeout: TIMEOUT });
     await page.waitForSelector('input[placeholder="my-dungeon"]', { timeout: TIMEOUT });
 

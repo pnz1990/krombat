@@ -7,7 +7,7 @@
 //   - Heal ability spends mana
 'use strict';
 const { chromium } = require('playwright');
-const { createDungeonUI, waitForCombatResult, navigateHome, deleteDungeon } = require('./helpers');
+const { createDungeonUI, waitForCombatResult, navigateHome, deleteDungeon , testLogin} = require('./helpers');
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 const TIMEOUT = 20000;
@@ -23,6 +23,8 @@ async function run() {
   // ── PART 1: Defeat banner CSS classes are defined ─────────────────────────
   console.log('=== Part 1: Defeat banner CSS class verification ===');
   const dNameD = `j13d-${Date.now()}`;
+  await testLogin(page, BASE_URL);
+
   await page.goto(BASE_URL, { timeout: TIMEOUT });
   await page.waitForSelector('input[placeholder="my-dungeon"]', { timeout: TIMEOUT });
 

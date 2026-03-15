@@ -4,7 +4,7 @@
 //        cooldown natural decrement over 3 turns, second backstab, dodge mechanic,
 //        hard difficulty dice/boss HP, no mana display
 const { chromium } = require('playwright');
-const { createDungeonUI, waitForCombatResult, dismissLootPopup, navigateHome, deleteDungeon } = require('./helpers');
+const { createDungeonUI, waitForCombatResult, dismissLootPopup, navigateHome, deleteDungeon , testLogin} = require('./helpers');
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 const TIMEOUT = 15000;
@@ -81,6 +81,8 @@ async function run() {
   try {
     // === STEP 1: Create rogue hard dungeon via UI ===
     console.log('=== Step 1: Create Rogue Hard Dungeon ===');
+    await testLogin(page, BASE_URL);
+
     await page.goto(BASE_URL, { timeout: TIMEOUT });
     await page.waitForTimeout(2000);
     // 5 monsters on hard: gives enough targets for CD decrement + dodge tests

@@ -6,7 +6,7 @@
 // Room 1 dragon boss (handlers.go lines 944–950) but for the second dungeon.
 // Also verifies that Room 2 entities (Troll/Ghoul names) appear correctly.
 const { chromium } = require('playwright');
-const { createDungeonUI, attackMonster, attackBoss, waitForCombatResult, deleteDungeon } = require('./helpers');
+const { createDungeonUI, attackMonster, attackBoss, waitForCombatResult, deleteDungeon , testLogin} = require('./helpers');
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 const TIMEOUT = 20000;
@@ -25,6 +25,8 @@ async function run() {
   page.on('console', msg => { if (msg.type() === 'error') consoleErrors.push(msg.text()); });
 
   try {
+    await testLogin(page, BASE_URL);
+
     await page.goto(BASE_URL, { timeout: TIMEOUT });
     await page.waitForSelector('input[placeholder="my-dungeon"]', { timeout: TIMEOUT });
 
