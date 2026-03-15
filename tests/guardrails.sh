@@ -659,6 +659,14 @@ grep -q "'kro Creates 7 Resources\|two ConfigMaps\|id: combatResult" frontend/sr
 grep -q "kubectl patch dungeon\|backend runs a kubectl patch\|'Every Action is a kubectl" frontend/src/KroTeach.tsx && fail "#451: intro modal still says 'backend runs kubectl patch'" || pass "#451: intro modal kubectl patch reference removed"
 grep -q "15 core kro concepts\|and 9 more" frontend/src/KroTeach.tsx && fail "#451: intro modal still says '15 concepts' or '9 more'" || pass "#451: intro modal concept count updated to 23"
 
+# --- Backend audit cleanup guardrails ---
+echo "=== Backend audit cleanup guardrails"
+
+# #398: boss phase multipliers must not be hardcoded ×1.5/×2.0 in combat log
+grep -q 'ENRAGED ×1\.5\|BERSERK ×2\.0\|phaseNote.*1\.5\|phaseNote.*2\.0' backend/internal/handlers/handlers.go && fail "#398: hardcoded boss phase multipliers 1.5/2.0 still in deriveCombatLog" || pass "#398: boss phase multipliers read from kro bossDamageMultiplier"
+# boss-graph damageMultiplier must use 13/16 (not 15/20) — check only the damageMultiplier CEL block
+grep -A6 "damageMultiplier:" manifests/rgds/boss-graph.yaml | grep -q "'15'\|'20'" && fail "#398: boss-graph damageMultiplier still uses 15/20 (should be 13/16)" || pass "#398: boss-graph damageMultiplier uses correct 13/16"
+
 # --- Summary ---
 
 echo ""

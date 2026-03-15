@@ -56,13 +56,13 @@ spec:
               schema.spec.hp * 100 / (schema.spec.maxHP > 0 ? schema.spec.maxHP : 400) > 25 ? 'phase2' :
               'phase3'
             }
-          # Damage multiplier per phase: 1.0x / 1.5x / 2.0x (stored as integer *10)
+          # Damage multiplier per phase: 1.0x / 1.3x / 1.6x (stored as integer *10)
           damageMultiplier: >-
             ${
               schema.spec.hp <= 0 ? '10' :
               schema.spec.hp * 100 / (schema.spec.maxHP > 0 ? schema.spec.maxHP : 400) > 50 ? '10' :
-              schema.spec.hp * 100 / (schema.spec.maxHP > 0 ? schema.spec.maxHP : 400) > 25 ? '15' :
-              '20'
+              schema.spec.hp * 100 / (schema.spec.maxHP > 0 ? schema.spec.maxHP : 400) > 25 ? '13' :
+              '16'
             }
           # Special attack chance per phase: 20% / 40% / 60%
           specialAttackChance: >-
