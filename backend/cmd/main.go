@@ -36,6 +36,9 @@ func main() {
 	mux.HandleFunc("POST /api/v1/dungeons/{namespace}/{name}/cel-eval", h.CelEvalHandler)
 	mux.HandleFunc("GET /api/v1/leaderboard", h.GetLeaderboard)
 	mux.HandleFunc("GET /api/v1/events", h.Events)
+	mux.HandleFunc("POST /api/v1/client-error", h.ClientErrorHandler)
+	mux.HandleFunc("POST /api/v1/vitals", h.VitalsHandler)
+	mux.HandleFunc("POST /api/v1/events-track", h.EventsTrackHandler)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
 	mux.Handle("GET /metrics", promhttp.Handler())
 
@@ -44,7 +47,7 @@ func main() {
 		addr = ":" + p
 	}
 	slog.Info("backend starting", "addr", addr)
-	if err := http.ListenAndServe(addr, mux); err != nil {
+	if err := http.ListenAndServe(addr, handlers.AccessLog(mux)); err != nil {
 		slog.Error("server failed", "error", err)
 		os.Exit(1)
 	}

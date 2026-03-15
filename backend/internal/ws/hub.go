@@ -6,7 +6,14 @@ import (
 	"sync"
 
 	"github.com/gorilla/websocket"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 )
+
+var wsConnections = promauto.NewGauge(prometheus.GaugeOpts{
+	Name: "k8s_rpg_ws_connections",
+	Help: "Active WebSocket connections",
+})
 
 type Event struct {
 	Type      string      `json:"type"`
@@ -40,12 +47,14 @@ func (h *Hub) Add(conn *websocket.Conn, namespace, name string) {
 	h.mu.Lock()
 	h.clients[conn] = connFilter{namespace: namespace, name: name}
 	h.mu.Unlock()
+	wsConnections.Inc()
 }
 
 func (h *Hub) Remove(conn *websocket.Conn) {
 	h.mu.Lock()
 	delete(h.clients, conn)
 	h.mu.Unlock()
+	wsConnections.Dec()
 	conn.Close()
 }
 

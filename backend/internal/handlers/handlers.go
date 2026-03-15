@@ -570,8 +570,29 @@ func (h *Handler) CreateAttack(w http.ResponseWriter, r *http.Request) {
 // 5. Backend reads combatResult ConfigMap, runs full combat math, patches Dungeon spec
 func (h *Handler) processCombat(ctx context.Context, ns, name, target string, clientDamage int64, clientSeq int64, w http.ResponseWriter) error {
 	start := time.Now()
+	// These vars are captured by the defer to emit rich log + metrics at end.
+	var heroClass, difficulty, combatOutcome string
+	var damageDealt, postHeroHP int64
 	defer func() {
-		slog.Info("attack_processed", "component", "api", "dungeon", name, "target", target, "duration_ms", time.Since(start).Milliseconds())
+		slog.Info("attack_processed",
+			"component", "api",
+			"dungeon", name,
+			"target", target,
+			"duration_ms", time.Since(start).Milliseconds(),
+			"hero_class", heroClass,
+			"difficulty", difficulty,
+			"outcome", combatOutcome,
+			"damage", damageDealt,
+			"hero_hp", postHeroHP,
+		)
+		if heroClass != "" && difficulty != "" && combatOutcome != "" {
+			combatEvents.With(map[string]string{
+				"event":      "attack",
+				"hero_class": heroClass,
+				"difficulty": difficulty,
+				"outcome":    combatOutcome,
+			}).Inc()
+		}
 	}()
 	// Step 1: read current dungeon spec
 	dungeon, err := h.client.Dynamic.Resource(k8s.DungeonGVR).Namespace(ns).Get(ctx, name, metav1.GetOptions{})
@@ -584,7 +605,8 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 	dungeonStatus := getMap(dungeon.Object, "status")
 
 	heroHP := getInt(spec, "heroHP")
-	heroClass := getString(spec, "heroClass", "warrior")
+	heroClass = getString(spec, "heroClass", "warrior")
+	difficulty = getString(spec, "difficulty", "normal")
 	maxHeroHPStatus, _ := strconv.ParseInt(getString(dungeonStatus, "maxHeroHP", ""), 10, 64)
 	if maxHeroHPStatus <= 0 {
 		maxHeroHPStatus = classMaxHP(heroClass)
@@ -785,6 +807,70 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 	}
 	postSpec := getMap(postDungeon.Object, "spec")
 	postStatus := getMap(postDungeon.Object, "status")
+
+	// Populate telemetry vars from post-combat state.
+	postHeroHP = getInt(postSpec, "heroHP")
+	if isBossTarget {
+		damageDealt = getInt(spec, "bossHP") - getInt(postSpec, "bossHP")
+	} else if idxInt >= 0 {
+		preMonHPs, _ := spec["monsterHP"].([]interface{})
+		postMonHPs, _ := postSpec["monsterHP"].([]interface{})
+		if idxInt < len(preMonHPs) && idxInt < len(postMonHPs) {
+			damageDealt = sliceInt(preMonHPs[idxInt]) - sliceInt(postMonHPs[idxInt])
+		}
+	}
+	if damageDealt < 0 {
+		damageDealt = 0
+	}
+	// Determine combat outcome for metrics.
+	postBossHP := getInt(postSpec, "bossHP")
+	postMonsterHPRaw, _ := postSpec["monsterHP"].([]interface{})
+	postAllMonstersDead := true
+	for _, v := range postMonsterHPRaw {
+		if sliceInt(v) > 0 {
+			postAllMonstersDead = false
+			break
+		}
+	}
+	switch {
+	case postHeroHP <= 0:
+		combatOutcome = "defeat"
+	case isBossTarget && postBossHP <= 0 && postAllMonstersDead:
+		combatOutcome = "victory"
+	case isBossTarget && postBossHP <= 0:
+		combatOutcome = "boss_kill"
+	case !isBossTarget && idxInt >= 0 && len(postMonsterHPRaw) > idxInt && sliceInt(postMonsterHPRaw[idxInt]) == 0:
+		combatOutcome = "kill"
+	default:
+		combatOutcome = "hit"
+	}
+
+	// Emit status-effect metrics from log derivation state.
+	prePoisonTurns := getInt(spec, "poisonTurns")
+	preBurnTurns := getInt(spec, "burnTurns")
+	preStunTurns := getInt(spec, "stunTurns")
+	if getInt(postSpec, "poisonTurns") > prePoisonTurns {
+		statusEffectsInflicted.With(map[string]string{"effect": "poison"}).Inc()
+	}
+	if getInt(postSpec, "burnTurns") > preBurnTurns {
+		statusEffectsInflicted.With(map[string]string{"effect": "burn"}).Inc()
+	}
+	if getInt(postSpec, "stunTurns") > preStunTurns {
+		statusEffectsInflicted.With(map[string]string{"effect": "stun"}).Inc()
+	}
+
+	// Emit loot drop metric if a new item was dropped.
+	postLoot := getString(postSpec, "lastLootDrop", "")
+	if postLoot != "" {
+		parts := strings.SplitN(postLoot, "-", 2)
+		if len(parts) == 2 {
+			lootDrops.With(map[string]string{
+				"item_type":  parts[0],
+				"rarity":     parts[1],
+				"difficulty": difficulty,
+			}).Inc()
+		}
+	}
 
 	// Step 5: Derive log text from pre→post spec diff (no math — kro is authoritative).
 	diceFormula := getString(postStatus, "diceFormula", getString(dungeonStatus, "diceFormula", ""))
@@ -1025,8 +1111,24 @@ func deriveCombatLog(
 // processAction handles a non-combat action (use item, equip, treasure, door, room transition).
 func (h *Handler) processAction(ctx context.Context, ns, name, action string, clientSeq int64, w http.ResponseWriter) error {
 	start := time.Now()
+	var heroClassAction, difficultyAction string
 	defer func() {
-		slog.Info("action_processed", "component", "api", "dungeon", name, "action", action, "duration_ms", time.Since(start).Milliseconds())
+		slog.Info("action_processed",
+			"component", "api",
+			"dungeon", name,
+			"action", action,
+			"duration_ms", time.Since(start).Milliseconds(),
+			"hero_class", heroClassAction,
+			"difficulty", difficultyAction,
+		)
+		if heroClassAction != "" && difficultyAction != "" {
+			combatEvents.With(map[string]string{
+				"event":      "action",
+				"hero_class": heroClassAction,
+				"difficulty": difficultyAction,
+				"outcome":    "action",
+			}).Inc()
+		}
 	}()
 	dungeon, err := h.client.Dynamic.Resource(k8s.DungeonGVR).Namespace(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
@@ -1040,6 +1142,8 @@ func (h *Handler) processAction(ctx context.Context, ns, name, action string, cl
 	heroHP := getInt(spec, "heroHP")
 	heroMana := getInt(spec, "heroMana")
 	heroClass := getString(spec, "heroClass", "warrior")
+	heroClassAction = heroClass
+	difficultyAction = getString(spec, "difficulty", "normal")
 	maxHeroHPAction, _ := strconv.ParseInt(getString(dungeonStatusAction, "maxHeroHP", ""), 10, 64)
 	if maxHeroHPAction <= 0 {
 		maxHeroHPAction = classMaxHP(heroClass)
@@ -1346,9 +1450,83 @@ func (h *Handler) Events(w http.ResponseWriter, r *http.Request) {
 }
 
 func writeError(w http.ResponseWriter, msg string, code int) {
-	httpRequests.WithLabelValues("", "", strconv.Itoa(code)).Inc()
 	slog.Warn("request error", "component", "api", "status", code, "error", msg)
 	http.Error(w, msg, code)
+}
+
+// ClientErrorHandler accepts structured error reports from the React frontend
+// (error boundary and async catch blocks) and writes them as slog lines so
+// Container Insights picks them up for CloudWatch metric filters.
+// POST /api/v1/client-error
+func (h *Handler) ClientErrorHandler(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		Message        string `json:"message"`
+		Stack          string `json:"stack"`
+		ComponentStack string `json:"componentStack"`
+		Context        string `json:"context"`
+		URL            string `json:"url"`
+		Timestamp      string `json:"timestamp"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	slog.Error("frontend_error",
+		"component", "frontend",
+		"message", payload.Message,
+		"context", payload.Context,
+		"url", payload.URL,
+		"timestamp", payload.Timestamp,
+	)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// VitalsHandler accepts Web Vitals reports from the frontend and logs them as
+// structured slog lines for CloudWatch metric filters on LCP/CLS/TTFB/INP ratings.
+// POST /api/v1/vitals
+func (h *Handler) VitalsHandler(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		Name   string  `json:"name"`
+		Value  float64 `json:"value"`
+		Rating string  `json:"rating"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	slog.Info("web_vital",
+		"component", "frontend",
+		"name", payload.Name,
+		"value", payload.Value,
+		"rating", payload.Rating,
+	)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// EventsTrackHandler accepts game interaction events from the frontend and logs
+// them as structured slog lines so CloudWatch log metric filters can slice by
+// event type, hero class, difficulty, etc.
+// POST /api/v1/events-track
+func (h *Handler) EventsTrackHandler(w http.ResponseWriter, r *http.Request) {
+	var payload map[string]interface{}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	event, _ := payload["event"].(string)
+	if event == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	args := []any{"component", "frontend", "event", event}
+	for k, v := range payload {
+		if k == "event" {
+			continue
+		}
+		args = append(args, k, v)
+	}
+	slog.Info("game_event", args...)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // sanitizeK8sError converts a raw Kubernetes error into a user-friendly message,
