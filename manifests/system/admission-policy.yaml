@@ -1,0 +1,41 @@
+---
+# #422: ValidatingAdmissionPolicy — enforce that all Dungeon CRs must have the
+# krombat.io/owner label. Without this, unlabelled dungeons created outside the
+# backend API (e.g., by kro reconciliation edge cases or manual kubectl apply)
+# would be inaccessible but also not owned by anyone, creating a security gap.
+#
+# K8s 1.30+ CEL-based admission policy; no webhook required.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: dungeon-owner-label-required
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["game.k8s.example"]
+        apiVersions: ["*"]
+        resources: ["dungeons"]
+        operations: ["CREATE", "UPDATE"]
+  validations:
+    - expression: >-
+        has(object.metadata.labels) &&
+        "krombat.io/owner" in object.metadata.labels &&
+        object.metadata.labels["krombat.io/owner"] != ""
+      message: "Dungeon CRs must have a non-empty krombat.io/owner label"
+    # Immutability: owner label cannot be changed after creation
+    - expression: >-
+        request.operation == "CREATE" ||
+        (has(oldObject.metadata.labels) &&
+         "krombat.io/owner" in oldObject.metadata.labels &&
+         object.metadata.labels["krombat.io/owner"] == oldObject.metadata.labels["krombat.io/owner"])
+      message: "krombat.io/owner label is immutable after creation"
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: dungeon-owner-label-required-binding
+spec:
+  policyName: dungeon-owner-label-required
+  validationActions: ["Deny"]
+  matchResources: {}

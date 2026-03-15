@@ -1,0 +1,24 @@
+---
+# #416: NetworkPolicy — restrict metrics port 9090 to cluster-internal scraping only.
+# The ALB ingress does not route port 9090, but this policy adds a defence-in-depth
+# layer ensuring only pods in rpg-system (e.g., a Prometheus scraper) can reach it.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backend-metrics-internal
+  namespace: rpg-system
+spec:
+  podSelector:
+    matchLabels:
+      app: rpg-backend
+  policyTypes:
+    - Ingress
+  ingress:
+    # Allow traffic on port 8080 (API) from any source (ALB NodePort range)
+    - ports:
+        - port: 8080
+    # Allow traffic on port 9090 (metrics) only from within the cluster
+    - ports:
+        - port: 9090
+      from:
+        - namespaceSelector: {}

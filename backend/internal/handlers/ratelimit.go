@@ -23,6 +23,14 @@ func (rl *rateLimiter) Allow(key string) bool {
 		return false
 	}
 	rl.last[key] = time.Now()
+	// #420: TTL eviction — sweep entries older than 10x the interval to prevent
+	// unbounded map growth from unique dungeon names / remote addresses.
+	evictBefore := time.Now().Add(-rl.interval * 10)
+	for k, t := range rl.last {
+		if t.Before(evictBefore) {
+			delete(rl.last, k)
+		}
+	}
 	return true
 }
 

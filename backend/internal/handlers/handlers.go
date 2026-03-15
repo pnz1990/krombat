@@ -21,16 +21,18 @@ import (
 )
 
 type Handler struct {
-	client      *k8s.Client
-	hub         *ws.Hub
-	attackLimit *rateLimiter
+	client         *k8s.Client
+	hub            *ws.Hub
+	attackLimit    *rateLimiter
+	telemetryLimit *rateLimiter // #419: rate-limit telemetry endpoints (per IP)
 }
 
 func New(client *k8s.Client, hub *ws.Hub) *Handler {
 	h := &Handler{
-		client:      client,
-		hub:         hub,
-		attackLimit: newRateLimiter(300 * time.Millisecond),
+		client:         client,
+		hub:            hub,
+		attackLimit:    newRateLimiter(300 * time.Millisecond),
+		telemetryLimit: newRateLimiter(2 * time.Second), // max 1 telemetry event per 2s per remote addr
 	}
 	go h.pollGameMetrics()
 	return h
@@ -135,6 +137,8 @@ func (h *Handler) CreateDungeon(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req CreateDungeonReq
+	// #421: cap body to prevent multi-megabyte JSON DoS
+	r.Body = http.MaxBytesReader(w, r.Body, 4096) // 4 KB is well above any valid dungeon creation payload
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, "invalid request body", http.StatusBadRequest)
 		return
@@ -187,6 +191,17 @@ func (h *Handler) CreateDungeon(w http.ResponseWriter, r *http.Request) {
 	runCount := req.RunCount
 	if runCount < 0 || runCount > 20 {
 		runCount = 0 // clamp to reasonable range
+	}
+
+	// #423: validate equipment bonus values have a reasonable upper bound.
+	// Prevents leaderboard cheating via inflated weapon/armor stats.
+	const maxEquipBonus = 50
+	if req.WeaponBonus > maxEquipBonus || req.ArmorBonus > maxEquipBonus ||
+		req.ShieldBonus > maxEquipBonus || req.HelmetBonus > maxEquipBonus ||
+		req.PantsBonus > maxEquipBonus || req.BootsBonus > maxEquipBonus ||
+		req.RingBonus > maxEquipBonus || req.AmuletBonus > maxEquipBonus {
+		writeError(w, fmt.Sprintf("equipment bonus values must not exceed %d", maxEquipBonus), http.StatusBadRequest)
+		return
 	}
 
 	// Backend writes only the player choices. kro dungeonInit specPatch computes
@@ -1578,8 +1593,8 @@ func (h *Handler) processAction(ctx context.Context, r *http.Request, ns, name, 
 
 // requireDungeonOwner checks that the authenticated user (from r's context) is
 // the owner of the dungeon CR. Returns a non-nil error if the check fails.
-// Legacy dungeons without the krombat.io/owner label are accessible to any
-// authenticated user (treat as unowned / public during migration).
+// #422: dungeons without the krombat.io/owner label are now DENIED (not allowed).
+// This closes the previous "unlabelled = accessible to all" window.
 func requireDungeonOwner(r *http.Request, dungeon interface{ GetLabels() map[string]string }) error {
 	sess := sessionFromCtx(r.Context())
 	if sess == nil {
@@ -1587,7 +1602,11 @@ func requireDungeonOwner(r *http.Request, dungeon interface{ GetLabels() map[str
 	}
 	labels := dungeon.GetLabels()
 	owner, hasLabel := labels["krombat.io/owner"]
-	if hasLabel && owner != sess.Login {
+	if !hasLabel {
+		// #422: deny access to unlabelled dungeons — the label is mandatory.
+		return fmt.Errorf("forbidden: dungeon has no owner label")
+	}
+	if owner != sess.Login {
 		return fmt.Errorf("forbidden: dungeon belongs to another user")
 	}
 	return nil
@@ -1681,11 +1700,44 @@ func writeError(w http.ResponseWriter, msg string, code int) {
 	http.Error(w, msg, code)
 }
 
+// validGameEvents is the allowlist of event names accepted by EventsTrackHandler.
+// Unknown events are rejected to prevent log injection and CloudWatch metric poisoning.
+var validGameEvents = map[string]bool{
+	"dungeon_created":  true,
+	"dungeon_deleted":  true,
+	"attack_submitted": true,
+	"item_used":        true,
+	"action_used":      true,
+	"boss_killed":      true,
+}
+
+// allowedEventKeys is the set of event payload keys accepted by EventsTrackHandler.
+// Unknown keys are silently dropped to prevent log injection.
+var allowedEventKeys = map[string]bool{
+	"event":      true,
+	"monsters":   true,
+	"difficulty": true,
+	"heroClass":  true,
+	"target":     true,
+	"item":       true,
+	"action":     true,
+	"outcome":    true,
+	"totalTurns": true,
+	"room":       true,
+	"runCount":   true,
+}
+
 // ClientErrorHandler accepts structured error reports from the React frontend
 // (error boundary and async catch blocks) and writes them as slog lines so
 // Container Insights picks them up for CloudWatch metric filters.
 // POST /api/v1/client-error
 func (h *Handler) ClientErrorHandler(w http.ResponseWriter, r *http.Request) {
+	// #419/#421: rate-limit + body size cap to prevent CloudWatch log flooding
+	if !h.telemetryLimit.Allow(r.RemoteAddr) {
+		http.Error(w, "rate limit exceeded", http.StatusTooManyRequests)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 8192) // 8 KB cap
 	var payload struct {
 		Message        string `json:"message"`
 		Stack          string `json:"stack"`
@@ -1697,6 +1749,10 @@ func (h *Handler) ClientErrorHandler(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return
+	}
+	// Cap stack trace at 4 KB to prevent large allocations in slog JSON encoder
+	if len(payload.Stack) > 4096 {
+		payload.Stack = payload.Stack[:4096]
 	}
 	slog.Error("frontend_error",
 		"component", "frontend",
@@ -1712,6 +1768,8 @@ func (h *Handler) ClientErrorHandler(w http.ResponseWriter, r *http.Request) {
 // structured slog lines for CloudWatch metric filters on LCP/CLS/TTFB/INP ratings.
 // POST /api/v1/vitals
 func (h *Handler) VitalsHandler(w http.ResponseWriter, r *http.Request) {
+	// #421: body size cap
+	r.Body = http.MaxBytesReader(w, r.Body, 1024) // 1 KB is more than enough for a vitals report
 	var payload struct {
 		Name   string  `json:"name"`
 		Value  float64 `json:"value"`
@@ -1735,6 +1793,12 @@ func (h *Handler) VitalsHandler(w http.ResponseWriter, r *http.Request) {
 // event type, hero class, difficulty, etc.
 // POST /api/v1/events-track
 func (h *Handler) EventsTrackHandler(w http.ResponseWriter, r *http.Request) {
+	// #419/#421: rate-limit + body size cap + event allowlist
+	if !h.telemetryLimit.Allow(r.RemoteAddr) {
+		http.Error(w, "rate limit exceeded", http.StatusTooManyRequests)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 4096) // 4 KB cap
 	var payload map[string]interface{}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
@@ -1745,9 +1809,18 @@ func (h *Handler) EventsTrackHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
+	// Validate event name against allowlist
+	if !validGameEvents[event] {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
 	args := []any{"component", "frontend", "event", event}
 	for k, v := range payload {
 		if k == "event" {
+			continue
+		}
+		// Drop unknown keys to prevent log injection
+		if !allowedEventKeys[k] {
 			continue
 		}
 		args = append(args, k, v)

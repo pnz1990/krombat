@@ -51,17 +51,18 @@ type sessionPayload struct {
 	ExpiresAt int64  `json:"e"` // unix seconds
 }
 
-// sessionSecret returns the HMAC key from env, falling back to a random value
-// (which means sessions don't survive pod restarts when the env var is absent).
+// sessionSecret returns the HMAC key from SESSION_SECRET env var.
+// main.go validates this is non-empty at startup — this function will only
+// be called after that check passes. The random fallback is intentionally
+// removed: running without a stable secret breaks multi-replica sessions.
 var sessionSecret = func() []byte {
-	if s := os.Getenv("SESSION_SECRET"); s != "" {
-		return []byte(s)
+	s := os.Getenv("SESSION_SECRET")
+	if s == "" {
+		// This should never happen — main.go exits if SESSION_SECRET is absent.
+		// Panic here to make any misconfiguration immediately obvious in tests.
+		panic("auth: SESSION_SECRET is not set — main.go should have exited")
 	}
-	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
-		panic("auth: cannot generate session secret: " + err.Error())
-	}
-	return b
+	return []byte(s)
 }()
 
 // signToken encodes payload as JSON, appends an HMAC-SHA256 signature, and

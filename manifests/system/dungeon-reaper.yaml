@@ -43,11 +43,27 @@ spec:
         spec:
           serviceAccountName: dungeon-reaper
           restartPolicy: Never
+          # #415: run as non-root
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            seccompProfile:
+              type: RuntimeDefault
           containers:
             - name: reaper
               # #413: pinned to digest to prevent supply-chain attacks via mutable tag.
               # alpine/k8s:1.31.4 multi-arch digest (verified 2026-03-15).
               image: alpine/k8s:1.31.4@sha256:9c4976d47656d78cf53a92b0203fc54ac45eae18a2b45001ac221c27da4c8036
+              # #415: drop all capabilities, non-root, read-only filesystem
+              securityContext:
+                runAsNonRoot: true
+                runAsUser: 1000
+                runAsGroup: 1000
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
               command: ["/bin/bash", "-c"]
               args:
                 - |

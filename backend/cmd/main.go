@@ -21,6 +21,13 @@ func main() {
 		os.Exit(1)
 	}
 
+	// #418: SESSION_SECRET must be present — fail fast rather than running degraded
+	// with a random per-pod key that breaks multi-replica sessions.
+	if os.Getenv("SESSION_SECRET") == "" {
+		slog.Error("SESSION_SECRET is not set — cannot start without a stable HMAC key; ensure krombat-github-oauth Secret contains SESSION_SECRET")
+		os.Exit(1)
+	}
+
 	client, err := k8s.NewClient()
 	if err != nil {
 		slog.Error("failed to create k8s client", "error", err)
@@ -55,7 +62,18 @@ func main() {
 	// Returns 404 when the krombat-test-auth secret is absent (i.e. in environments without the secret).
 	mux.HandleFunc("GET /api/v1/auth/test-login", handlers.TestLoginHandler)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
-	mux.Handle("GET /metrics", promhttp.Handler())
+
+	// #416: serve Prometheus metrics on a separate internal-only port (9090).
+	// This port is NOT routed through the ALB ingress, preventing public exposure.
+	metricsMux := http.NewServeMux()
+	metricsMux.Handle("/metrics", promhttp.Handler())
+	go func() {
+		metricsAddr := ":9090"
+		slog.Info("metrics server starting", "addr", metricsAddr)
+		if err := http.ListenAndServe(metricsAddr, metricsMux); err != nil {
+			slog.Error("metrics server failed", "error", err)
+		}
+	}()
 
 	addr := ":8080"
 	if p := os.Getenv("PORT"); p != "" {

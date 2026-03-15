@@ -541,6 +541,52 @@ grep -q "@sha256:" manifests/system/dungeon-reaper.yaml && pass "#413: dungeon-r
 grep -q "trivy-action@master" .github/workflows/build-images.yml && fail "#414: trivy-action@master still used (mutable — supply chain risk)" || pass "#414: trivy-action not using @master"
 grep -q "exit-code: '0'" .github/workflows/build-images.yml && fail "#414: Trivy exit-code is 0 — CVEs silently pass CI" || pass "#414: Trivy exit-code not 0 (CVEs will fail CI)"
 
+# --- Security P2 guardrails (#415-#423) ---
+echo "=== Security P2 guardrails"
+
+# #415: securityContext must be set on all workloads
+grep -q "runAsNonRoot: true" manifests/system/backend.yaml && pass "#415: backend securityContext has runAsNonRoot" || fail "#415: backend securityContext missing runAsNonRoot"
+grep -q 'drop: \["ALL"\]' manifests/system/backend.yaml && pass "#415: backend drops ALL capabilities" || fail "#415: backend missing capabilities drop ALL"
+grep -q "runAsNonRoot: true" manifests/system/frontend.yaml && pass "#415: frontend securityContext has runAsNonRoot" || fail "#415: frontend securityContext missing runAsNonRoot"
+grep -q 'drop: \["ALL"\]' manifests/system/frontend.yaml && pass "#415: frontend drops ALL capabilities" || fail "#415: frontend missing capabilities drop ALL"
+grep -q "runAsNonRoot: true" manifests/system/dungeon-reaper.yaml && pass "#415: dungeon-reaper securityContext has runAsNonRoot" || fail "#415: dungeon-reaper securityContext missing runAsNonRoot"
+
+# #416: metrics must NOT be on main mux (port 8080) — must be on separate port
+grep -q 'mux.Handle.*metrics' backend/cmd/main.go && fail "#416: /metrics still registered on main mux (public port 8080)" || pass "#416: /metrics not on main mux (served on internal port 9090)"
+grep -q "9090" backend/cmd/main.go && pass "#416: internal metrics server listening on port 9090" || fail "#416: metrics server not found on port 9090"
+[ -f manifests/system/network-policy.yaml ] && pass "#416: NetworkPolicy manifest exists" || fail "#416: NetworkPolicy manifest missing"
+
+# #417: HTTP security headers must be set in backend middleware and nginx
+grep -q "X-Content-Type-Options" backend/internal/handlers/middleware.go && pass "#417: X-Content-Type-Options header set in backend middleware" || fail "#417: X-Content-Type-Options missing from backend middleware"
+grep -q "X-Frame-Options" backend/internal/handlers/middleware.go && pass "#417: X-Frame-Options header set in backend middleware" || fail "#417: X-Frame-Options missing from backend middleware"
+grep -q "Content-Security-Policy" frontend/nginx.conf && pass "#417: CSP header in nginx.conf" || fail "#417: Content-Security-Policy missing from nginx.conf"
+grep -q "Strict-Transport-Security" frontend/nginx.conf && pass "#417: HSTS header in nginx.conf" || fail "#417: Strict-Transport-Security missing from nginx.conf"
+
+# #418: SESSION_SECRET must be required (no optional:true on github-oauth secret, fail-fast in main.go)
+grep -A3 "name: krombat-github-oauth" manifests/system/backend.yaml | grep -q "optional: true" && fail "#418: krombat-github-oauth still optional:true — SESSION_SECRET can be absent" || pass "#418: krombat-github-oauth not optional (SESSION_SECRET is required)"
+grep -q "SESSION_SECRET.*not set\|SESSION_SECRET is not set" backend/cmd/main.go && pass "#418: main.go exits if SESSION_SECRET absent (fail-fast)" || fail "#418: main.go missing SESSION_SECRET fail-fast check"
+
+# #419: telemetry handlers must have body size limits and event allowlist
+grep -q "validGameEvents\|allowlist" backend/internal/handlers/handlers.go && pass "#419: game event allowlist present in EventsTrackHandler" || fail "#419: game event allowlist missing from EventsTrackHandler"
+grep -q "telemetryLimit\|h.telemetryLimit" backend/internal/handlers/handlers.go && pass "#419: telemetry rate limiter applied" || fail "#419: telemetry rate limiter missing"
+grep -A10 "ClientErrorHandler" backend/internal/handlers/handlers.go | grep -q "MaxBytesReader" && pass "#419/#421: ClientErrorHandler has body size cap" || fail "#419/#421: ClientErrorHandler missing MaxBytesReader"
+grep -A10 "EventsTrackHandler" backend/internal/handlers/handlers.go | grep -q "MaxBytesReader" && pass "#419/#421: EventsTrackHandler has body size cap" || fail "#419/#421: EventsTrackHandler missing MaxBytesReader"
+
+# #420: rate-limiter must have TTL eviction
+grep -q "evictBefore\|interval.*10\|Interval.*10" backend/internal/handlers/ratelimit.go && pass "#420: rate-limiter has TTL eviction logic" || fail "#420: rate-limiter missing TTL eviction"
+
+# #421: CreateDungeon must have body size cap
+grep -A5 "CreateDungeon" backend/internal/handlers/handlers.go | grep -q "MaxBytesReader" && pass "#421: CreateDungeon has MaxBytesReader body cap" || fail "#421: CreateDungeon missing MaxBytesReader"
+
+# #422: requireDungeonOwner must DENY unlabelled dungeons
+grep -A10 "func requireDungeonOwner" backend/internal/handlers/handlers.go | grep -q "no owner label\|forbidden.*no owner\|hasLabel\].*deny\|!hasLabel" && pass "#422: requireDungeonOwner denies dungeons without owner label" || fail "#422: requireDungeonOwner still allows unlabelled dungeons"
+[ -f manifests/system/admission-policy.yaml ] && pass "#422: ValidatingAdmissionPolicy manifest exists" || fail "#422: ValidatingAdmissionPolicy manifest missing"
+grep -q "krombat.io/owner" manifests/system/admission-policy.yaml && pass "#422: admission policy enforces krombat.io/owner label" || fail "#422: admission policy does not reference krombat.io/owner"
+
+# #423: equipment bonus upper bound must be enforced
+grep -q "maxEquipBonus\|equip.*50\|50.*equip" backend/internal/handlers/handlers.go && pass "#423: maxEquipBonus constant present in CreateDungeon" || fail "#423: maxEquipBonus missing from CreateDungeon"
+grep -q "maximum=50" manifests/rgds/dungeon-graph.yaml && pass "#423: dungeon-graph RGD has maximum=50 on bonus fields" || fail "#423: dungeon-graph RGD missing maximum=50 on bonus fields"
+
 # --- Summary ---
 
 echo ""
