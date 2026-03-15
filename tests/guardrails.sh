@@ -6,6 +6,9 @@ set -euo pipefail
 KUBECTL_CONTEXT="${KUBECTL_CONTEXT:-arn:aws:eks:us-west-2:319279230668:cluster/krombat}"
 kctl() { kubectl --context "$KUBECTL_CONTEXT" "$@"; }
 
+# Auth bypass header — backend accepts X-Test-User when KROMBAT_TEST_USER env matches
+AUTH_H=(-H "X-Test-User: test-player")
+
 PASS=0
 FAIL=0
 TESTS=()
@@ -187,13 +190,14 @@ fi
 # Create a test dungeon
 TEST_NAME="guardrail-$(date +%s)"
 curl -s -X POST http://localhost:$GUARDRAIL_PORT/api/v1/dungeons \
+  "${AUTH_H[@]}" \
   -H "Content-Type: application/json" \
   -d "{\"name\":\"$TEST_NAME\",\"monsters\":1,\"difficulty\":\"easy\",\"heroClass\":\"warrior\"}" -o /dev/null
 
 sleep 10
 
 # GetDungeon response must be a raw CR (not wrapped)
-RESP=$(curl -s http://localhost:$GUARDRAIL_PORT/api/v1/dungeons/default/$TEST_NAME)
+RESP=$(curl -s "${AUTH_H[@]}" http://localhost:$GUARDRAIL_PORT/api/v1/dungeons/default/$TEST_NAME)
 echo "$RESP" | python3 -c "
 import json,sys
 d=json.load(sys.stdin)
@@ -250,6 +254,7 @@ fi
 
 # Create a 1-monster easy dungeon so we can kill it in one shot (easy=30 HP, warrior hits ~12-22)
 curl -s -X POST http://localhost:$LOOT_PORT/api/v1/dungeons \
+  "${AUTH_H[@]}" \
   -H "Content-Type: application/json" \
   -d "{\"name\":\"$LOOT_TEST\",\"monsters\":1,\"difficulty\":\"easy\",\"heroClass\":\"warrior\"}" -o /dev/null
 sleep 10  # wait for kro to reconcile
@@ -265,6 +270,7 @@ LOOT_SECRET_BEFORE=$(kctl get secret "${LOOT_TEST}-monster-0-loot" -n "$LOOT_TES
 KILL_ATTEMPTS=0
 while [ $KILL_ATTEMPTS -lt 5 ]; do
   curl -s -X POST http://localhost:$LOOT_PORT/api/v1/dungeons/default/$LOOT_TEST/attacks \
+    "${AUTH_H[@]}" \
     -H "Content-Type: application/json" \
     -d "{\"target\":\"${LOOT_TEST}-monster-0\",\"damage\":100,\"seq\":-1}" -o /dev/null
   sleep 5

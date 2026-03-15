@@ -2107,10 +2107,11 @@ function CombatBreakdown({ heroAction, enemyAction, spec, oldHP }: { heroAction:
   if (enemyAction.includes('BURN')) lines.push({ icon: 'fire', text: 'Burning! -8 HP/turn for 2 turns', color: '#e74c3c' })
   if (enemyAction.includes('STUN')) lines.push({ icon: 'lightning', text: 'Stunned! Skip next attack', color: '#f1c40f' })
 
-  // Kill / victory — derive from spec (kro-authoritative), not Go log text
-  const monsterKilled = Array.isArray(spec?.monsterHP) && spec.monsterHP.some((hp: number) => hp <= 0)
-  const bossKilled = (spec?.bossHP ?? 1) <= 0
-  if ((monsterKilled || bossKilled) && (dmgMatch || heroAction.includes('defeated'))) lines.push({ icon: 'skull', text: 'Target slain!', color: '#f5c518' })
+  // Kill / victory — check whether the specific target hit this turn reached 0 HP
+  // dmgMatch[3] is the post-attack HP of the target hit this turn; avoids false positives
+  // from Room 1 dead monsters persisting in spec.monsterHP for the rest of the dungeon
+  const targetKilled = dmgMatch != null && parseInt(dmgMatch[3]) === 0
+  if (targetKilled || heroAction.includes('defeated')) lines.push({ icon: 'skull', text: 'Target slain!', color: '#f5c518' })
   if (enemyAction.includes('defeated')) lines.push({ icon: 'crown', text: 'BOSS DEFEATED!', color: '#f5c518' })
 
   return (
