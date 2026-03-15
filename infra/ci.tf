@@ -24,9 +24,8 @@ resource "aws_iam_role" "github_actions" {
       Condition = {
         StringEquals = {
           "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
-        }
-        StringLike = {
-          "token.actions.githubusercontent.com:sub" = "repo:${var.github_repo}:*"
+          # #412: restrict to main branch only — PR workflows from forks cannot trigger deployment.
+          "token.actions.githubusercontent.com:sub" = "repo:${var.github_repo}:ref:refs/heads/main"
         }
       }
     }]
@@ -59,10 +58,13 @@ resource "aws_eks_access_policy_association" "github_actions" {
   count         = var.enable_ci ? 1 : 0
   cluster_name  = module.eks.cluster_name
   principal_arn = aws_iam_role.github_actions[0].arn
-  policy_arn    = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
+  # #412: scoped down from AmazonEKSClusterAdminPolicy to namespace-scoped edit access
+  # sufficient only for rollout restart on rpg-system deployments.
+  policy_arn = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSEditPolicy"
 
   access_scope {
-    type = "cluster"
+    type       = "namespace"
+    namespaces = ["rpg-system"]
   }
 
   depends_on = [aws_eks_access_entry.github_actions]

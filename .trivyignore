@@ -1,0 +1,6 @@
+# .trivyignore — accepted / false-positive CVE findings with justification.
+# Each entry must include a justification comment explaining the risk acceptance.
+# Regenerate with: trivy image --severity CRITICAL --ignore-unfixed <image>
+
+# Add accepted CVEs here in the format:
+# CVE-YYYY-NNNNN # justification: reason this finding is accepted or mitigated

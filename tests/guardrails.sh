@@ -510,6 +510,37 @@ grep -q "modifiercm\|combatcm" frontend/src/api.ts && pass "api.ts VALID_RESOURC
 echo "=== Dead code guardrails"
 grep -q "^function EntityCard\b" frontend/src/App.tsx && fail "EntityCard dead code not removed from App.tsx" || pass "EntityCard dead code removed from App.tsx"
 
+# --- Security P1 guardrails (#408, #409, #410, #411, #413, #414) ---
+echo "=== Security P1 guardrails"
+
+# #408: per-user dungeon creation limit must be enforced
+grep -q "maxDungeonsPerUser\|dungeon limit reached" backend/internal/handlers/handlers.go && pass "#408: per-user dungeon creation limit present in CreateDungeon" || fail "#408: per-user dungeon creation limit missing from CreateDungeon"
+grep -q "StatusConflict\|http.StatusConflict" backend/internal/handlers/handlers.go && pass "#408: dungeon limit returns HTTP 409 Conflict" || fail "#408: dungeon limit not returning 409 Conflict"
+
+# #409: ownership check in processCombat and processAction
+# requireDungeonOwner must be called at least 4 times (GetDungeon, DeleteDungeon, processCombat, processAction)
+OWNER_COUNT=$(grep -c "requireDungeonOwner" backend/internal/handlers/handlers.go 2>/dev/null || echo 0)
+[ "$OWNER_COUNT" -ge 4 ] && pass "#409: requireDungeonOwner called in 4+ handlers (processCombat/processAction covered)" || fail "#409: requireDungeonOwner only called $OWNER_COUNT times — processCombat/processAction may be missing it (need 4+)"
+
+# #410: GetDungeonResource must check auth + ownership, and must NOT have kind=namespace
+grep -q "case \"namespace\"" backend/internal/handlers/handlers.go && fail "#410: kind=namespace still present in GetDungeonResource (security risk)" || pass "#410: kind=namespace removed from GetDungeonResource"
+# requireDungeonOwner must appear after GetDungeonResource (line numbers: GetDungeonResource is the last large handler)
+OWNER_LINES=$(grep -n "requireDungeonOwner" backend/internal/handlers/handlers.go | cut -d: -f1)
+RESOURCE_LINE=$(grep -n "func.*GetDungeonResource" backend/internal/handlers/handlers.go | head -1 | cut -d: -f1)
+echo "$OWNER_LINES" | awk -v r="$RESOURCE_LINE" '$1 > r {found=1} END {exit !found}' && pass "#410: requireDungeonOwner called in GetDungeonResource" || fail "#410: ownership check missing from GetDungeonResource"
+CELEVAL_LINE=$(grep -n "func.*CelEvalHandler" backend/internal/handlers/handlers.go | head -1 | cut -d: -f1)
+echo "$OWNER_LINES" | awk -v c="$CELEVAL_LINE" '$1 > c && $1 < c+60 {found=1} END {exit !found}' && pass "#411: requireDungeonOwner called in CelEvalHandler" || fail "#411: ownership check missing from CelEvalHandler"
+grep -A50 "func.*CelEvalHandler" backend/internal/handlers/handlers.go | grep -q "authentication required\|StatusUnauthorized" && pass "#411: auth check present in CelEvalHandler" || fail "#411: auth check missing from CelEvalHandler"
+grep -A50 "func.*CelEvalHandler" backend/internal/handlers/handlers.go | grep -q "maxExprLen\|expression too long" && pass "#411: expression length limit present in CelEvalHandler" || fail "#411: expression complexity limit missing from CelEvalHandler"
+grep -A50 "func.*GetDungeonResource" backend/internal/handlers/handlers.go | grep -q "authentication required\|StatusUnauthorized" && pass "#410: auth check present in GetDungeonResource" || fail "#410: auth check missing from GetDungeonResource"
+
+# #413: alpine/k8s in dungeon-reaper must be pinned to digest
+grep -q "@sha256:" manifests/system/dungeon-reaper.yaml && pass "#413: dungeon-reaper alpine/k8s image pinned to SHA256 digest" || fail "#413: dungeon-reaper alpine/k8s image still uses mutable tag (no @sha256:)"
+
+# #414: trivy-action must NOT use @master (mutable branch)
+grep -q "trivy-action@master" .github/workflows/build-images.yml && fail "#414: trivy-action@master still used (mutable — supply chain risk)" || pass "#414: trivy-action not using @master"
+grep -q "exit-code: '0'" .github/workflows/build-images.yml && fail "#414: Trivy exit-code is 0 — CVEs silently pass CI" || pass "#414: Trivy exit-code not 0 (CVEs will fail CI)"
+
 # --- Summary ---
 
 echo ""

@@ -6,7 +6,7 @@ const {
   createDungeonUI, attackMonster, attackBoss, waitForCombatResult,
   dismissLootPopup, aliveMonsterCount, deadMonsterCount,
   getBodyText, navigateHome, deleteDungeon,
-, testLogin} = require('./helpers');
+  testLogin} = require('./helpers');
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 const TIMEOUT = 15000;

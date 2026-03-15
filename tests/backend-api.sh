@@ -557,6 +557,63 @@ else
 fi
 kctl delete dungeon "$BP2_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
 
+# --- Test 31: Per-user dungeon creation limit (#408) ---
+log "Test 31: Per-user dungeon creation limit (max 5 active dungeons)"
+LIMIT_BASE="api-limit-$(date +%s)"
+# Create 5 dungeons (should all succeed)
+for i in 1 2 3 4 5; do
+  R=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeons" \
+    -H "Content-Type: application/json" "${AUTH_H[@]}" \
+    -d "{\"name\":\"$LIMIT_BASE-$i\",\"monsters\":1,\"difficulty\":\"easy\",\"heroClass\":\"warrior\"}")
+  [ "$R" = "201" ] || { fail "Test 31: dungeon $i of 5 failed with $R (expected 201)"; break; }
+done
+# 6th dungeon must be rejected
+R6=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeons" \
+  -H "Content-Type: application/json" "${AUTH_H[@]}" \
+  -d "{\"name\":\"$LIMIT_BASE-6\",\"monsters\":1,\"difficulty\":\"easy\",\"heroClass\":\"warrior\"}")
+if [ "$R6" = "409" ]; then
+  pass "Test 31: 6th dungeon rejected with 409 Conflict (per-user limit enforced)"
+else
+  fail "Test 31: 6th dungeon creation returned $R6 (expected 409 Conflict — limit not enforced)"
+fi
+for i in 1 2 3 4 5; do
+  kctl delete dungeon "$LIMIT_BASE-$i" --ignore-not-found --wait=false 2>/dev/null || true
+done
+
+# --- Test 32: Ownership check on attack (#409) ---
+log "Test 32: Ownership check — cannot attack another user's dungeon"
+OWN_DUNGEON="api-own-$(date +%s)"
+curl -s -X POST "$BASE/api/v1/dungeons" \
+  -H "Content-Type: application/json" "${AUTH_H[@]}" \
+  -d "{\"name\":\"$OWN_DUNGEON\",\"monsters\":1,\"difficulty\":\"easy\",\"heroClass\":\"warrior\"}" -o /dev/null
+sleep 5
+# Attack without auth (no X-Test-User header) → 401
+RESP_UNAUTH=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeons/default/$OWN_DUNGEON/attacks" \
+  -H "Content-Type: application/json" \
+  -d "{\"target\":\"${OWN_DUNGEON}-monster-0\",\"damage\":5,\"seq\":-1}")
+[ "$RESP_UNAUTH" = "401" ] && pass "Test 32: unauthenticated attack returns 401" || fail "Test 32: unauthenticated attack returned $RESP_UNAUTH (expected 401)"
+kctl delete dungeon "$OWN_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
+
+# --- Test 33: CelEvalHandler requires auth (#411) ---
+log "Test 33: CelEvalHandler requires authentication"
+CEL_DUNGEON="api-cel-$(date +%s)"
+curl -s -X POST "$BASE/api/v1/dungeons" \
+  -H "Content-Type: application/json" "${AUTH_H[@]}" \
+  -d "{\"name\":\"$CEL_DUNGEON\",\"monsters\":1,\"difficulty\":\"easy\",\"heroClass\":\"warrior\"}" -o /dev/null
+sleep 5
+# CEL eval without auth
+RESP_CEL_UNAUTH=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeons/default/$CEL_DUNGEON/cel-eval" \
+  -H "Content-Type: application/json" \
+  -d '{"expr":"schema.spec.heroHP"}')
+[ "$RESP_CEL_UNAUTH" = "401" ] && pass "Test 33: unauthenticated cel-eval returns 401" || fail "Test 33: unauthenticated cel-eval returned $RESP_CEL_UNAUTH (expected 401)"
+# CEL eval with auth but expression too long
+LONG_EXPR=$(python3 -c "print('x' * 501)")
+RESP_CEL_LONG=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeons/default/$CEL_DUNGEON/cel-eval" \
+  -H "Content-Type: application/json" "${AUTH_H[@]}" \
+  --data-binary "{\"expr\":\"$LONG_EXPR\"}")
+[ "$RESP_CEL_LONG" = "400" ] && pass "Test 33: oversized cel expression rejected with 400" || fail "Test 33: oversized cel expression returned $RESP_CEL_LONG (expected 400)"
+kctl delete dungeon "$CEL_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
+
 echo ""
 echo "========================================"
 echo "  Backend Tests: $PASS passed, $FAIL failed"
