@@ -62,9 +62,9 @@ async function run() {
 
     // ── XP starts at 0 ────────────────────────────────────────────────────────
     console.log('\n=== XP initial state ===');
-    // We can't read spec directly from the UI — check that xpEarned is not yet shown as a large number
-    // (it should be 0 before any kills). We verify via the dungeon view being in combat state.
-    const arenaReady = page.locator('.arena');
+    // Wait for arena to be rendered
+    const arenaReady = page.locator('.dungeon-arena');
+    await arenaReady.waitFor({ timeout: TIMEOUT }).catch(() => {});
     ;(await arenaReady.count() > 0)
       ? ok('Arena rendered — dungeon in initial state')
       : fail('Arena not found — dungeon not loaded');
