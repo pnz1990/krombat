@@ -23,7 +23,7 @@ spec:
               app: rpg-backend
       containers:
         - name: backend
-          image: 319279230668.dkr.ecr.us-west-2.amazonaws.com/krombat/backend:5a0b6d54e1deeb81f2882a68cc2bcfb4c0d82d10
+          image: 319279230668.dkr.ecr.us-west-2.amazonaws.com/krombat/backend:a2a58c4d215cc3ccad7f7bf5249a6c72ce62e7e9
           ports:
             - containerPort: 8080
           env:
