@@ -1465,9 +1465,12 @@ func (h *Handler) processCombat(ctx context.Context, r *http.Request, ns, name, 
 	// Step 5: Derive log text from pre→post spec diff (no math — kro is authoritative).
 	diceFormula := getString(postStatus, "diceFormula", getString(dungeonStatus, "diceFormula", ""))
 	bossPhaseStr := getString(postStatus, "bossPhase", getString(dungeonStatus, "bossPhase", "phase1"))
+	// bossDamageMultiplier is stored ×10 as a string in dungeon status (from boss-graph CEL).
+	// e.g. '10'=1.0×, '13'=1.3×, '16'=1.6×. Default '10' when not yet set.
+	bossDmgMultStr := getString(postStatus, "bossDamageMultiplier", getString(dungeonStatus, "bossDamageMultiplier", "10"))
 	heroAction, enemyAction := deriveCombatLog(
 		spec, postSpec, realTarget, isBossTarget, idxInt, isBackstab, stunTurns > 0,
-		heroClass, diceFormula, bossPhaseStr,
+		heroClass, diceFormula, bossPhaseStr, bossDmgMultStr,
 	)
 
 	// Step 6: Write log text and return final dungeon state.
@@ -1509,7 +1512,7 @@ func deriveCombatLog(
 	pre, post map[string]interface{},
 	realTarget string, isBossTarget bool, idxInt int,
 	isBackstab bool, wasStunned bool,
-	heroClass, diceFormula, bossPhaseStr string,
+	heroClass, diceFormula, bossPhaseStr, bossDmgMultStr string,
 ) (heroAction, enemyAction string) {
 	preHeroHP := getInt(pre, "heroHP")
 	postHeroHP := getInt(post, "heroHP")
@@ -1655,10 +1658,18 @@ func deriveCombatLog(
 	}
 
 	phaseNote := ""
-	if bossPhaseStr == "phase2" {
-		phaseNote = " [ENRAGED ×1.5]"
-	} else if bossPhaseStr == "phase3" {
-		phaseNote = " [BERSERK ×2.0]"
+	if bossPhaseStr == "phase2" || bossPhaseStr == "phase3" {
+		// bossDmgMultStr is stored ×10 (e.g. '13' = 1.3×, '16' = 1.6×). Convert for display.
+		multInt, _ := strconv.ParseInt(bossDmgMultStr, 10, 64)
+		if multInt > 10 {
+			whole := multInt / 10
+			frac := multInt % 10
+			label := "ENRAGED"
+			if bossPhaseStr == "phase3" {
+				label = "BERSERK"
+			}
+			phaseNote = fmt.Sprintf(" [%s ×%d.%d]", label, whole, frac)
+		}
 	}
 
 	allEffects := append(healNotes, effectNotes...)

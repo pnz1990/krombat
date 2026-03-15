@@ -1174,9 +1174,9 @@ export function CelTrace({ data, onLearnMore }: { data: CelTraceData; onLearnMor
   if ((data.bossHP ?? 0) > 0 && (data.maxBossHP ?? 0) > 0) {
     const pct = Math.round(((data.bossHP!) / (data.maxBossHP!)) * 100)
     // #446: actual boss-graph uses integer arithmetic (×100 / maxHP), outputs 'phase1'/'phase2'/'phase3'
-    // damageMultiplier stored as integer ×10: phase1=10 (1.0×), phase2=15 (1.5×), phase3=20 (2.0×)
+    // damageMultiplier stored as integer ×10: phase1=10 (1.0×), phase2=13 (1.3×), phase3=16 (1.6×)
     const phase = pct <= 25 ? 'phase3' : pct <= 50 ? 'phase2' : 'phase1'
-    const phaseResult = phase === 'phase3' ? '"phase3" (2.0× dmg)' : phase === 'phase2' ? '"phase2" (1.5× dmg)' : '"phase1" (1.0× dmg)'
+    const phaseResult = phase === 'phase3' ? '"phase3" (1.6× dmg)' : phase === 'phase2' ? '"phase2" (1.3× dmg)' : '"phase1" (1.0× dmg)'
     celLines.push({
       expr: `hp * 100 / maxHP > 50 ? 'phase1' : hp * 100 / maxHP > 25 ? 'phase2' : 'phase3'`,
       result: phaseResult,
