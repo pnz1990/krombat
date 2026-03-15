@@ -10,14 +10,30 @@ metadata:
 spec:
   template:
     spec:
+      # #472: Schedule kro exclusively on the dedicated kro node pool.
+      # The kro NodePool has taint krombat.io/role=kro:NoSchedule — this toleration
+      # allows kro pods to land there. nodeAffinity ensures they ONLY go there.
+      tolerations:
+        - key: krombat.io/role
+          value: kro
+          effect: NoSchedule
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: krombat.io/role
+                    operator: In
+                    values: ["kro"]
       containers:
         - name: kro
+          # #473: memory request==limit → Guaranteed QoS (last to be evicted under pressure).
+          # cpu request=4 guarantees 4 cores; no cpu limit allows burst during reconcile spikes.
           resources:
             requests:
-              cpu: "1"
-              memory: "1Gi"
-            limits:
               cpu: "4"
+              memory: "8Gi"
+            limits:
               memory: "8Gi"
           env:
             - name: KRO_RESOURCE_GROUP_CONCURRENT_RECONCILES

@@ -710,6 +710,43 @@ grep -v '^\s*//' frontend/src/App.tsx | grep -v '{/\*.*#452' | grep -q "Special 
 grep -q "'self\.spec\.\?modifier\|self\.spec\.bossHP" frontend/src/KroTeach.tsx && fail "#453: CEL playground still uses self.spec (should be schema.spec)" || pass "#453: CEL playground uses schema.spec"
 grep -q "schema\.spec\.monsters == 0" frontend/src/KroTeach.tsx && fail "#453: boss state ternary still uses schema.spec.monsters == 0 (wrong)" || pass "#453: boss state ternary uses monsterHP.all()"
 
+# === #473 / #472 / #471: infra hardening guardrails ===
+# #473: kro memory request must equal limit (Guaranteed QoS)
+grep -A5 'requests:' manifests/system/kro-resources.yaml | grep -q '"8Gi"' \
+  && grep -A5 'limits:' manifests/system/kro-resources.yaml | grep -q '"8Gi"' \
+  && pass "#473: kro memory request=limit=8Gi (Guaranteed QoS)" \
+  || fail "#473: kro memory request != limit — pod is Burstable, eligible for OOM eviction"
+
+# #473: kro must NOT have a cpu limit (allow bursting)
+grep -A10 'limits:' manifests/system/kro-resources.yaml | grep -q 'cpu:' \
+  && fail "#473: kro has a cpu limit — remove it to allow reconcile burst" \
+  || pass "#473: kro has no cpu limit (allows burst)"
+
+# #472: kro NodePool manifest must exist with the correct taint
+grep -q 'krombat.io/role' manifests/system/kro-nodepool.yaml \
+  && pass "#472: kro-nodepool.yaml exists with krombat.io/role taint" \
+  || fail "#472: kro-nodepool.yaml missing or lacks krombat.io/role taint"
+
+# #472: kro Deployment must have matching toleration
+grep -q 'krombat.io/role' manifests/system/kro-resources.yaml \
+  && pass "#472: kro Deployment has krombat.io/role toleration/affinity" \
+  || fail "#472: kro Deployment missing krombat.io/role toleration — kro will not schedule on dedicated node"
+
+# #471: VPC must use 3 AZs
+grep -q 'slice.*0, 3\|0, 3)' infra/main.tf \
+  && pass "#471: VPC sliced to 3 AZs in main.tf" \
+  || fail "#471: VPC still using fewer than 3 AZs — update slice(azs, 0, 3)"
+
+# #471: backend topology spread must use DoNotSchedule
+grep -A8 'topologySpreadConstraints' manifests/system/backend.yaml | grep -q 'DoNotSchedule' \
+  && pass "#471: backend topology spread uses DoNotSchedule (enforces AZ spread)" \
+  || fail "#471: backend topology spread uses ScheduleAnyway — AZ distribution not enforced"
+
+# #471: frontend topology spread must use DoNotSchedule
+grep -A8 'topologySpreadConstraints' manifests/system/frontend.yaml | grep -q 'DoNotSchedule' \
+  && pass "#471: frontend topology spread uses DoNotSchedule (enforces AZ spread)" \
+  || fail "#471: frontend topology spread uses ScheduleAnyway — AZ distribution not enforced"
+
 # --- Summary ---
 
 echo ""
