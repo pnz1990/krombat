@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { DungeonSummary, DungeonCR, listDungeons, getDungeon, createDungeon, createNewGamePlus, submitAttack, deleteDungeon, ApiError, LeaderboardEntry, getLeaderboard, reportError, trackEvent, getMe, logout, AuthUser } from './api'
+import { DungeonSummary, DungeonCR, listDungeons, getDungeon, createDungeon, createNewGamePlus, submitAttack, deleteDungeon, ApiError, LeaderboardEntry, getLeaderboard, UserProfile, getProfile, reportError, trackEvent, getMe, logout, AuthUser } from './api'
 import { useWebSocket, WSEvent } from './useWebSocket'
 
 import { Sprite, getMonsterSprite, getMonsterName, SpriteAction, ItemSprite } from './Sprite'
@@ -133,6 +133,9 @@ export default function App() {
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([])
   const [leaderboardLoading, setLeaderboardLoading] = useState(false)
   const [showHamburger, setShowHamburger] = useState(false)
+  const [showProfile, setShowProfile] = useState(false)
+  const [profile, setProfile] = useState<UserProfile | null>(null)
+  const [profileLoading, setProfileLoading] = useState(false)
 
   const triggerInsight = useCallback((event: string) => {
     const trigger = getInsightForEvent(event)
@@ -608,6 +611,19 @@ export default function App() {
     }
   }
 
+  const handleOpenProfile = async () => {
+    setShowProfile(true)
+    setProfileLoading(true)
+    try {
+      const p = await getProfile()
+      setProfile(p)
+    } catch {
+      setProfile(null)
+    } finally {
+      setProfileLoading(false)
+    }
+  }
+
   const handleNewGamePlus = async () => {
     if (!detail) return
     const spec = detail.spec
@@ -693,6 +709,7 @@ export default function App() {
               {showHamburger && (
                 <div className="hamburger-menu">
                   <button className="hamburger-item" onClick={() => { setShowHamburger(false); handleOpenLeaderboard() }}>Leaderboard</button>
+                  {authUser && <button className="hamburger-item" onClick={() => { setShowHamburger(false); handleOpenProfile() }}>Profile @{authUser.login}</button>}
                   {authUser && <button className="hamburger-item" onClick={() => { setShowHamburger(false); handleLogout() }}>Logout @{authUser.login}</button>}
                 </div>
               )}
@@ -761,6 +778,10 @@ export default function App() {
       {/* Leaderboard — rendered globally so it works from any screen */}
       {showLeaderboard && (
         <LeaderboardPanel entries={leaderboard} loading={leaderboardLoading} onClose={() => setShowLeaderboard(false)} />
+      )}
+
+      {showProfile && (
+        <ProfilePanel profile={profile} loading={profileLoading} authUser={authUser || null} onClose={() => setShowProfile(false)} />
       )}
 
       {/* kro Concept Modal */}
@@ -908,8 +929,142 @@ function LeaderboardPanel({ entries, loading, onClose }: {
   )
 }
 
+const BADGE_LABELS: Record<string, string> = {
+  speedrun: 'Speedrunner', deathless: 'Untouchable', pacifist: 'Potionist',
+  'warrior-win': 'War Chief', 'mage-win': 'Archmage', 'rogue-win': 'Shadow',
+  'hard-win': 'Nightmare', collector: 'Hoarder',
+  'room2-winner': 'Dungeon Diver', 'no-damage': 'Flawless', 'multi-class': 'Versatile',
+  reaper: 'Reaper', legend: 'Legend', 'new-game-plus': 'Ascendant',
+  'no-potions': 'Iron Will', 'full-kit': 'Fully Loaded',
+}
+const BADGE_ICONS: Record<string, string> = {
+  speedrun: 'lightning', deathless: 'shield', pacifist: 'potion',
+  'warrior-win': 'sword', 'mage-win': 'mana', 'rogue-win': 'dagger',
+  'hard-win': 'skull', collector: 'chest',
+  'room2-winner': 'chest', 'no-damage': 'shield', 'multi-class': 'crown',
+  reaper: 'skull', legend: 'crown', 'new-game-plus': 'lightning',
+  'no-potions': 'heart', 'full-kit': 'armor',
+}
+const ALL_BADGES = Object.keys(BADGE_LABELS)
 
+function ProfilePanel({ profile, loading, authUser, onClose }: {
+  profile: UserProfile | null; loading: boolean; authUser: AuthUser | null; onClose: () => void
+}) {
+  const login = authUser?.login ?? 'anonymous'
+  const avatarUrl = authUser?.avatarUrl ?? ''
+  const earnedSet = new Set(profile?.earnedBadges ?? [])
+  const inventoryItems = profile?.inventory ? profile.inventory.split(',').filter(Boolean) : []
 
+  return (
+    <div className="leaderboard-overlay" role="dialog" aria-label="Player Profile">
+      <div className="leaderboard-panel" style={{ maxWidth: 500, width: '95%' }}>
+        <div className="leaderboard-header">
+          <span className="leaderboard-title">Profile</span>
+          <button className="modal-close leaderboard-close" aria-label="Close profile" onClick={onClose}>✕</button>
+        </div>
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: 16, fontSize: '8px', color: 'var(--text-dim)' }}>Loading...</div>
+        ) : (
+          <div style={{ padding: '4px 0' }}>
+            {/* Identity row */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+              {avatarUrl && <img src={avatarUrl} alt="" style={{ width: 28, height: 28, borderRadius: 2, imageRendering: 'pixelated' }} />}
+              <span style={{ fontSize: '9px', fontWeight: 'bold', color: 'var(--text-bright)' }}>@{login}</span>
+              {profile && profile.level > 0 && (
+                <span style={{ fontSize: '7px', color: 'var(--text-dim)', marginLeft: 'auto' }}>
+                  Level {profile.level} — {profile.xp} XP
+                </span>
+              )}
+            </div>
+
+            {/* Lifetime stats */}
+            {profile ? (
+              <>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 16px', fontSize: '8px', marginBottom: 10 }}>
+                  <span><span style={{ color: 'var(--text-dim)' }}>Played:</span> {profile.dungeonsPlayed}</span>
+                  <span><span style={{ color: 'var(--text-dim)' }}>Won:</span> {profile.dungeonsWon}</span>
+                  <span><span style={{ color: 'var(--text-dim)' }}>Lost:</span> {profile.dungeonsLost}</span>
+                  <span><span style={{ color: 'var(--text-dim)' }}>Abandoned:</span> {profile.dungeonsAbandoned}</span>
+                  <span><span style={{ color: 'var(--text-dim)' }}>Total turns:</span> {profile.totalTurns}</span>
+                  <span><span style={{ color: 'var(--text-dim)' }}>Kills:</span> {profile.totalKills}</span>
+                  <span><span style={{ color: 'var(--text-dim)' }}>Boss kills:</span> {profile.totalBossKills}</span>
+                  {profile.favouriteClass && (
+                    <span><span style={{ color: 'var(--text-dim)' }}>Favourite:</span> {profile.favouriteClass} / {profile.favouriteDifficulty}</span>
+                  )}
+                </div>
+
+                {/* Persistent backpack */}
+                {inventoryItems.length > 0 && (
+                  <div style={{ marginBottom: 10 }}>
+                    <div style={{ fontSize: '7px', color: 'var(--text-dim)', marginBottom: 4, letterSpacing: '0.05em' }}>PERSISTENT BACKPACK</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                      {inventoryItems.map((item, i) => (
+                        <div key={i} title={item} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, background: 'var(--panel-bg)', border: '1px solid var(--border)', padding: '4px 6px', borderRadius: 2 }}>
+                          <ItemSprite id={item} size={20} />
+                          <span style={{ fontSize: '6px', color: 'var(--text-dim)' }}>{item.replace('-', ' ')}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Badges */}
+                <div style={{ marginBottom: 6 }}>
+                  <div style={{ fontSize: '7px', color: 'var(--text-dim)', marginBottom: 4, letterSpacing: '0.05em' }}>
+                    BADGES — {earnedSet.size} / {ALL_BADGES.length}
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                    {ALL_BADGES.map(id => {
+                      const earned = earnedSet.has(id)
+                      const count = profile.badgeCounts?.[id] ?? 0
+                      return (
+                        <div key={id}
+                          title={BADGE_LABELS[id] + (earned && count > 1 ? ` ×${count}` : '') + (earned ? '' : ' — not yet earned')}
+                          style={{
+                            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+                            background: 'var(--panel-bg)', border: `1px solid ${earned ? 'var(--gold)' : 'var(--border)'}`,
+                            padding: '4px 6px', borderRadius: 2, opacity: earned ? 1 : 0.35,
+                            minWidth: 44,
+                          }}
+                          aria-label={`badge: ${BADGE_LABELS[id]}${earned ? ' earned' : ''}`}
+                        >
+                          <PixelIcon name={BADGE_ICONS[id] ?? 'star'} size={12} />
+                          <span style={{ fontSize: '6px', color: earned ? 'var(--text-bright)' : 'var(--text-dim)', textAlign: 'center' }}>
+                            {BADGE_LABELS[id]}{earned && count > 1 ? ` ×${count}` : ''}
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                {/* kro Certificates */}
+                {profile.kroCertificates && profile.kroCertificates.length > 0 && (
+                  <div>
+                    <div style={{ fontSize: '7px', color: 'var(--text-dim)', marginBottom: 4, letterSpacing: '0.05em' }}>KRO CERTIFICATES</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                      {profile.kroCertificates.map(c => (
+                        <span key={c} style={{ fontSize: '7px', padding: '2px 6px', background: 'var(--panel-bg)', border: '1px solid var(--gold)', borderRadius: 2, color: 'var(--gold)' }}>{c}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div style={{ fontSize: '8px', color: 'var(--text-dim)', textAlign: 'center', padding: 12 }}>
+                No profile data yet. Complete a dungeon run to start tracking your progress.
+              </div>
+            )}
+
+            <div style={{ fontSize: '7px', color: 'var(--text-dim)', marginTop: 10, textAlign: 'center' }}>
+              Stored in the <code>krombat-profiles</code> ConfigMap in <code>rpg-system</code>.
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
 
 function DungeonBats() {
   const [bats, setBats] = useState<{ id: number; startX: number; startY: number; endX: number; endY: number; dur: number; delay: number }[]>([])

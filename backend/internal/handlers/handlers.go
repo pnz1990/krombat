@@ -204,6 +204,30 @@ func (h *Handler) CreateDungeon(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Load persistent profile to pre-populate inventory and equipment for returning players.
+	// Only applied when the request carries no explicit gear (i.e. not a manual New Game+).
+	var profileInv string
+	var profileEquip map[string]int64
+	if sess != nil {
+		ctx0 := context.Background()
+		cmClient0 := h.client.Dynamic.Resource(leaderboardGVR).Namespace(leaderboardNamespace)
+		if profCM, profErr := cmClient0.Get(ctx0, profileCMName, metav1.GetOptions{}); profErr == nil {
+			if d, ok := profCM.Object["data"].(map[string]interface{}); ok {
+				p := profileFromData(d, sess.Login)
+				if p.HeroHP > 0 || p.Inventory != "" {
+					profileInv = p.Inventory
+					profileEquip = map[string]int64{
+						"weaponBonus": p.WeaponBonus, "weaponUses": p.WeaponUses,
+						"armorBonus": p.ArmorBonus, "shieldBonus": p.ShieldBonus,
+						"helmetBonus": p.HelmetBonus, "pantsBonus": p.PantsBonus,
+						"bootsBonus": p.BootsBonus, "ringBonus": p.RingBonus,
+						"amuletBonus": p.AmuletBonus,
+					}
+				}
+			}
+		}
+	}
+
 	// Backend writes only the player choices. kro dungeonInit specPatch computes
 	// heroHP, heroMana, monsterHP, bossHP, modifier, and monsterTypes from these
 	// fields deterministically via CEL.
@@ -213,31 +237,44 @@ func (h *Handler) CreateDungeon(w http.ResponseWriter, r *http.Request) {
 		"heroClass":  heroClass,
 		"runCount":   runCount,
 	}
-	// Carry over gear bonuses from prior run (New Game+)
-	if req.WeaponBonus > 0 {
-		dungeonSpec["weaponBonus"] = req.WeaponBonus
+	// Carry over gear bonuses: explicit request values take priority,
+	// then fall back to persistent profile values for returning players.
+	applyBonus := func(field string, reqVal int64, profileVal int64) {
+		if reqVal > 0 {
+			dungeonSpec[field] = reqVal
+		} else if profileVal > 0 {
+			dungeonSpec[field] = profileVal
+		}
+	}
+	var profWeaponUses, profWeaponBonus, profArmorBonus, profShieldBonus int64
+	var profHelmetBonus, profPantsBonus, profBootsBonus, profRingBonus, profAmuletBonus int64
+	if profileEquip != nil {
+		profWeaponBonus = profileEquip["weaponBonus"]
+		profWeaponUses = profileEquip["weaponUses"]
+		profArmorBonus = profileEquip["armorBonus"]
+		profShieldBonus = profileEquip["shieldBonus"]
+		profHelmetBonus = profileEquip["helmetBonus"]
+		profPantsBonus = profileEquip["pantsBonus"]
+		profBootsBonus = profileEquip["bootsBonus"]
+		profRingBonus = profileEquip["ringBonus"]
+		profAmuletBonus = profileEquip["amuletBonus"]
+	}
+	applyBonus("weaponBonus", req.WeaponBonus, profWeaponBonus)
+	if req.WeaponUses > 0 {
 		dungeonSpec["weaponUses"] = req.WeaponUses
+	} else if profWeaponUses > 0 {
+		dungeonSpec["weaponUses"] = profWeaponUses
 	}
-	if req.ArmorBonus > 0 {
-		dungeonSpec["armorBonus"] = req.ArmorBonus
-	}
-	if req.ShieldBonus > 0 {
-		dungeonSpec["shieldBonus"] = req.ShieldBonus
-	}
-	if req.HelmetBonus > 0 {
-		dungeonSpec["helmetBonus"] = req.HelmetBonus
-	}
-	if req.PantsBonus > 0 {
-		dungeonSpec["pantsBonus"] = req.PantsBonus
-	}
-	if req.BootsBonus > 0 {
-		dungeonSpec["bootsBonus"] = req.BootsBonus
-	}
-	if req.RingBonus > 0 {
-		dungeonSpec["ringBonus"] = req.RingBonus
-	}
-	if req.AmuletBonus > 0 {
-		dungeonSpec["amuletBonus"] = req.AmuletBonus
+	applyBonus("armorBonus", req.ArmorBonus, profArmorBonus)
+	applyBonus("shieldBonus", req.ShieldBonus, profShieldBonus)
+	applyBonus("helmetBonus", req.HelmetBonus, profHelmetBonus)
+	applyBonus("pantsBonus", req.PantsBonus, profPantsBonus)
+	applyBonus("bootsBonus", req.BootsBonus, profBootsBonus)
+	applyBonus("ringBonus", req.RingBonus, profRingBonus)
+	applyBonus("amuletBonus", req.AmuletBonus, profAmuletBonus)
+	// Carry persistent inventory if no explicit inventory was provided.
+	if profileInv != "" {
+		dungeonSpec["inventory"] = profileInv
 	}
 
 	dungeon := &unstructured.Unstructured{Object: map[string]interface{}{
@@ -374,6 +411,11 @@ func (h *Handler) DeleteDungeon(w http.ResponseWriter, r *http.Request) {
 		kroStatus, _ := dungeon.Object["status"].(map[string]interface{})
 		if spec != nil {
 			go h.recordLeaderboard(spec, kroStatus, name)
+			login := ""
+			if sess2 := sessionFromCtx(r.Context()); sess2 != nil {
+				login = sess2.Login
+			}
+			go h.recordProfile(login, spec, kroStatus)
 		}
 	}
 
@@ -403,6 +445,8 @@ type LeaderboardEntry struct {
 const leaderboardCMName = "krombat-leaderboard"
 const leaderboardNamespace = "rpg-system"
 const leaderboardMaxEntries = 100
+
+const profileCMName = "krombat-profiles"
 
 var leaderboardGVR = schema.GroupVersionResource{Group: "", Version: "v1", Resource: "configmaps"}
 
@@ -559,6 +603,373 @@ func (h *Handler) recordLeaderboard(spec map[string]interface{}, kroStatus map[s
 	if _, patchErr := cmClient.Patch(ctx, leaderboardCMName, types.MergePatchType, patchJSON, metav1.PatchOptions{}); patchErr != nil {
 		slog.Warn("leaderboard: failed to patch ConfigMap", "error", patchErr)
 	}
+}
+
+// UserProfile holds a player's persistent cross-dungeon stats, badges, and inventory.
+type UserProfile struct {
+	DungeonsPlayed    int            `json:"dungeonsPlayed"`
+	DungeonsWon       int            `json:"dungeonsWon"`
+	DungeonsLost      int            `json:"dungeonsLost"`
+	DungeonsAbandoned int            `json:"dungeonsAbandoned"`
+	TotalTurns        int            `json:"totalTurns"`
+	TotalKills        int            `json:"totalKills"`
+	TotalBossKills    int            `json:"totalBossKills"`
+	FavouriteClass    string         `json:"favouriteClass"`
+	FavouriteDiff     string         `json:"favouriteDifficulty"`
+	Inventory         string         `json:"inventory"` // CSV, same format as spec.inventory
+	WeaponBonus       int64          `json:"weaponBonus"`
+	WeaponUses        int64          `json:"weaponUses"`
+	ArmorBonus        int64          `json:"armorBonus"`
+	ShieldBonus       int64          `json:"shieldBonus"`
+	HelmetBonus       int64          `json:"helmetBonus"`
+	PantsBonus        int64          `json:"pantsBonus"`
+	BootsBonus        int64          `json:"bootsBonus"`
+	RingBonus         int64          `json:"ringBonus"`
+	AmuletBonus       int64          `json:"amuletBonus"`
+	HeroHP            int64          `json:"heroHP"`
+	HeroMana          int64          `json:"heroMana"`
+	EarnedBadges      []string       `json:"earnedBadges"`
+	BadgeCounts       map[string]int `json:"badgeCounts"`
+	XP                int            `json:"xp"`
+	Level             int            `json:"level"`
+	KroCertificates   []string       `json:"kroCertificates"`
+	FirstPlayed       string         `json:"firstPlayed"`
+	LastPlayed        string         `json:"lastPlayed"`
+}
+
+func emptyProfile() UserProfile {
+	return UserProfile{
+		EarnedBadges:    []string{},
+		BadgeCounts:     map[string]int{},
+		KroCertificates: []string{},
+	}
+}
+
+func profileFromData(data map[string]interface{}, key string) UserProfile {
+	raw, ok := data[key].(string)
+	if !ok || raw == "" {
+		return emptyProfile()
+	}
+	var p UserProfile
+	if err := json.Unmarshal([]byte(raw), &p); err != nil {
+		return emptyProfile()
+	}
+	if p.EarnedBadges == nil {
+		p.EarnedBadges = []string{}
+	}
+	if p.BadgeCounts == nil {
+		p.BadgeCounts = map[string]int{}
+	}
+	if p.KroCertificates == nil {
+		p.KroCertificates = []string{}
+	}
+	return p
+}
+
+// classDefaultHP returns the default max HP for a hero class.
+func classDefaultHP(heroClass string) int64 {
+	switch heroClass {
+	case "mage":
+		return 120
+	case "rogue":
+		return 150
+	default:
+		return 200
+	}
+}
+
+// classDefaultMana returns the default max mana for a hero class (only mage has mana).
+func classDefaultMana(heroClass string) int64 {
+	if heroClass == "mage" {
+		return 8
+	}
+	return 0
+}
+
+// computeProfileBadges returns badge IDs earned in this dungeon run that should be
+// persisted to the profile. Career badges (multi-class, reaper, legend) are evaluated
+// after profile stats are updated.
+func computeProfileBadges(spec map[string]interface{}, outcome string) []string {
+	if outcome != "victory" && outcome != "room1-cleared" {
+		return nil
+	}
+	heroClass, _ := spec["heroClass"].(string)
+	difficulty, _ := spec["difficulty"].(string)
+	attackSeq := getInt(spec, "attackSeq")
+	actionSeq := getInt(spec, "actionSeq")
+	totalTurns := attackSeq + actionSeq
+	heroHP := getInt(spec, "heroHP")
+	currentRoom := getInt(spec, "currentRoom")
+
+	maxHeroHP := classDefaultHP(heroClass)
+
+	weaponBonus := getInt(spec, "weaponBonus")
+	equip := []interface{}{
+		spec["weaponBonus"], spec["armorBonus"], spec["shieldBonus"],
+		spec["helmetBonus"], spec["pantsBonus"], spec["bootsBonus"],
+		spec["ringBonus"], spec["amuletBonus"],
+	}
+	equippedCount := 0
+	for _, v := range equip {
+		if getInt(map[string]interface{}{"v": v}, "v") > 0 {
+			equippedCount++
+		}
+	}
+
+	// Check no-potion: if inventory still contains potions and hero never used one
+	// — approximated by checking whether any potion type appears in lastHeroAction
+	lastAction, _ := spec["lastHeroAction"].(string)
+	usedPotion := strings.Contains(lastAction, "potion")
+
+	var badges []string
+	addIf := func(id string, cond bool) {
+		if cond {
+			badges = append(badges, id)
+		}
+	}
+
+	addIf("speedrun", totalTurns <= 30 && outcome == "victory")
+	addIf("deathless", heroHP >= maxHeroHP*8/10 && outcome == "victory")
+	addIf("pacifist", weaponBonus == 0 && outcome == "victory")
+	addIf("warrior-win", heroClass == "warrior" && outcome == "victory")
+	addIf("mage-win", heroClass == "mage" && outcome == "victory")
+	addIf("rogue-win", heroClass == "rogue" && outcome == "victory")
+	addIf("hard-win", difficulty == "hard" && outcome == "victory")
+	addIf("collector", equippedCount >= 5 && outcome == "victory")
+	addIf("room2-winner", currentRoom >= 2 && outcome == "victory")
+	addIf("no-damage", heroHP >= maxHeroHP && outcome == "victory")
+	addIf("no-potions", !usedPotion && outcome == "victory")
+	addIf("full-kit", equippedCount >= 8 && outcome == "victory")
+	return badges
+}
+
+// recordProfile writes/updates the player's profile ConfigMap in rpg-system.
+// Called asynchronously before dungeon deletion. Silently skips on any error.
+func (h *Handler) recordProfile(login string, spec map[string]interface{}, kroStatus map[string]interface{}) {
+	if login == "" {
+		login = "anonymous"
+	}
+
+	heroClass, _ := spec["heroClass"].(string)
+	difficulty, _ := spec["difficulty"].(string)
+	attackSeq := getInt(spec, "attackSeq")
+	actionSeq := getInt(spec, "actionSeq")
+	totalTurns := attackSeq + actionSeq
+
+	// Derive outcome same way as recordLeaderboard.
+	outcome := "in-progress"
+	if kroStatus != nil {
+		isVictory, _ := kroStatus["victory"].(bool)
+		isDefeat, _ := kroStatus["defeat"].(bool)
+		if isVictory {
+			outcome = "victory"
+		} else if isDefeat {
+			outcome = "defeat"
+		} else {
+			heroHP := getInt(spec, "heroHP")
+			bossHP := getInt(spec, "bossHP")
+			if heroHP > 0 {
+				monsterHPRaw, _ := spec["monsterHP"].([]interface{})
+				allDead := true
+				for _, v := range monsterHPRaw {
+					if sliceInt(v) > 0 {
+						allDead = false
+						break
+					}
+				}
+				if bossHP <= 0 && allDead {
+					outcome = "room1-cleared"
+				}
+			}
+		}
+	} else {
+		heroHP := getInt(spec, "heroHP")
+		bossHP := getInt(spec, "bossHP")
+		if heroHP <= 0 {
+			outcome = "defeat"
+		} else {
+			monsterHPRaw, _ := spec["monsterHP"].([]interface{})
+			allDead := true
+			for _, v := range monsterHPRaw {
+				if sliceInt(v) > 0 {
+					allDead = false
+					break
+				}
+			}
+			if bossHP <= 0 && allDead && getInt(spec, "currentRoom") >= 2 {
+				outcome = "victory"
+			} else if bossHP <= 0 && allDead {
+				outcome = "room1-cleared"
+			}
+		}
+	}
+
+	ctx := context.Background()
+	cmClient := h.client.Dynamic.Resource(leaderboardGVR).Namespace(leaderboardNamespace)
+
+	// Load existing profiles CM or start fresh.
+	var profile UserProfile
+	existing, err := cmClient.Get(ctx, profileCMName, metav1.GetOptions{})
+	var data map[string]interface{}
+	if err == nil {
+		data, _ = existing.Object["data"].(map[string]interface{})
+		if data == nil {
+			data = map[string]interface{}{}
+		}
+		profile = profileFromData(data, login)
+	} else {
+		data = map[string]interface{}{}
+		profile = emptyProfile()
+		profile.FirstPlayed = time.Now().UTC().Format(time.RFC3339)
+	}
+	if profile.FirstPlayed == "" {
+		profile.FirstPlayed = time.Now().UTC().Format(time.RFC3339)
+	}
+	profile.LastPlayed = time.Now().UTC().Format(time.RFC3339)
+
+	// Always update stats.
+	profile.DungeonsPlayed++
+	profile.TotalTurns += int(totalTurns)
+
+	// Count monster kills this run.
+	monsterHPRaw, _ := spec["monsterHP"].([]interface{})
+	for _, v := range monsterHPRaw {
+		if sliceInt(v) <= 0 {
+			profile.TotalKills++
+		}
+	}
+
+	// Count boss kill.
+	if getInt(spec, "bossHP") <= 0 {
+		profile.TotalBossKills++
+	}
+
+	// Update favourite class (most victories per class).
+	if outcome == "victory" {
+		profile.DungeonsWon++
+		// Carry inventory and equipment forward only on victory.
+		profile.Inventory, _ = spec["inventory"].(string)
+		profile.WeaponBonus = getInt(spec, "weaponBonus")
+		profile.WeaponUses = getInt(spec, "weaponUses")
+		profile.ArmorBonus = getInt(spec, "armorBonus")
+		profile.ShieldBonus = getInt(spec, "shieldBonus")
+		profile.HelmetBonus = getInt(spec, "helmetBonus")
+		profile.PantsBonus = getInt(spec, "pantsBonus")
+		profile.BootsBonus = getInt(spec, "bootsBonus")
+		profile.RingBonus = getInt(spec, "ringBonus")
+		profile.AmuletBonus = getInt(spec, "amuletBonus")
+		// Reset HP/mana to class defaults on victory.
+		profile.HeroHP = classDefaultHP(heroClass)
+		profile.HeroMana = classDefaultMana(heroClass)
+		profile.FavouriteClass = heroClass
+		profile.FavouriteDiff = difficulty
+	} else if outcome == "defeat" {
+		profile.DungeonsLost++
+		// Persist hero's wounded state — next dungeon inherits these HP values.
+		profile.HeroHP = getInt(spec, "heroHP")
+		profile.HeroMana = getInt(spec, "heroMana")
+	} else {
+		profile.DungeonsAbandoned++
+	}
+
+	// Append earned badges and increment counts.
+	newBadges := computeProfileBadges(spec, outcome)
+	existing_set := map[string]bool{}
+	for _, b := range profile.EarnedBadges {
+		existing_set[b] = true
+	}
+	for _, b := range newBadges {
+		if !existing_set[b] {
+			profile.EarnedBadges = append(profile.EarnedBadges, b)
+		}
+		profile.BadgeCounts[b]++
+	}
+
+	// Career badges evaluated after stats update.
+	wonClasses := map[string]bool{}
+	// Infer from badges.
+	for _, b := range profile.EarnedBadges {
+		switch b {
+		case "warrior-win":
+			wonClasses["warrior"] = true
+		case "mage-win":
+			wonClasses["mage"] = true
+		case "rogue-win":
+			wonClasses["rogue"] = true
+		}
+	}
+	if len(wonClasses) >= 3 && !existing_set["multi-class"] {
+		profile.EarnedBadges = append(profile.EarnedBadges, "multi-class")
+		profile.BadgeCounts["multi-class"]++
+	}
+	if profile.DungeonsWon >= 10 && !existing_set["reaper"] {
+		profile.EarnedBadges = append(profile.EarnedBadges, "reaper")
+		profile.BadgeCounts["reaper"]++
+	}
+	if profile.DungeonsWon >= 25 && !existing_set["legend"] {
+		profile.EarnedBadges = append(profile.EarnedBadges, "legend")
+		profile.BadgeCounts["legend"]++
+	}
+	if getInt(spec, "runCount") >= 1 && outcome == "victory" && !existing_set["new-game-plus"] {
+		profile.EarnedBadges = append(profile.EarnedBadges, "new-game-plus")
+		profile.BadgeCounts["new-game-plus"]++
+	}
+
+	profileJSON, err := json.Marshal(profile)
+	if err != nil {
+		slog.Warn("profile: failed to marshal", "user", login, "error", err)
+		return
+	}
+	data[login] = string(profileJSON)
+
+	if existing == nil || err != nil {
+		newCM := &unstructured.Unstructured{Object: map[string]interface{}{
+			"apiVersion": "v1",
+			"kind":       "ConfigMap",
+			"metadata": map[string]interface{}{
+				"name":      profileCMName,
+				"namespace": leaderboardNamespace,
+			},
+			"data": data,
+		}}
+		if _, createErr := cmClient.Create(ctx, newCM, metav1.CreateOptions{}); createErr != nil {
+			slog.Warn("profile: failed to create ConfigMap", "user", login, "error", createErr)
+		}
+		return
+	}
+
+	patch := map[string]interface{}{"data": data}
+	patchJSON, _ := json.Marshal(patch)
+	if _, patchErr := cmClient.Patch(ctx, profileCMName, types.MergePatchType, patchJSON, metav1.PatchOptions{}); patchErr != nil {
+		slog.Warn("profile: failed to patch ConfigMap", "user", login, "error", patchErr)
+	}
+}
+
+// GetProfile returns the authenticated user's persistent profile.
+func (h *Handler) GetProfile(w http.ResponseWriter, r *http.Request) {
+	sess := sessionFromCtx(r.Context())
+	login := "anonymous"
+	if sess != nil {
+		login = sess.Login
+	}
+
+	ctx := context.Background()
+	cmClient := h.client.Dynamic.Resource(leaderboardGVR).Namespace(leaderboardNamespace)
+
+	existing, err := cmClient.Get(ctx, profileCMName, metav1.GetOptions{})
+	if err != nil {
+		// No profiles CM yet — return empty profile.
+		profile := emptyProfile()
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(profile)
+		return
+	}
+
+	data, _ := existing.Object["data"].(map[string]interface{})
+	profile := profileFromData(data, login)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(profile)
 }
 
 // GetLeaderboard returns the top 20 completed runs sorted by fewest turns.
