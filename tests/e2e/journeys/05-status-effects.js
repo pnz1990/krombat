@@ -3,7 +3,7 @@
 // Strategy: fight against boss (25% burn, 15% stun) and monsters (20% poison)
 // until effects are naturally inflicted, then verify badge display and tick behaviour.
 const { chromium } = require('playwright');
-const { createDungeonUI, waitForCombatResult, dismissLootPopup, navigateHome, deleteDungeon } = require('./helpers');
+const { createDungeonUI, waitForCombatResult, dismissLootPopup, navigateHome, deleteDungeon , testLogin} = require('./helpers');
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 const TIMEOUT = 15000;
@@ -111,6 +111,8 @@ async function run() {
     // With 6 monsters we expect ~1.2 poison procs before they're all dead.
     // We keep attacking until we observe each effect (warn if not seen within budget).
     console.log('=== Setup: Create Warrior Easy Dungeon ===');
+    await testLogin(page, BASE_URL);
+
     await page.goto(BASE_URL, { timeout: TIMEOUT });
     await page.waitForTimeout(2000);
     const created = await createDungeonUI(page, dName, { monsters: 6, difficulty: 'easy', heroClass: 'warrior' });

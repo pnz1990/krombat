@@ -1,7 +1,7 @@
 // Journey 7: Dungeon Management — create, list, navigate, delete
 // UI-ONLY: no kubectl, no fetch/api, no execSync
 const { chromium } = require('playwright');
-const { createDungeonUI, navigateHome, deleteDungeon } = require('./helpers');
+const { createDungeonUI, navigateHome, deleteDungeon , testLogin} = require('./helpers');
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 const TIMEOUT = 15000;
@@ -20,6 +20,8 @@ async function run() {
     // === Create 3 dungeons via UI ===
     console.log('=== Create Dungeons ===');
     for (const name of names) {
+      await testLogin(page, BASE_URL);
+
       await page.goto(BASE_URL, { timeout: TIMEOUT });
       await page.waitForTimeout(2000);
       const created = await createDungeonUI(page, name, { monsters: 1, difficulty: 'easy', heroClass: 'warrior' });

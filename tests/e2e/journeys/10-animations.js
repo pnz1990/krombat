@@ -4,7 +4,7 @@
 //        combat modal sprites, hero sprite, post-dismiss state.
 // Room 2 sprite check is omitted — playing all the way through would take ~15 min.
 const { chromium } = require('playwright');
-const { createDungeonUI, waitForCombatResult, dismissLootPopup, navigateHome, deleteDungeon, attackMonster } = require('./helpers');
+const { createDungeonUI, waitForCombatResult, dismissLootPopup, navigateHome, deleteDungeon, attackMonster , testLogin} = require('./helpers');
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 const TIMEOUT = 15000;
@@ -49,6 +49,8 @@ async function run() {
   try {
     // === Setup: Create dungeon with 2 monsters ===
     console.log('=== Setup: Create Dungeon ===');
+    await testLogin(page, BASE_URL);
+
     await page.goto(BASE_URL, { timeout: TIMEOUT });
     await page.waitForTimeout(2000);
     // Easy warrior: 200 hero HP, avg 12.5 damage/attack.

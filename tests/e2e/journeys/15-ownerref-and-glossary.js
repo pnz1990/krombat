@@ -6,7 +6,7 @@
 //   3. Search bar filters concepts, clear button restores all, empty state for nonsense query
 //   4. Glossary header shows total of /23 concepts
 const { chromium } = require('playwright');
-const { createDungeonUI, attackMonster, waitForCombatResult, dismissLootPopup, navigateHome, deleteDungeon } = require('./helpers');
+const { createDungeonUI, attackMonster, waitForCombatResult, dismissLootPopup, navigateHome, deleteDungeon , testLogin} = require('./helpers');
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 const TIMEOUT = 30000;
@@ -36,6 +36,8 @@ async function run() {
 
   try {
     // Ensure onboarding is already done so it doesn't block the test
+    await testLogin(page, BASE_URL);
+
     await page.goto(BASE_URL, { timeout: TIMEOUT });
     await page.evaluate(() => localStorage.setItem('kroOnboardingDone', '1'));
     await page.reload({ waitUntil: 'networkidle', timeout: TIMEOUT });

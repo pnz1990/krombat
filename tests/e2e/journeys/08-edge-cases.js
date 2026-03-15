@@ -1,7 +1,7 @@
 // Journey 8: Edge Cases & Error States
 // UI-ONLY: no kubectl, no fetch/api, no execSync
 const { chromium } = require('playwright');
-const { createDungeonUI, attackMonster, attackBoss, waitForCombatResult, dismissLootPopup, navigateHome, deleteDungeon } = require('./helpers');
+const { createDungeonUI, attackMonster, attackBoss, waitForCombatResult, dismissLootPopup, navigateHome, deleteDungeon , testLogin} = require('./helpers');
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 const TIMEOUT = 15000;
@@ -51,6 +51,8 @@ async function run() {
     // === Test 1: Speed run — 1 monster easy, play to victory ===
     console.log('=== Test 1: Speed Run (1 monster, easy) ===');
     const speedName = `j8sp${ts}`;
+    await testLogin(page, BASE_URL);
+
     await page.goto(BASE_URL, { timeout: TIMEOUT });
     await page.waitForTimeout(2000);
     await createDungeonUI(page, speedName, { monsters: 1, difficulty: 'easy', heroClass: 'warrior' });

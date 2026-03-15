@@ -3,7 +3,7 @@
 // Tests: KroGraph node click → Inspector panel; kubectl command; YAML content;
 //        close button; switching between nodes updates inspector.
 const { chromium } = require('playwright');
-const { createDungeonUI, navigateHome, deleteDungeon } = require('./helpers');
+const { createDungeonUI, navigateHome, deleteDungeon , testLogin} = require('./helpers');
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 const TIMEOUT = 20000;
@@ -47,6 +47,8 @@ async function run() {
   page.on('console', msg => { if (msg.type() === 'error') consoleErrors.push(msg.text()); });
 
   try {
+    await testLogin(page, BASE_URL);
+
     await page.goto(BASE_URL, { timeout: TIMEOUT });
     await page.waitForSelector('input[placeholder="my-dungeon"]', { timeout: TIMEOUT });
 

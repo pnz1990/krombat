@@ -349,3 +349,42 @@ func LogoutHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"ok": "logged out"})
 }
+
+// TestLoginHandler issues a real signed session cookie when KROMBAT_TEST_USER is configured.
+// It accepts ?token=<value> as a query param so automated browser tests can
+// call page.goto('/api/v1/auth/test-login?token=...') to obtain a session without
+// going through the full GitHub OAuth flow.
+//
+// Returns 404 when KROMBAT_TEST_USER is not set (disabled in production without the secret).
+func TestLoginHandler(w http.ResponseWriter, r *http.Request) {
+	testUser := os.Getenv("KROMBAT_TEST_USER")
+	if testUser == "" {
+		http.NotFound(w, r)
+		return
+	}
+	token := r.URL.Query().Get("token")
+	if token == "" || token != testUser {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	payload := sessionPayload{
+		Login:     testUser,
+		AvatarURL: "",
+		ExpiresAt: time.Now().Add(sessionTTL).Unix(),
+	}
+	signed, err := signToken(payload)
+	if err != nil {
+		http.Error(w, "session create failed", http.StatusInternalServerError)
+		return
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     sessionCookieName,
+		Value:    signed,
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   int(sessionTTL.Seconds()),
+	})
+	http.Redirect(w, r, "/", http.StatusFound)
+}

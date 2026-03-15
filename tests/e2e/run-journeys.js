@@ -3,9 +3,30 @@
 // Runs all journey test files concurrently and reports aggregated results.
 // Usage: node tests/e2e/run-journeys.js [--filter 01,07]
 
-const { spawn } = require('child_process');
+const { spawn, execSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+
+const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
+const FILTER = process.env.FILTER || (process.argv[2] ? process.argv[2].replace('--filter=', '') : null);
+
+// Read KROMBAT_TEST_TOKEN from cluster secret if not already set in env.
+// Allows journey tests to authenticate via the test-login bypass endpoint.
+let KROMBAT_TEST_TOKEN = process.env.KROMBAT_TEST_TOKEN || '';
+if (!KROMBAT_TEST_TOKEN) {
+  try {
+    const ctx = process.env.KUBECTL_CONTEXT || 'arn:aws:eks:us-west-2:319279230668:cluster/krombat';
+    const raw = execSync(
+      `kubectl --context "${ctx}" get secret krombat-test-auth -n rpg-system -o jsonpath='{.data.KROMBAT_TEST_USER}'`,
+      { stdio: ['ignore', 'pipe', 'ignore'] }
+    ).toString().trim();
+    if (raw) {
+      KROMBAT_TEST_TOKEN = Buffer.from(raw, 'base64').toString('utf8').trim();
+    }
+  } catch (_) {
+    // Secret not available — test bypass will be skipped; tests may fail if login screen is shown
+  }
+}
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 const FILTER = process.env.FILTER || (process.argv[2] ? process.argv[2].replace('--filter=', '') : null);
@@ -37,7 +58,7 @@ const runs = files.map(file => {
 
   return new Promise(resolve => {
     const proc = spawn(process.execPath, [fullPath], {
-      env: { ...process.env, BASE_URL },
+      env: { ...process.env, BASE_URL, KROMBAT_TEST_TOKEN },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 

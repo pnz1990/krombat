@@ -51,6 +51,9 @@ func main() {
 	mux.HandleFunc("GET /api/v1/auth/callback", handlers.CallbackHandler)
 	mux.HandleFunc("GET /api/v1/auth/me", handlers.MeHandler)
 	mux.HandleFunc("GET /api/v1/auth/logout", handlers.LogoutHandler)
+	// Test-only login: issues a real session cookie when KROMBAT_TEST_USER is set.
+	// Returns 404 when the krombat-test-auth secret is absent (i.e. in environments without the secret).
+	mux.HandleFunc("GET /api/v1/auth/test-login", handlers.TestLoginHandler)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
 	mux.Handle("GET /metrics", promhttp.Handler())
 
