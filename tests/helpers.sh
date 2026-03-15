@@ -40,9 +40,19 @@ wait_dungeon_ready() {
 # BACKEND_URL is set by each test or defaults to port-forwarded backend.
 BACKEND_URL="${BACKEND_URL:-http://localhost:8089}"
 
-# Auth bypass header for integration tests.  The backend accepts X-Test-User when
-# KROMBAT_TEST_USER env var matches the header value (set to "test-player" in prod).
-TEST_USER_HEADER=(-H "X-Test-User: test-player")
+# Auth bypass header for integration tests.
+# The backend reads KROMBAT_TEST_USER from the krombat-test-auth K8s Secret.
+# Test scripts fetch the value at runtime so the token is never committed to git.
+_test_user_val() {
+  kubectl --context "$KUBECTL_CONTEXT" get secret krombat-test-auth \
+    -n rpg-system -o jsonpath='{.data.KROMBAT_TEST_USER}' 2>/dev/null \
+    | base64 -d 2>/dev/null || echo ""
+}
+_TEST_USER="${_TEST_USER:-$(_test_user_val)}"
+if [ -z "$_TEST_USER" ]; then
+  echo "⚠️  krombat-test-auth secret not found — test bypass unavailable (run tests/create-test-secret.sh)" >&2
+fi
+TEST_USER_HEADER=(-H "X-Test-User: ${_TEST_USER}")
 
 # Setup port-forward for backend if not already running on BACKEND_URL port
 # Call once per test group; stores PF_PID for cleanup

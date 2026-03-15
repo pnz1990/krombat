@@ -6,8 +6,14 @@ set -euo pipefail
 KUBECTL_CONTEXT="${KUBECTL_CONTEXT:-arn:aws:eks:us-west-2:319279230668:cluster/krombat}"
 kctl() { kubectl --context "$KUBECTL_CONTEXT" "$@"; }
 
-# Auth bypass header — backend accepts X-Test-User when KROMBAT_TEST_USER env matches
-AUTH_H=(-H "X-Test-User: test-player")
+# Auth bypass header — backend accepts X-Test-User when KROMBAT_TEST_USER env matches.
+# Value is read from the krombat-test-auth K8s Secret (never committed to git).
+_TEST_USER="$(kubectl --context "$KUBECTL_CONTEXT" get secret krombat-test-auth \
+  -n rpg-system -o jsonpath='{.data.KROMBAT_TEST_USER}' 2>/dev/null | base64 -d 2>/dev/null || echo "")"
+if [ -z "$_TEST_USER" ]; then
+  echo "⚠️  krombat-test-auth secret not found — live API guardrail checks will skip auth" >&2
+fi
+AUTH_H=(-H "X-Test-User: ${_TEST_USER}")
 
 PASS=0
 FAIL=0

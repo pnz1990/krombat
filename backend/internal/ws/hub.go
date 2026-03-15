@@ -3,6 +3,8 @@ package ws
 import (
 	"log/slog"
 	"net/http"
+	"os"
+	"strings"
 	"sync"
 
 	"github.com/gorilla/websocket"
@@ -23,8 +25,33 @@ type Event struct {
 	Payload   interface{} `json:"payload,omitempty"`
 }
 
+// allowedOrigins returns the set of origins permitted for WebSocket upgrades.
+// Configured via ALLOWED_ORIGINS env var (comma-separated).  Defaults to the
+// prod ALB hostname so the pod starts safely without explicit configuration.
+func allowedOrigins() map[string]bool {
+	raw := os.Getenv("ALLOWED_ORIGINS")
+	if raw == "" {
+		raw = "https://learn-kro.eks.aws.dev"
+	}
+	m := make(map[string]bool)
+	for _, o := range strings.Split(raw, ",") {
+		o = strings.TrimSpace(o)
+		if o != "" {
+			m[o] = true
+		}
+	}
+	return m
+}
+
 var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool { return true },
+	CheckOrigin: func(r *http.Request) bool {
+		origin := r.Header.Get("Origin")
+		// Allow requests with no Origin header (same-origin curl / health checks)
+		if origin == "" {
+			return true
+		}
+		return allowedOrigins()[origin]
+	},
 }
 
 type connFilter struct {

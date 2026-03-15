@@ -29,12 +29,15 @@ spec:
           env:
             - name: GITHUB_CALLBACK_URL
               value: "https://learn-kro.eks.aws.dev/api/v1/auth/callback"
-            - name: KROMBAT_TEST_USER
-              value: "test-player"
+            - name: ALLOWED_ORIGINS
+              value: "https://learn-kro.eks.aws.dev"
           envFrom:
             - secretRef:
                 name: krombat-github-oauth
                 optional: true   # pod still starts without the secret; OAuth simply returns 503
+            - secretRef:
+                name: krombat-test-auth
+                optional: true   # pod still starts without the secret; test bypass disabled if absent
           readinessProbe:
             httpGet:
               path: /healthz
