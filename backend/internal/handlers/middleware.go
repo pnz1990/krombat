@@ -1,8 +1,10 @@
 package handlers
 
 import (
+	"bufio"
 	"context"
 	"log/slog"
+	"net"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -31,6 +33,12 @@ func (rw *responseWriter) Write(b []byte) (int, error) {
 	n, err := rw.ResponseWriter.Write(b)
 	rw.bytes += n
 	return n, err
+}
+
+// Hijack implements http.Hijacker so that gorilla/websocket can take over the
+// underlying TCP connection for WebSocket upgrades.
+func (rw *responseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	return rw.ResponseWriter.(http.Hijacker).Hijack()
 }
 
 // pathParamRe matches dynamic path segments (namespace names and dungeon names).
