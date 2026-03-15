@@ -15,9 +15,10 @@ spec:
     spec:
       serviceAccountName: rpg-backend-sa
       topologySpreadConstraints:
+        # #471: enforce AZ spread — backend pods must not stack on same zone
         - maxSkew: 1
           topologyKey: topology.kubernetes.io/zone
-          whenUnsatisfiable: ScheduleAnyway
+          whenUnsatisfiable: DoNotSchedule
           labelSelector:
             matchLabels:
               app: rpg-backend

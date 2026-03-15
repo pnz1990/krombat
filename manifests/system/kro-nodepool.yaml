@@ -1,0 +1,44 @@
+# #472: Dedicated node pool for kro operator.
+# kro needs guaranteed resources isolated from game traffic spikes.
+# Taint: krombat.io/role=kro:NoSchedule — only kro pods (with matching toleration) schedule here.
+# Instance type: m7i.2xlarge (8 vCPU / 32Gi) — enough headroom for kro 8Gi Guaranteed QoS.
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: kro
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  template:
+    metadata:
+      labels:
+        krombat.io/role: kro
+    spec:
+      requirements:
+        - key: karpenter.sh/capacity-type
+          operator: In
+          values: ["on-demand"]
+        - key: kubernetes.io/arch
+          operator: In
+          values: ["amd64"]
+        - key: node.kubernetes.io/instance-type
+          operator: In
+          # m7i.2xlarge: 8 vCPU, 32 GiB — fits kro 8Gi Guaranteed + system overhead
+          values: ["m7i.2xlarge"]
+        - key: topology.kubernetes.io/zone
+          operator: In
+          values: ["us-west-2a", "us-west-2b", "us-west-2c"]
+      taints:
+        - key: krombat.io/role
+          value: kro
+          effect: NoSchedule
+      nodeClassRef:
+        group: eks.amazonaws.com
+        kind: NodeClass
+        name: default
+  limits:
+    cpu: "16"
+    memory: "64Gi"
+  disruption:
+    consolidationPolicy: WhenEmptyOrUnderutilized
+    consolidateAfter: 30m

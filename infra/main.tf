@@ -46,7 +46,8 @@ data "aws_availability_zones" "available" {
 }
 
 locals {
-  azs = slice(data.aws_availability_zones.available.names, 0, 2)
+  # #471: 3 AZs for HA — backend/frontend spread across us-west-2a/b/c
+  azs = slice(data.aws_availability_zones.available.names, 0, 3)
 }
 
 # --- VPC ---
