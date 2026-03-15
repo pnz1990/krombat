@@ -1011,6 +1011,33 @@ function ProfilePanel({ profile, loading, authUser, onClose }: {
               )}
             </div>
 
+            {/* XP progress bar (#360) */}
+            {profile && profile.level > 0 && (() => {
+              const XP_THRESHOLDS = [0, 100, 250, 500, 1000, 2000, 3500, 5500, 8000, 12000]
+              const LEVEL_TITLES = ['Adventurer', 'Initiate', 'Dungeon Runner', 'Monster Slayer', 'Boss Hunter', 'Dungeon Veteran', 'Elite Delver', 'Master Delver', 'Kro Wielder', 'Dungeon Architect']
+              const lvl = profile.level
+              const title = LEVEL_TITLES[lvl - 1] ?? 'Dungeon Architect'
+              const currentXP = profile.xp
+              const thisLvlXP = XP_THRESHOLDS[lvl - 1] ?? 0
+              const nextLvlXP = XP_THRESHOLDS[lvl] ?? null
+              const pct = nextLvlXP ? Math.min(100, ((currentXP - thisLvlXP) / (nextLvlXP - thisLvlXP)) * 100) : 100
+              return (
+                <div style={{ marginBottom: 10 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '7px', color: 'var(--text-dim)', marginBottom: 3 }}>
+                    <span style={{ color: 'var(--gold)' }}>Lv.{lvl} {title}</span>
+                    {nextLvlXP ? (
+                      <span>{currentXP} / {nextLvlXP} XP → Lv.{lvl + 1}</span>
+                    ) : (
+                      <span style={{ color: 'var(--gold)' }}>MAX LEVEL</span>
+                    )}
+                  </div>
+                  <div style={{ background: 'var(--border)', borderRadius: 2, height: 6, overflow: 'hidden' }}>
+                    <div style={{ width: `${pct}%`, background: 'var(--gold)', height: '100%', transition: 'width 0.4s ease' }} />
+                  </div>
+                </div>
+              )
+            })()}
+
             {/* Lifetime stats */}
             {profile ? (
               <>
@@ -1515,6 +1542,28 @@ function HelpModal({ onClose, onCheat }: { onClose: () => void; onCheat: () => v
         <p><b>Modifiers:</b> Blessing of Fortune (20% crit) is the strongest. Curse of Fury makes boss fights brutal — especially in BERSERK phase.</p>
       </>
     )},
+    { title: 'XP & Levelling', content: (
+      <>
+        <p>Earn XP during every run. Kill XP is kept even on defeat — only end-of-dungeon bonuses require a win. XP accumulates in the <code>spec.xpEarned</code> field on the Dungeon CR, patched by the backend after each kill.</p>
+        <table className="help-table">
+          <thead><tr><th>Event</th><th>XP</th></tr></thead>
+          <tbody>
+            <tr><td>Monster kill</td><td>+10</td></tr>
+            <tr><td>Room 1 boss kill</td><td>+50</td></tr>
+            <tr><td>Room 1 clear bonus</td><td>+25</td></tr>
+            <tr><td>Enter Room 2</td><td>+10</td></tr>
+            <tr><td>Room 2 boss kill</td><td>+100</td></tr>
+            <tr><td>Room 2 clear bonus</td><td>+25</td></tr>
+            <tr><td>Victory bonus</td><td>+150</td></tr>
+            <tr><td>Hard difficulty</td><td>+50</td></tr>
+            <tr><td>Flawless (full HP)</td><td>+25</td></tr>
+            <tr><td>Speedrun (≤30 turns)</td><td>+25</td></tr>
+            <tr><td>New Game+</td><td>+50</td></tr>
+          </tbody>
+        </table>
+        <p>Reach <b>Level 10 (Dungeon Architect)</b> at 12,000 career XP. Check your progress bar in the Profile panel.</p>
+      </>
+    )},
   ]
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -1597,6 +1646,31 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
   // room2BossHP > 0 guards against the brief kro reconciliation window where currentRoom=2
   // but enterRoom2Resolve hasn't fired yet (monsterHP/bossHP still show Room 1 cleared state)
   const isVictory = gameOver && !isDefeated && (spec.currentRoom || 1) === 2 && (spec.room2BossHP || 0) > 0
+
+  // XP earned breakdown for the victory/defeat screen (#360)
+  const xpRunBreakdown = (() => {
+    const earned = spec.xpEarned ?? 0
+    const kills = (spec.monsterHP || []).filter((hp: number) => hp <= 0).length
+    const bossR1Dead = (spec.currentRoom || 1) >= 2 || spec.bossHP <= 0
+    const bossR2Dead = (spec.currentRoom || 1) === 2 && spec.bossHP <= 0
+    const rows: { label: string; xp: number }[] = []
+    if (kills > 0) rows.push({ label: `Monster kills (${kills})`, xp: kills * 10 })
+    if (bossR1Dead && (spec.currentRoom || 1) === 1) rows.push({ label: 'Boss kill (Room 1)', xp: 50 })
+    if ((spec.currentRoom || 1) >= 2) rows.push({ label: 'Room 1 boss kill', xp: 50 })
+    if ((spec.currentRoom || 1) >= 2) rows.push({ label: 'Room 1 clear bonus', xp: 25 })
+    if ((spec.currentRoom || 1) >= 2) rows.push({ label: 'Enter Room 2', xp: 10 })
+    if (bossR2Dead) rows.push({ label: 'Room 2 boss kill', xp: 100 })
+    if (bossR2Dead) rows.push({ label: 'Room 2 clear bonus', xp: 25 })
+    if (isVictory) {
+      rows.push({ label: 'Victory bonus', xp: 150 })
+      if (spec.difficulty === 'hard') rows.push({ label: 'Hard difficulty', xp: 50 })
+      if (spec.heroHP >= classMaxHP) rows.push({ label: 'Flawless (full HP)', xp: 25 })
+      if ((spec.attackSeq ?? 0) + (spec.actionSeq ?? 0) <= 30) rows.push({ label: 'Speedrun (≤30 turns)', xp: 25 })
+      if ((spec.runCount ?? 0) >= 1) rows.push({ label: 'New Game+', xp: 50 })
+    }
+    // Use actual spec.xpEarned as the source of truth (backend is authoritative)
+    return { rows, total: earned }
+  })()
   const [showCertificate, setShowCertificate] = useState(false)
   const [showDungeonHamburger, setShowDungeonHamburger] = useState(false)
   const [showPlayground, setShowPlayground] = useState(false)
@@ -1624,6 +1698,19 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
   const [doorPassword, setDoorPassword] = useState('')
   const autoTriggeredRef = useRef('')
   const [dismissedEngineWarning, setDismissedEngineWarning] = useState('')
+
+  // XP popup: show "+N XP" floating text when spec.xpEarned increases (#360)
+  const prevXpRef = useRef<number>(spec.xpEarned ?? 0)
+  const [xpPopup, setXpPopup] = useState<{ amount: number; key: number } | null>(null)
+  useEffect(() => {
+    const prev = prevXpRef.current
+    const curr = spec.xpEarned ?? 0
+    if (curr > prev) {
+      setXpPopup({ amount: curr - prev, key: Date.now() })
+      setTimeout(() => setXpPopup(null), 1200)
+    }
+    prevXpRef.current = curr
+  }, [spec.xpEarned])
 
   // Derive kro reconciliation error from status.conditions.
   // Suppressed for the first 30s after creation (transient reconcile race on fresh dungeons).
@@ -1789,6 +1876,17 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
             {spec.ringBonus ? <span><PixelIcon name="ring" size={8} /> Ring +{spec.ringBonus}/turn</span> : null}
             {spec.amuletBonus ? <span><PixelIcon name="amulet" size={8} /> Amulet +{spec.amuletBonus}%dmg</span> : null}
           </div>
+          {xpRunBreakdown.total > 0 && (
+            <div className="xp-summary">
+              <div className="xp-summary-title">XP Earned This Run</div>
+              {xpRunBreakdown.rows.map(r => (
+                <div key={r.label} className="xp-summary-row">
+                  <span>{r.label}</span><span style={{ color: 'var(--gold)' }}>+{r.xp}</span>
+                </div>
+              ))}
+              <div className="xp-summary-total">Total: +{xpRunBreakdown.total} XP</div>
+            </div>
+          )}
           <div style={{ marginTop: 8 }}>
             <button className="btn" style={{ fontSize: 7 }} onClick={onBack}>← New Dungeon</button>
           </div>
@@ -1810,6 +1908,17 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
             {spec.ringBonus ? <span><PixelIcon name="ring" size={8} /> Ring +{spec.ringBonus}/turn</span> : null}
             {spec.amuletBonus ? <span><PixelIcon name="amulet" size={8} /> Amulet +{spec.amuletBonus}%dmg</span> : null}
           </div>
+          {xpRunBreakdown.total > 0 && (
+            <div className="xp-summary">
+              <div className="xp-summary-title">XP Earned This Run</div>
+              {xpRunBreakdown.rows.map(r => (
+                <div key={r.label} className="xp-summary-row">
+                  <span>{r.label}</span><span style={{ color: 'var(--gold)' }}>+{r.xp}</span>
+                </div>
+              ))}
+              <div className="xp-summary-total">Total: +{xpRunBreakdown.total} XP</div>
+            </div>
+          )}
           <AchievementBadges achievements={computeAchievements(spec, spec.heroClass === 'mage' ? 120 : spec.heroClass === 'rogue' ? 150 : 200)} />
           <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 8 }}>
             <button className="btn btn-gold" style={{ fontSize: 7 }} onClick={() => setShowCertificate(true)}>
@@ -2050,6 +2159,7 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
             {/* Hero in center */}
             <div className="arena-entity hero-entity" style={{ left: '50%', top: '70%' }}>
               {floatingDmg?.target === 'hero' && <div className="floating-dmg" style={{ color: floatingDmg.color }}>{floatingDmg.amount}</div>}
+              {xpPopup && <div key={xpPopup.key} className="floating-xp">+{xpPopup.amount} XP</div>}
               <Sprite spriteType={spec.heroClass || 'warrior'} size={80}
                 action={isDefeated ? 'dead' : status?.victory ? 'victory' : (animPhase === 'hero-attack' || (combatModal && combatModal.phase === 'rolling')) ? 'attack' : animPhase === 'enemy-attack' ? 'hurt' : animPhase === 'item-use' ? 'itemUse' : 'idle'} />
               <div className="arena-shadow" style={{ width: 60 }} />

@@ -669,6 +669,33 @@ func classDefaultMana(heroClass string) int64 {
 	return 0
 }
 
+// xpThresholds and levelTitles define the career XP level-up table for issue #360.
+var xpThresholds = []int{0, 100, 250, 500, 1000, 2000, 3500, 5500, 8000, 12000}
+var levelTitles = []string{
+	"Adventurer", "Initiate", "Dungeon Runner", "Monster Slayer",
+	"Boss Hunter", "Dungeon Veteran", "Elite Delver", "Master Delver",
+	"Kro Wielder", "Dungeon Architect",
+}
+
+// computeLevel returns the level (1–10) for the given total career XP.
+func computeLevel(totalXP int) int {
+	level := 1
+	for i, threshold := range xpThresholds {
+		if totalXP >= threshold {
+			level = i + 1
+		}
+	}
+	return level
+}
+
+// levelTitle returns the display title for a given level.
+func levelTitle(level int) string {
+	if level < 1 || level > len(levelTitles) {
+		return "Adventurer"
+	}
+	return levelTitles[level-1]
+}
+
 // computeProfileBadges returns badge IDs earned in this dungeon run that should be
 // persisted to the profile. Career badges (multi-class, reaper, legend) are evaluated
 // after profile stats are updated.
@@ -837,6 +864,32 @@ func (h *Handler) recordProfile(login string, spec map[string]interface{}, kroSt
 	} else {
 		profile.DungeonsAbandoned++
 	}
+
+	// XP accumulation — add session XP earned during combat plus end-of-run bonuses (#360).
+	// Kill/clear XP is always added (even on defeat) because it was earned.
+	sessionXP := int(getInt(spec, "xpEarned"))
+	// Victory bonuses (only on full dungeon win)
+	if outcome == "victory" {
+		sessionXP += 150 // base victory bonus
+		if difficulty == "hard" {
+			sessionXP += 50 // hard difficulty bonus
+		}
+		// Flawless: hero HP equals class default max
+		if getInt(spec, "heroHP") >= classDefaultHP(heroClass) {
+			sessionXP += 25
+		}
+		// Speedrun: ≤30 total turns
+		if totalTurns <= 30 {
+			sessionXP += 25
+		}
+		// New Game+: runCount ≥ 1
+		if getInt(spec, "runCount") >= 1 {
+			sessionXP += 50
+		}
+	}
+	newTotalXP := profile.XP + sessionXP
+	profile.XP = newTotalXP
+	profile.Level = computeLevel(newTotalXP)
 
 	// Append earned badges and increment counts.
 	newBadges := computeProfileBadges(spec, outcome)
@@ -1435,11 +1488,43 @@ func (h *Handler) processCombat(ctx context.Context, r *http.Request, ns, name, 
 		heroClass, diceFormula, bossPhaseStr, bossDmgMultStr,
 	)
 
-	// Step 6: Write log text and return final dungeon state.
+	// Step 6: Compute XP delta and write log text + xpEarned together.
+	// XP is earned on kill transitions so players keep kill XP even on defeat.
+	xpDelta := int64(0)
+	switch combatOutcome {
+	case "kill":
+		xpDelta = 10
+	case "boss_kill":
+		if currentRoom == 2 {
+			xpDelta = 100
+		} else {
+			xpDelta = 50
+		}
+	case "victory":
+		// boss kill XP (always room 2 for a full victory in room 2, or room 1 for room1-cleared)
+		if currentRoom == 2 {
+			xpDelta = 100
+		} else {
+			xpDelta = 50
+		}
+		// room-clear bonus (all monsters + boss dead)
+		xpDelta += 25
+	case "defeat":
+		// no end-of-run bonuses on defeat, but kill XP already accumulated
+	}
+
+	// Room-clear bonus for boss_kill when all monsters also dead (room fully cleared but hero alive)
+	if combatOutcome == "boss_kill" && postAllMonstersDead {
+		xpDelta += 25
+	}
+
+	newXPEarned := getInt(postSpec, "xpEarned") + xpDelta
+
 	logPatch := map[string]interface{}{
 		"spec": map[string]interface{}{
 			"lastHeroAction":  heroAction,
 			"lastEnemyAction": enemyAction,
+			"xpEarned":        newXPEarned,
 		},
 	}
 	return h.patchAndRespond(ctx, ns, name, logPatch, w)
@@ -1944,6 +2029,8 @@ func (h *Handler) processAction(ctx context.Context, r *http.Request, ns, name, 
 		}
 		patchSpec["lastHeroAction"] = "Entered Room 2! Stronger enemies await..."
 		patchSpec["lastEnemyAction"] = ""
+		// Award XP for entering room 2 (#360)
+		patchSpec["xpEarned"] = getInt(spec, "xpEarned") + int64(10)
 		// Business metric: room 2 entered (Issue #358)
 		attackSeqAction := getInt(spec, "attackSeq")
 		slog.Info("room2_entered",
