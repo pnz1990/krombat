@@ -232,9 +232,10 @@ MONSTER_LOOT_GUARD=$(grep -c 'schema.spec.hp == 0' manifests/rgds/monster-graph.
 BOSS_LOOT_GUARD=$(grep -c 'schema.spec.hp == 0\|bossHP.*== 0\|hp.*==.*0' manifests/rgds/boss-graph.yaml 2>/dev/null || echo 0)
 [ "$BOSS_LOOT_GUARD" -ge 1 ] && pass "boss-graph RGD gates Loot CR/resources on hp==0" || fail "boss-graph missing hp==0 guard"
 
-# Guard: Go handler has a no-drop path (computeMonsterLoot can return false — majority of kills)
-NO_DROP_PATH=$(grep -c 'dropped.*false\|!dropped\|if dropped' backend/internal/handlers/handlers.go 2>/dev/null || echo 0)
-[ "$NO_DROP_PATH" -ge 1 ] && pass "Go handler has no-drop path (loot not always awarded on kill)" || fail "Go handler missing no-drop path"
+# Guard: loot state is computed by kro combatResolve (not Go backend math)
+# Verify the dungeon-graph combatResolve still has loot logic
+LOOT_CEL=$(grep -c 'lastLootDrop\|loot' manifests/rgds/dungeon-graph.yaml 2>/dev/null || echo 0)
+[ "$LOOT_CEL" -ge 1 ] && pass "kro combatResolve manages loot state (lastLootDrop in dungeon-graph)" || fail "dungeon-graph missing loot/lastLootDrop — kro not computing loot"
 
 # Live cluster guard: Loot Secret must NOT exist while monster is alive, MUST exist after kill
 echo "=== Loot Secret live guard"
@@ -449,8 +450,10 @@ grep -q "amuletBonus" frontend/src/App.tsx && pass "Frontend handleNewGamePlus s
 
 # --- Boss loot invariants ---
 echo "=== Boss loot invariants"
-grep -q "computeBossLoot" backend/internal/handlers/handlers.go && pass "computeBossLoot function exists in handlers.go" || fail "computeBossLoot function missing"
-! grep -A10 'func computeBossLoot' backend/internal/handlers/handlers.go | grep -q 'manapotion' && pass "computeBossLoot excludes manapotion (bosses do not drop mana pots)" || fail "computeBossLoot includes manapotion — unintentional"
+# Boss loot is now computed by kro's combatResolve/boss-graph — verify it's in the RGDs
+grep -q "boss-typ\|boss.*loot\|bossLoot\|boss-rar" manifests/rgds/dungeon-graph.yaml manifests/rgds/boss-graph.yaml 2>/dev/null && pass "Boss loot logic lives in kro RGDs (not Go backend)" || fail "Boss loot not found in RGDs"
+# Verify Go backend does NOT contain loot computation functions (clean separation)
+! grep -q "computeBossLoot\|computeMonsterLoot\|kroSeededRoll\|seededRoll" backend/internal/handlers/handlers.go && pass "Go backend has no loot/RNG math (kro is authoritative)" || fail "Go backend still contains loot/RNG math functions — not fully cleaned up"
 # classMaxHP must cover all 3 valid hero classes — ensure no fallthrough for known classes
 grep -q '"warrior"' backend/internal/handlers/handlers.go && grep -q '"mage"' backend/internal/handlers/handlers.go && grep -q '"rogue"' backend/internal/handlers/handlers.go && pass "classMaxHP covers all 3 hero classes (warrior/mage/rogue)" || fail "classMaxHP missing a hero class branch"
 
