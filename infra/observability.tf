@@ -510,3 +510,938 @@ resource "aws_cloudwatch_log_metric_filter" "rate_limited" {
     unit          = "Count"
   }
 }
+
+# =============================================================================
+# Issue #357 — CloudWatch Alarms (application + K8s infrastructure)
+# =============================================================================
+
+resource "aws_cloudwatch_metric_alarm" "high_http_error_rate" {
+  alarm_name          = "${var.cluster_name}-high-http-error-rate"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  metric_name         = "HttpErrors"
+  namespace           = "Krombat/Game"
+  period              = 300
+  statistic           = "Sum"
+  threshold           = 20
+  treat_missing_data  = "notBreaching"
+  alarm_description   = "HTTP error rate > 20 per 5 min — API degradation"
+}
+
+resource "aws_cloudwatch_metric_alarm" "frontend_errors" {
+  alarm_name          = "${var.cluster_name}-frontend-errors"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  metric_name         = "FrontendErrors"
+  namespace           = "Krombat/Game"
+  period              = 300
+  statistic           = "Sum"
+  threshold           = 5
+  treat_missing_data  = "notBreaching"
+  alarm_description   = "Frontend JS errors > 5 per 5 min — possible crash loop"
+}
+
+resource "aws_cloudwatch_metric_alarm" "kro_pod_oom" {
+  alarm_name          = "${var.cluster_name}-kro-pod-oom"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  metric_name         = "pod_number_of_container_restarts"
+  namespace           = "ContainerInsights"
+  period              = 300
+  statistic           = "Sum"
+  threshold           = 1
+  treat_missing_data  = "notBreaching"
+  alarm_description   = "kro pod restarted — possible OOM"
+  dimensions = {
+    ClusterName = var.cluster_name
+    Namespace   = "kro"
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "node_disk_full" {
+  alarm_name          = "${var.cluster_name}-node-disk-full"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 2
+  metric_name         = "node_filesystem_utilization"
+  namespace           = "ContainerInsights"
+  period              = 300
+  statistic           = "Maximum"
+  threshold           = 85
+  treat_missing_data  = "notBreaching"
+  alarm_description   = "Node disk utilization > 85% — disk pressure before eviction"
+  dimensions = {
+    ClusterName = var.cluster_name
+  }
+}
+
+# =============================================================================
+# Issue #357 — Dashboard 1: krombat-application
+# =============================================================================
+
+resource "aws_cloudwatch_dashboard" "krombat_application" {
+  dashboard_name = "${var.cluster_name}-application"
+  dashboard_body = jsonencode({
+    widgets = [
+      # Row 1 — HTTP Traffic
+      {
+        type   = "log"
+        x      = 0
+        y      = 0
+        width  = 12
+        height = 6
+        properties = {
+          title  = "HTTP Request Rate"
+          region = var.region
+          query  = "SOURCE '/eks/${var.cluster_name}/rpg-system' | filter msg = \"http_request\" | stats count(*) as requests by bin(1m) | sort @timestamp desc"
+        }
+      },
+      {
+        type   = "metric"
+        x      = 12
+        y      = 0
+        width  = 12
+        height = 6
+        properties = {
+          title   = "HTTP Error Rate (4xx/5xx)"
+          region  = var.region
+          view    = "timeSeries"
+          stacked = false
+          period  = 60
+          stat    = "Sum"
+          metrics = [
+            ["Krombat/Game", "HttpErrors", { label = "HTTP Errors", color = "#d62728" }]
+          ]
+          annotations = {
+            horizontal = [{ value = 10, label = "Alert threshold", color = "#ff9900" }]
+          }
+        }
+      },
+      # Row 2 — Latency
+      {
+        type   = "metric"
+        x      = 0
+        y      = 6
+        width  = 12
+        height = 6
+        properties = {
+          title   = "Attack Latency (ms)"
+          region  = var.region
+          view    = "timeSeries"
+          stacked = false
+          period  = 60
+          metrics = [
+            ["Krombat/Game", "AttackDurationMs", { stat = "p50", label = "P50" }],
+            ["Krombat/Game", "AttackDurationMs", { stat = "p95", label = "P95" }],
+            ["Krombat/Game", "AttackDurationMs", { stat = "p99", label = "P99" }]
+          ]
+          annotations = {
+            horizontal = [{ value = 200, label = "200ms target", color = "#ff9900" }]
+          }
+        }
+      },
+      {
+        type   = "metric"
+        x      = 12
+        y      = 6
+        width  = 12
+        height = 6
+        properties = {
+          title   = "Action Latency (ms)"
+          region  = var.region
+          view    = "timeSeries"
+          stacked = false
+          period  = 60
+          metrics = [
+            ["Krombat/Game", "ActionDurationMs", { stat = "p50", label = "P50" }],
+            ["Krombat/Game", "ActionDurationMs", { stat = "p95", label = "P95" }],
+            ["Krombat/Game", "ActionDurationMs", { stat = "p99", label = "P99" }]
+          ]
+        }
+      },
+      # Row 3 — WebSocket & Rate Limiting
+      {
+        type   = "log"
+        x      = 0
+        y      = 12
+        width  = 12
+        height = 6
+        properties = {
+          title  = "WebSocket Connections (events)"
+          region = var.region
+          query  = "SOURCE '/eks/${var.cluster_name}/rpg-system' | filter msg = \"websocket connected\" or msg = \"websocket disconnected\" | stats count(*) as events by msg, bin(1m) | sort @timestamp desc"
+        }
+      },
+      {
+        type   = "metric"
+        x      = 12
+        y      = 12
+        width  = 12
+        height = 6
+        properties = {
+          title   = "Rate Limited Requests (429)"
+          region  = var.region
+          view    = "timeSeries"
+          stacked = false
+          period  = 60
+          stat    = "Sum"
+          metrics = [
+            ["Krombat/Game", "RateLimited", { label = "Rate Limited", color = "#ff7f0e" }]
+          ]
+        }
+      },
+      # Row 4 — Frontend Health
+      {
+        type   = "metric"
+        x      = 0
+        y      = 18
+        width  = 12
+        height = 6
+        properties = {
+          title   = "Frontend Error Rate"
+          region  = var.region
+          view    = "timeSeries"
+          stacked = false
+          period  = 60
+          stat    = "Sum"
+          metrics = [
+            ["Krombat/Game", "FrontendErrors", { label = "JS Errors", color = "#d62728" }]
+          ]
+        }
+      },
+      {
+        type   = "metric"
+        x      = 12
+        y      = 18
+        width  = 12
+        height = 6
+        properties = {
+          title   = "Web Vitals — Poor Ratings"
+          region  = var.region
+          view    = "timeSeries"
+          stacked = true
+          period  = 300
+          stat    = "Sum"
+          metrics = [
+            ["Krombat/Game", "PoorLCP", { label = "Poor LCP", color = "#d62728" }],
+            ["Krombat/Game", "PoorCLS", { label = "Poor CLS", color = "#ff7f0e" }]
+          ]
+        }
+      },
+      # Row 5 — Backend Pod Health
+      {
+        type   = "metric"
+        x      = 0
+        y      = 24
+        width  = 12
+        height = 6
+        properties = {
+          title   = "CPU Utilization per Pod"
+          region  = var.region
+          view    = "timeSeries"
+          stacked = false
+          period  = 60
+          stat    = "Average"
+          metrics = [
+            ["ContainerInsights", "pod_cpu_utilization", "ClusterName", var.cluster_name, "Namespace", "rpg-system", "PodName", "rpg-backend", { label = "Backend" }],
+            ["ContainerInsights", "pod_cpu_utilization", "ClusterName", var.cluster_name, "Namespace", "rpg-system", "PodName", "rpg-frontend", { label = "Frontend" }]
+          ]
+        }
+      },
+      {
+        type   = "metric"
+        x      = 12
+        y      = 24
+        width  = 12
+        height = 6
+        properties = {
+          title   = "Memory Utilization per Pod"
+          region  = var.region
+          view    = "timeSeries"
+          stacked = false
+          period  = 60
+          stat    = "Average"
+          metrics = [
+            ["ContainerInsights", "pod_memory_utilization", "ClusterName", var.cluster_name, "Namespace", "rpg-system", "PodName", "rpg-backend", { label = "Backend" }],
+            ["ContainerInsights", "pod_memory_utilization", "ClusterName", var.cluster_name, "Namespace", "rpg-system", "PodName", "rpg-frontend", { label = "Frontend" }]
+          ]
+        }
+      },
+      # Row 6 — Logs
+      {
+        type   = "log"
+        x      = 0
+        y      = 30
+        width  = 12
+        height = 6
+        properties = {
+          title  = "Backend API Logs"
+          region = var.region
+          query  = "SOURCE '/eks/${var.cluster_name}/rpg-system' | fields @timestamp, level, msg, method, path, status, duration_ms | filter ispresent(method) | sort @timestamp desc | limit 50"
+        }
+      },
+      {
+        type   = "log"
+        x      = 12
+        y      = 30
+        width  = 12
+        height = 6
+        properties = {
+          title  = "Frontend Error Logs"
+          region = var.region
+          query  = "SOURCE '/eks/${var.cluster_name}/rpg-system' | filter msg = \"frontend_error\" | fields @timestamp, message, url, context | sort @timestamp desc | limit 20"
+        }
+      }
+    ]
+  })
+}
+
+# =============================================================================
+# Issue #357 — Dashboard 2: krombat-kubernetes
+# =============================================================================
+
+resource "aws_cloudwatch_dashboard" "krombat_kubernetes" {
+  dashboard_name = "${var.cluster_name}-kubernetes"
+  dashboard_body = jsonencode({
+    widgets = [
+      # Row 1 — Cluster Node Overview
+      {
+        type   = "metric"
+        x      = 0
+        y      = 0
+        width  = 12
+        height = 6
+        properties = {
+          title   = "Node CPU Utilization by Node"
+          region  = var.region
+          view    = "timeSeries"
+          stacked = false
+          period  = 60
+          stat    = "Average"
+          metrics = [
+            ["ContainerInsights", "node_cpu_utilization", "ClusterName", var.cluster_name, { label = "All Nodes (avg)" }]
+          ]
+        }
+      },
+      {
+        type   = "metric"
+        x      = 12
+        y      = 0
+        width  = 12
+        height = 6
+        properties = {
+          title   = "Node Memory Utilization"
+          region  = var.region
+          view    = "timeSeries"
+          stacked = false
+          period  = 60
+          stat    = "Average"
+          metrics = [
+            ["ContainerInsights", "node_memory_utilization", "ClusterName", var.cluster_name, { label = "All Nodes (avg)" }]
+          ]
+        }
+      },
+      # Row 2 — Pod Distribution
+      {
+        type   = "metric"
+        x      = 0
+        y      = 6
+        width  = 12
+        height = 6
+        properties = {
+          title   = "Running Pods per Namespace"
+          region  = var.region
+          view    = "timeSeries"
+          stacked = true
+          period  = 60
+          stat    = "Average"
+          metrics = [
+            ["ContainerInsights", "namespace_number_of_running_pods", "ClusterName", var.cluster_name, "Namespace", "rpg-system", { label = "rpg-system" }],
+            ["ContainerInsights", "namespace_number_of_running_pods", "ClusterName", var.cluster_name, "Namespace", "kro", { label = "kro" }],
+            ["ContainerInsights", "namespace_number_of_running_pods", "ClusterName", var.cluster_name, "Namespace", "argocd", { label = "argocd" }],
+            ["ContainerInsights", "namespace_number_of_running_pods", "ClusterName", var.cluster_name, "Namespace", "default", { label = "default (attacks)" }]
+          ]
+        }
+      },
+      {
+        type   = "metric"
+        x      = 12
+        y      = 6
+        width  = 12
+        height = 6
+        properties = {
+          title   = "Pod Restarts (all workloads)"
+          region  = var.region
+          view    = "timeSeries"
+          stacked = false
+          period  = 300
+          stat    = "Maximum"
+          metrics = [
+            ["ContainerInsights", "pod_number_of_container_restarts", "ClusterName", var.cluster_name, "Namespace", "rpg-system", "PodName", "rpg-backend", { label = "Backend", color = "#d62728" }],
+            ["ContainerInsights", "pod_number_of_container_restarts", "ClusterName", var.cluster_name, "Namespace", "rpg-system", "PodName", "rpg-frontend", { label = "Frontend", color = "#ff7f0e" }],
+            ["ContainerInsights", "pod_number_of_container_restarts", "ClusterName", var.cluster_name, "Namespace", "kro", { label = "kro", color = "#2ca02c" }]
+          ]
+        }
+      },
+      # Row 3 — kro Controller
+      {
+        type   = "metric"
+        x      = 0
+        y      = 12
+        width  = 12
+        height = 6
+        properties = {
+          title   = "kro Pod CPU/Memory"
+          region  = var.region
+          view    = "timeSeries"
+          stacked = false
+          period  = 60
+          stat    = "Average"
+          metrics = [
+            ["ContainerInsights", "pod_cpu_utilization", "ClusterName", var.cluster_name, "Namespace", "kro", { label = "CPU %" }],
+            ["ContainerInsights", "pod_memory_utilization", "ClusterName", var.cluster_name, "Namespace", "kro", { label = "Memory %" }]
+          ]
+        }
+      },
+      {
+        type   = "log"
+        x      = 12
+        y      = 12
+        width  = 12
+        height = 6
+        properties = {
+          title  = "kro Reconcile Activity"
+          region = var.region
+          query  = "SOURCE '/eks/${var.cluster_name}/kro' | filter @message like /reconcil|error|Reconcil/ | stats count(*) as reconcile_events by bin(1m) | sort @timestamp desc"
+        }
+      },
+      # Row 4 — ArgoCD Sync Health
+      {
+        type   = "log"
+        x      = 0
+        y      = 18
+        width  = 12
+        height = 6
+        properties = {
+          title  = "ArgoCD Sync Events"
+          region = var.region
+          query  = "SOURCE '/eks/${var.cluster_name}/argocd' | filter @message like /Synced|OutOfSync|sync.*error|Progressing/ | fields @timestamp, @message | sort @timestamp desc | limit 30"
+        }
+      },
+      {
+        type   = "log"
+        x      = 12
+        y      = 18
+        width  = 12
+        height = 6
+        properties = {
+          title  = "ArgoCD Error Logs"
+          region = var.region
+          query  = "SOURCE '/eks/${var.cluster_name}/argocd' | filter @message like /error|Error|failed|Failed/ | fields @timestamp, @message | sort @timestamp desc | limit 20"
+        }
+      },
+      # Row 5 — Node Disk & Network
+      {
+        type   = "metric"
+        x      = 0
+        y      = 24
+        width  = 12
+        height = 6
+        properties = {
+          title   = "Node Network RX/TX (bytes)"
+          region  = var.region
+          view    = "timeSeries"
+          stacked = false
+          period  = 60
+          stat    = "Sum"
+          metrics = [
+            ["ContainerInsights", "pod_network_rx_bytes", "ClusterName", var.cluster_name, "Namespace", "rpg-system", { label = "rpg-system RX" }],
+            ["ContainerInsights", "pod_network_tx_bytes", "ClusterName", var.cluster_name, "Namespace", "rpg-system", { label = "rpg-system TX" }]
+          ]
+        }
+      },
+      {
+        type   = "metric"
+        x      = 12
+        y      = 24
+        width  = 12
+        height = 6
+        properties = {
+          title   = "Node Disk Utilization (%)"
+          region  = var.region
+          view    = "timeSeries"
+          stacked = false
+          period  = 300
+          stat    = "Maximum"
+          metrics = [
+            ["ContainerInsights", "node_filesystem_utilization", "ClusterName", var.cluster_name, { label = "Disk Utilization %" }]
+          ]
+          annotations = {
+            horizontal = [{ value = 80, label = "80% warning", color = "#ff9900" }]
+          }
+        }
+      },
+      # Row 6 — Dungeon Reaper & Infra Events
+      {
+        type   = "log"
+        x      = 0
+        y      = 30
+        width  = 12
+        height = 6
+        properties = {
+          title  = "Dungeon Reaper Activity"
+          region = var.region
+          query  = "SOURCE '/eks/${var.cluster_name}/game' | fields @timestamp, @message | filter @message like /reaper|dungeon.*delete|expired.*dungeon|cleanup/ | sort @timestamp desc | limit 20"
+        }
+      },
+      {
+        type   = "log"
+        x      = 12
+        y      = 30
+        width  = 12
+        height = 6
+        properties = {
+          title  = "Kubernetes Events (Warnings)"
+          region = var.region
+          query  = "SOURCE '/aws/containerinsights/${var.cluster_name}/application' | filter @message like /Warning|BackOff|Evicted|OOMKilled|Unhealthy/ | fields @timestamp, @message | sort @timestamp desc | limit 20"
+        }
+      }
+    ]
+  })
+}
+
+# =============================================================================
+# Issue #358 — Business Metric Log Filters (namespace: Krombat/Business)
+# =============================================================================
+
+resource "aws_cloudwatch_log_metric_filter" "dungeon_started_business" {
+  name           = "${var.cluster_name}-dungeon-started-business"
+  log_group_name = aws_cloudwatch_log_group.rpg_system.name
+  pattern        = "dungeon_started"
+
+  metric_transformation {
+    name          = "DungeonStarted"
+    namespace     = "Krombat/Business"
+    value         = "1"
+    default_value = "0"
+    unit          = "Count"
+  }
+}
+
+resource "aws_cloudwatch_log_metric_filter" "dungeon_victory" {
+  name           = "${var.cluster_name}-dungeon-victory"
+  log_group_name = aws_cloudwatch_log_group.rpg_system.name
+  pattern        = "{ $.msg = \"dungeon_ended\" && $.outcome = \"victory\" }"
+
+  metric_transformation {
+    name          = "DungeonVictory"
+    namespace     = "Krombat/Business"
+    value         = "1"
+    default_value = "0"
+    unit          = "Count"
+  }
+}
+
+resource "aws_cloudwatch_log_metric_filter" "dungeon_defeat" {
+  name           = "${var.cluster_name}-dungeon-defeat"
+  log_group_name = aws_cloudwatch_log_group.rpg_system.name
+  pattern        = "{ $.msg = \"dungeon_ended\" && $.outcome = \"defeat\" }"
+
+  metric_transformation {
+    name          = "DungeonDefeat"
+    namespace     = "Krombat/Business"
+    value         = "1"
+    default_value = "0"
+    unit          = "Count"
+  }
+}
+
+resource "aws_cloudwatch_log_metric_filter" "dungeon_abandoned" {
+  name           = "${var.cluster_name}-dungeon-abandoned"
+  log_group_name = aws_cloudwatch_log_group.rpg_system.name
+  pattern        = "{ $.msg = \"dungeon_ended\" && $.outcome = \"in-progress\" }"
+
+  metric_transformation {
+    name          = "DungeonAbandoned"
+    namespace     = "Krombat/Business"
+    value         = "1"
+    default_value = "0"
+    unit          = "Count"
+  }
+}
+
+resource "aws_cloudwatch_log_metric_filter" "monster_kills" {
+  name           = "${var.cluster_name}-monster-kills"
+  log_group_name = aws_cloudwatch_log_group.rpg_system.name
+  pattern        = "monster_killed"
+
+  metric_transformation {
+    name          = "MonsterKills"
+    namespace     = "Krombat/Business"
+    value         = "1"
+    default_value = "0"
+    unit          = "Count"
+  }
+}
+
+resource "aws_cloudwatch_log_metric_filter" "boss_kills" {
+  name           = "${var.cluster_name}-boss-kills"
+  log_group_name = aws_cloudwatch_log_group.rpg_system.name
+  pattern        = "boss_killed"
+
+  metric_transformation {
+    name          = "BossKills"
+    namespace     = "Krombat/Business"
+    value         = "1"
+    default_value = "0"
+    unit          = "Count"
+  }
+}
+
+resource "aws_cloudwatch_log_metric_filter" "room1_clears" {
+  name           = "${var.cluster_name}-room1-clears"
+  log_group_name = aws_cloudwatch_log_group.rpg_system.name
+  pattern        = "room_cleared"
+
+  metric_transformation {
+    name          = "Room1Clears"
+    namespace     = "Krombat/Business"
+    value         = "1"
+    default_value = "0"
+    unit          = "Count"
+  }
+}
+
+resource "aws_cloudwatch_log_metric_filter" "room2_entries" {
+  name           = "${var.cluster_name}-room2-entries"
+  log_group_name = aws_cloudwatch_log_group.rpg_system.name
+  pattern        = "room2_entered"
+
+  metric_transformation {
+    name          = "Room2Entries"
+    namespace     = "Krombat/Business"
+    value         = "1"
+    default_value = "0"
+    unit          = "Count"
+  }
+}
+
+resource "aws_cloudwatch_log_metric_filter" "loot_drops_business" {
+  name           = "${var.cluster_name}-loot-drops-business"
+  log_group_name = aws_cloudwatch_log_group.rpg_system.name
+  pattern        = "loot_dropped"
+
+  metric_transformation {
+    name          = "LootDrops"
+    namespace     = "Krombat/Business"
+    value         = "1"
+    default_value = "0"
+    unit          = "Count"
+  }
+}
+
+resource "aws_cloudwatch_log_metric_filter" "items_used" {
+  name           = "${var.cluster_name}-items-used"
+  log_group_name = aws_cloudwatch_log_group.rpg_system.name
+  pattern        = "item_used"
+
+  metric_transformation {
+    name          = "ItemsUsed"
+    namespace     = "Krombat/Business"
+    value         = "1"
+    default_value = "0"
+    unit          = "Count"
+  }
+}
+
+resource "aws_cloudwatch_log_metric_filter" "heal_ability_used" {
+  name           = "${var.cluster_name}-heal-ability-used"
+  log_group_name = aws_cloudwatch_log_group.rpg_system.name
+  pattern        = "{ $.msg = \"ability_used\" && $.ability = \"heal\" }"
+
+  metric_transformation {
+    name          = "HealAbilityUsed"
+    namespace     = "Krombat/Business"
+    value         = "1"
+    default_value = "0"
+    unit          = "Count"
+  }
+}
+
+resource "aws_cloudwatch_log_metric_filter" "taunt_ability_used" {
+  name           = "${var.cluster_name}-taunt-ability-used"
+  log_group_name = aws_cloudwatch_log_group.rpg_system.name
+  pattern        = "{ $.msg = \"ability_used\" && $.ability = \"taunt\" }"
+
+  metric_transformation {
+    name          = "TauntAbilityUsed"
+    namespace     = "Krombat/Business"
+    value         = "1"
+    default_value = "0"
+    unit          = "Count"
+  }
+}
+
+resource "aws_cloudwatch_log_metric_filter" "backstab_ability_used" {
+  name           = "${var.cluster_name}-backstab-ability-used"
+  log_group_name = aws_cloudwatch_log_group.rpg_system.name
+  pattern        = "{ $.msg = \"ability_used\" && $.ability = \"backstab\" }"
+
+  metric_transformation {
+    name          = "BackstabAbilityUsed"
+    namespace     = "Krombat/Business"
+    value         = "1"
+    default_value = "0"
+    unit          = "Count"
+  }
+}
+
+resource "aws_cloudwatch_log_metric_filter" "new_game_plus_starts" {
+  name           = "${var.cluster_name}-new-game-plus-starts"
+  log_group_name = aws_cloudwatch_log_group.rpg_system.name
+  # run_count > 0 means it's a NG+ run; simple presence-based filter on the field
+  pattern = "{ $.msg = \"dungeon_started\" && $.run_count > 0 }"
+
+  metric_transformation {
+    name          = "NewGamePlusStarts"
+    namespace     = "Krombat/Business"
+    value         = "1"
+    default_value = "0"
+    unit          = "Count"
+  }
+}
+
+# =============================================================================
+# Issue #358 — Business Alarms
+# =============================================================================
+
+resource "aws_cloudwatch_metric_alarm" "no_new_dungeons" {
+  alarm_name          = "${var.cluster_name}-no-new-dungeons"
+  comparison_operator = "LessThanThreshold"
+  evaluation_periods  = 3
+  metric_name         = "DungeonStarted"
+  namespace           = "Krombat/Business"
+  period              = 3600
+  statistic           = "Sum"
+  threshold           = 1
+  treat_missing_data  = "breaching"
+  alarm_description   = "No new dungeons started in 3 hours — possible frontend or backend outage"
+}
+
+resource "aws_cloudwatch_metric_alarm" "very_high_defeat_rate" {
+  alarm_name          = "${var.cluster_name}-very-high-defeat-rate"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 2
+  metric_name         = "DungeonDefeat"
+  namespace           = "Krombat/Business"
+  period              = 3600
+  statistic           = "Sum"
+  threshold           = 20
+  treat_missing_data  = "notBreaching"
+  alarm_description   = "Abnormally high defeat count — game may be unplayably hard or bugged"
+}
+
+# =============================================================================
+# Issue #358 — Dashboard 3: krombat-business
+# =============================================================================
+
+resource "aws_cloudwatch_dashboard" "krombat_business" {
+  dashboard_name = "${var.cluster_name}-business"
+  dashboard_body = jsonencode({
+    widgets = [
+      # Row 1 — Engagement Funnel
+      {
+        type   = "metric"
+        x      = 0
+        y      = 0
+        width  = 12
+        height = 6
+        properties = {
+          title  = "Dungeon Funnel"
+          region = var.region
+          view   = "bar"
+          period = 86400
+          stat   = "Sum"
+          metrics = [
+            ["Krombat/Business", "DungeonStarted", { label = "Started" }],
+            ["Krombat/Business", "Room1Clears", { label = "Room 1 Cleared" }],
+            ["Krombat/Business", "Room2Entries", { label = "Room 2 Entered" }],
+            ["Krombat/Business", "DungeonVictory", { label = "Victory" }]
+          ]
+        }
+      },
+      {
+        type   = "metric"
+        x      = 12
+        y      = 0
+        width  = 12
+        height = 6
+        properties = {
+          title   = "Outcome Breakdown (rolling 24h)"
+          region  = var.region
+          view    = "bar"
+          period  = 86400
+          stat    = "Sum"
+          stacked = true
+          metrics = [
+            ["Krombat/Business", "DungeonVictory", { label = "Victory", color = "#2ca02c" }],
+            ["Krombat/Business", "DungeonDefeat", { label = "Defeat", color = "#d62728" }],
+            ["Krombat/Business", "DungeonAbandoned", { label = "Abandoned", color = "#7f7f7f" }]
+          ]
+        }
+      },
+      # Row 2 — Class & Difficulty Popularity
+      {
+        type   = "log"
+        x      = 0
+        y      = 6
+        width  = 12
+        height = 6
+        properties = {
+          title  = "Dungeons Started by Hero Class"
+          region = var.region
+          query  = "SOURCE '/eks/${var.cluster_name}/rpg-system' | filter msg = \"dungeon_started\" | stats count(*) as runs by hero_class | sort runs desc"
+        }
+      },
+      {
+        type   = "log"
+        x      = 12
+        y      = 6
+        width  = 12
+        height = 6
+        properties = {
+          title  = "Dungeon Outcomes by Difficulty"
+          region = var.region
+          query  = "SOURCE '/eks/${var.cluster_name}/rpg-system' | filter msg = \"dungeon_ended\" | stats count(*) as total, sum(outcome=\"victory\") as victories by difficulty | sort difficulty"
+        }
+      },
+      # Row 3 — Combat Economy
+      {
+        type   = "metric"
+        x      = 0
+        y      = 12
+        width  = 12
+        height = 6
+        properties = {
+          title   = "Monster & Boss Kills per Hour"
+          region  = var.region
+          view    = "timeSeries"
+          stacked = false
+          period  = 3600
+          stat    = "Sum"
+          metrics = [
+            ["Krombat/Business", "MonsterKills", { label = "Monster Kills", color = "#1f77b4" }],
+            ["Krombat/Business", "BossKills", { label = "Boss Kills", color = "#d62728" }]
+          ]
+        }
+      },
+      {
+        type   = "metric"
+        x      = 12
+        y      = 12
+        width  = 12
+        height = 6
+        properties = {
+          title   = "Ability Usage"
+          region  = var.region
+          view    = "timeSeries"
+          stacked = false
+          period  = 3600
+          stat    = "Sum"
+          metrics = [
+            ["Krombat/Business", "HealAbilityUsed", { label = "Mage Heal", color = "#2ca02c" }],
+            ["Krombat/Business", "TauntAbilityUsed", { label = "Warrior Taunt", color = "#1f77b4" }],
+            ["Krombat/Business", "BackstabAbilityUsed", { label = "Rogue Backstab", color = "#9467bd" }]
+          ]
+        }
+      },
+      # Row 4 — Loot Economy
+      {
+        type   = "log"
+        x      = 0
+        y      = 18
+        width  = 12
+        height = 6
+        properties = {
+          title  = "Loot Drops by Rarity"
+          region = var.region
+          query  = "SOURCE '/eks/${var.cluster_name}/rpg-system' | filter msg = \"loot_dropped\" | stats count(*) as drops by item_rarity | sort drops desc"
+        }
+      },
+      {
+        type   = "metric"
+        x      = 12
+        y      = 18
+        width  = 12
+        height = 6
+        properties = {
+          title   = "Items Dropped vs Used"
+          region  = var.region
+          view    = "timeSeries"
+          stacked = false
+          period  = 3600
+          stat    = "Sum"
+          metrics = [
+            ["Krombat/Business", "LootDrops", { label = "Loot Drops", color = "#ff7f0e" }],
+            ["Krombat/Business", "ItemsUsed", { label = "Items Used", color = "#2ca02c" }]
+          ]
+        }
+      },
+      # Row 5 — Retention & New Game+
+      {
+        type   = "metric"
+        x      = 0
+        y      = 24
+        width  = 12
+        height = 6
+        properties = {
+          title   = "New Game+ Activity"
+          region  = var.region
+          view    = "timeSeries"
+          stacked = false
+          period  = 3600
+          stat    = "Sum"
+          metrics = [
+            ["Krombat/Business", "NewGamePlusStarts", { label = "NG+ Starts", color = "#9467bd" }]
+          ]
+        }
+      },
+      {
+        type   = "log"
+        x      = 12
+        y      = 24
+        width  = 12
+        height = 6
+        properties = {
+          title  = "Average Turns to Victory"
+          region = var.region
+          query  = "SOURCE '/eks/${var.cluster_name}/rpg-system' | filter msg = \"dungeon_ended\" and outcome = \"victory\" | stats avg(total_turns) as avg_turns, pct(total_turns, 50) as median_turns, pct(total_turns, 95) as p95_turns by bin(1h)"
+        }
+      },
+      # Row 6 — Kill Breakdown
+      {
+        type   = "log"
+        x      = 0
+        y      = 30
+        width  = 12
+        height = 6
+        properties = {
+          title  = "Monster Kill Distribution by Type"
+          region = var.region
+          query  = "SOURCE '/eks/${var.cluster_name}/rpg-system' | filter msg = \"monster_killed\" | stats count(*) by target_type | sort count desc"
+        }
+      },
+      {
+        type   = "log"
+        x      = 12
+        y      = 30
+        width  = 12
+        height = 6
+        properties = {
+          title  = "Boss Kills by Room and Difficulty"
+          region = var.region
+          query  = "SOURCE '/eks/${var.cluster_name}/rpg-system' | filter msg = \"boss_killed\" | stats count(*) by room, difficulty"
+        }
+      }
+    ]
+  })
+}

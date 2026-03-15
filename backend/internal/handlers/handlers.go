@@ -220,6 +220,15 @@ func (h *Handler) CreateDungeon(w http.ResponseWriter, r *http.Request) {
 	}
 	dungeonsCreated.Inc()
 	slog.Info("dungeon created", "component", "api", "dungeon", req.Name, "monsters", req.Monsters, "difficulty", req.Difficulty)
+	// Business metric: dungeon lifecycle start event (Issue #358)
+	slog.Info("dungeon_started",
+		"component", "game",
+		"dungeon", req.Name,
+		"hero_class", heroClass,
+		"difficulty", req.Difficulty,
+		"monsters", req.Monsters,
+		"run_count", runCount,
+	)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(result.Object)
@@ -395,6 +404,18 @@ func (h *Handler) recordLeaderboard(spec map[string]interface{}, kroStatus map[s
 	}
 
 	totalTurns := attackSeq + actionSeq
+	runCount := getInt(spec, "runCount")
+	// Business metric: dungeon lifecycle end event (Issue #358)
+	slog.Info("dungeon_ended",
+		"component", "game",
+		"dungeon", dungeonName,
+		"hero_class", heroClass,
+		"difficulty", difficulty,
+		"outcome", outcome,
+		"total_turns", totalTurns,
+		"current_room", currentRoom,
+		"run_count", runCount,
+	)
 	entry := LeaderboardEntry{
 		DungeonName: dungeonName,
 		HeroClass:   heroClass,
@@ -675,6 +696,14 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 			writeError(w, sanitizeK8sError(err), http.StatusInternalServerError)
 			return err
 		}
+		// Business metric: ability used (Issue #358)
+		slog.Info("ability_used",
+			"component", "game",
+			"dungeon", name,
+			"hero_class", heroClass,
+			"ability", "heal",
+			"turn", newSeq,
+		)
 		return h.respondDungeon(ctx, ns, name, w)
 	}
 
@@ -698,6 +727,14 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 				"attackSeq":       newSeq,
 			},
 		}
+		// Business metric: ability used (Issue #358)
+		slog.Info("ability_used",
+			"component", "game",
+			"dungeon", name,
+			"hero_class", heroClass,
+			"ability", "taunt",
+			"turn", newSeq,
+		)
 		return h.patchAndRespond(ctx, ns, name, patch, w)
 	}
 
@@ -712,6 +749,14 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 			writeError(w, "backstab on cooldown", http.StatusBadRequest)
 			return fmt.Errorf("backstab on cooldown")
 		}
+		// Business metric: backstab ability used (Issue #358)
+		slog.Info("ability_used",
+			"component", "game",
+			"dungeon", name,
+			"hero_class", heroClass,
+			"ability", "backstab",
+			"turn", newSeq,
+		)
 	}
 
 	isBossTarget := strings.HasSuffix(realTarget, "-boss")
@@ -859,7 +904,49 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 		statusEffectsInflicted.With(map[string]string{"effect": "stun"}).Inc()
 	}
 
-	// Emit loot drop metric if a new item was dropped.
+	// Business metrics: emit kill events (Issue #358)
+	if combatOutcome == "kill" || combatOutcome == "boss_kill" || combatOutcome == "victory" {
+		monstersTypeRaw, _ := spec["monsterTypes"].([]interface{})
+		targetType := realTarget
+		if isBossTarget {
+			slog.Info("boss_killed",
+				"component", "game",
+				"dungeon", name,
+				"hero_class", heroClass,
+				"difficulty", difficulty,
+				"room", currentRoom,
+				"turn", newSeq,
+			)
+			// If all monsters also dead, the room is fully cleared
+			if postAllMonstersDead {
+				slog.Info("room_cleared",
+					"component", "game",
+					"dungeon", name,
+					"hero_class", heroClass,
+					"difficulty", difficulty,
+					"room", currentRoom,
+					"turns_used", newSeq,
+				)
+			}
+		} else if idxInt >= 0 {
+			if idxInt < len(monstersTypeRaw) {
+				if t, ok := monstersTypeRaw[idxInt].(string); ok && t != "" {
+					targetType = t
+				}
+			}
+			slog.Info("monster_killed",
+				"component", "game",
+				"dungeon", name,
+				"hero_class", heroClass,
+				"difficulty", difficulty,
+				"target_type", targetType,
+				"room", currentRoom,
+				"turn", newSeq,
+			)
+		}
+	}
+
+	// Emit loot drop metric + business event if a new item was dropped.
 	postLoot := getString(postSpec, "lastLootDrop", "")
 	if postLoot != "" {
 		parts := strings.SplitN(postLoot, "-", 2)
@@ -869,6 +956,16 @@ func (h *Handler) processCombat(ctx context.Context, ns, name, target string, cl
 				"rarity":     parts[1],
 				"difficulty": difficulty,
 			}).Inc()
+			// Business metric: loot drop event (Issue #358)
+			slog.Info("loot_dropped",
+				"component", "game",
+				"dungeon", name,
+				"hero_class", heroClass,
+				"difficulty", difficulty,
+				"item_type", parts[0],
+				"item_rarity", parts[1],
+				"room", currentRoom,
+			)
 		}
 	}
 
@@ -1259,6 +1356,22 @@ func (h *Handler) processAction(ctx context.Context, ns, name, action string, cl
 			writeError(w, "unknown item: "+item, http.StatusBadRequest)
 			return fmt.Errorf("unknown item")
 		}
+		// Business metric: item used (consume) (Issue #358)
+		{
+			parts := strings.SplitN(item, "-", 2)
+			rarity := ""
+			if len(parts) == 2 {
+				rarity = parts[1]
+			}
+			slog.Info("item_used",
+				"component", "game",
+				"dungeon", name,
+				"hero_class", heroClass,
+				"item_type", parts[0],
+				"item_rarity", rarity,
+				"action", "consume",
+			)
+		}
 
 	case strings.HasPrefix(action, "equip-"):
 		item := strings.TrimPrefix(action, "equip-")
@@ -1321,6 +1434,22 @@ func (h *Handler) processAction(ctx context.Context, ns, name, action string, cl
 			return fmt.Errorf("cannot equip item")
 		}
 		patchSpec["lastEnemyAction"] = "Item equipped"
+		// Business metric: item used (equip) (Issue #358)
+		{
+			parts := strings.SplitN(item, "-", 2)
+			rarity := ""
+			if len(parts) == 2 {
+				rarity = parts[1]
+			}
+			slog.Info("item_used",
+				"component", "game",
+				"dungeon", name,
+				"hero_class", heroClass,
+				"item_type", parts[0],
+				"item_rarity", rarity,
+				"action", "equip",
+			)
+		}
 
 	case action == "open-treasure":
 		allDead := true
@@ -1354,6 +1483,15 @@ func (h *Handler) processAction(ctx context.Context, ns, name, action string, cl
 		}
 		patchSpec["lastHeroAction"] = "Entered Room 2! Stronger enemies await..."
 		patchSpec["lastEnemyAction"] = ""
+		// Business metric: room 2 entered (Issue #358)
+		attackSeqAction := getInt(spec, "attackSeq")
+		slog.Info("room2_entered",
+			"component", "game",
+			"dungeon", name,
+			"hero_class", heroClass,
+			"difficulty", difficultyAction,
+			"turns_used", attackSeqAction+actionSeq,
+		)
 
 	default:
 		writeError(w, "unknown action: "+action, http.StatusBadRequest)
