@@ -60,6 +60,7 @@ func main() {
 	mux.HandleFunc("GET /api/v1/dungeons/{namespace}/{name}/resources", h.GetDungeonResource)
 	mux.HandleFunc("POST /api/v1/dungeons/{namespace}/{name}/cel-eval", h.CelEvalHandler)
 	mux.HandleFunc("GET /api/v1/run-card/{namespace}/{name}", h.RunCard)
+	mux.HandleFunc("GET /api/v1/run-narrative/{namespace}/{name}", h.RunNarrative)
 	mux.HandleFunc("GET /api/v1/leaderboard", h.GetLeaderboard)
 	mux.HandleFunc("GET /api/v1/profile", h.GetProfile)
 	mux.HandleFunc("POST /api/v1/profile/cert", h.AwardCert)

@@ -1927,6 +1927,20 @@ function HelpModal({ onClose, onCheat }: { onClose: () => void; onCheat: () => v
         <p>Use <b>Pause</b> to freeze the stream while reading. Use <b>Copy JSON</b> to export the full event log for debugging.</p>
       </>
     )},
+    { title: 'Blog Post Generator', content: (
+      <>
+        <p>After winning, click <b>Tell the story of this run</b> on the victory screen to generate a shareable Markdown blog post about your run.</p>
+        <p>The post includes:</p>
+        <ul>
+          <li>Hero class, difficulty, turn count, and dungeon name</li>
+          <li>Narrated kro events — boss phase transitions, loot drops, room transitions — each with the responsible CEL expression and RGD</li>
+          <li>All kro concepts you unlocked, linked to the kro docs</li>
+          <li>The full Dungeon CR YAML snippet</li>
+          <li>A CTA linking to <code>learn-kro.eks.aws.dev</code></li>
+        </ul>
+        <p><b>Copy Markdown</b> copies the post to your clipboard. <b>Open in GitHub Discussions</b> opens a new tab pre-filled in the kro repo's show-and-tell category.</p>
+      </>
+    )},
   ]
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -2040,6 +2054,10 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
   const [showPlayground, setShowPlayground] = useState(false)
   const [showTerminal, setShowTerminal] = useState(false)  // #457 kubectl terminal
   const [shareCopied, setShareCopied] = useState(false)   // #456 run card share feedback
+  const [showNarrative, setShowNarrative] = useState(false)   // #460 blog post generator
+  const [narrativeText, setNarrativeText] = useState('')       // #460
+  const [narrativeLoading, setNarrativeLoading] = useState(false)  // #460
+  const [narrativeCopied, setNarrativeCopied] = useState(false)    // #460
   // Auto-show certificate once on room-2 victory
   const certShownRef = useRef(false)
   useEffect(() => {
@@ -2329,13 +2347,37 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
                   className="run-card-img"
                   loading="lazy"
                 />
-                <button
-                  className="btn run-card-share-btn"
-                  onClick={handleShare}
-                  title="Copy shareable tweet + card link to clipboard"
-                >
-                  {shareCopied ? '✓ Copied!' : '↗ Share Run'}
-                </button>
+                <div style={{ display: 'flex', gap: 6, justifyContent: 'center', flexWrap: 'wrap' }}>
+                  <button
+                    className="btn run-card-share-btn"
+                    onClick={handleShare}
+                    title="Copy shareable tweet + card link to clipboard"
+                  >
+                    {shareCopied ? '✓ Copied!' : '↗ Share Run'}
+                  </button>
+                  <button
+                    className="btn run-narrative-btn"
+                    onClick={async () => {
+                      setNarrativeLoading(true)
+                      setShowNarrative(true)
+                      setNarrativeText('')
+                      try {
+                        const conceptsList = Array.from(kroUnlocked).join(',')
+                        const res = await fetch(`/api/v1/run-narrative/${ns}/${dungeonName}?concepts=${conceptsList}`, { credentials: 'include' })
+                        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+                        const data = await res.json()
+                        setNarrativeText(data.markdown || '')
+                      } catch (e: any) {
+                        setNarrativeText(`# Error\n\nFailed to generate narrative: ${e?.message ?? 'unknown error'}`)
+                      } finally {
+                        setNarrativeLoading(false)
+                      }
+                    }}
+                    title="Generate a shareable Markdown blog post about this run"
+                  >
+                    Tell the story
+                  </button>
+                </div>
               </div>
             )
           })()}
@@ -2365,6 +2407,56 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
           unlocked={kroUnlocked}
           onClose={() => setShowCertificate(false)}
         />
+      )}
+
+      {/* #460 — Blog post / run narrative modal */}
+      {showNarrative && (
+        <div className="modal-overlay" onClick={() => setShowNarrative(false)}>
+          <div className="modal run-narrative-modal" role="dialog" aria-modal="true" aria-label="Run narrative" onClick={e => e.stopPropagation()}>
+            <h2 style={{ color: 'var(--gold)', fontSize: 11, marginBottom: 8 }}>Tell the story of this run</h2>
+            {narrativeLoading ? (
+              <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--text-dim)', fontSize: 9 }}>Generating narrative...</div>
+            ) : (
+              <>
+                <textarea
+                  className="run-narrative-textarea"
+                  readOnly
+                  value={narrativeText}
+                  aria-label="Generated Markdown blog post"
+                />
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 10, flexWrap: 'wrap' }}>
+                  <button
+                    className="btn btn-gold"
+                    style={{ fontSize: 7 }}
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(narrativeText)
+                        setNarrativeCopied(true)
+                        setTimeout(() => setNarrativeCopied(false), 2500)
+                      } catch {
+                        window.prompt('Copy Markdown:', narrativeText)
+                      }
+                    }}
+                  >
+                    {narrativeCopied ? '✓ Copied!' : 'Copy Markdown'}
+                  </button>
+                  <button
+                    className="btn"
+                    style={{ fontSize: 7 }}
+                    onClick={() => {
+                      const body = encodeURIComponent(narrativeText)
+                      window.open(`https://github.com/kubernetes-sigs/kro/discussions/new?category=show-and-tell&body=${body}`, '_blank', 'noopener')
+                    }}
+                    title="Open a new GitHub Discussion pre-filled with this post"
+                  >
+                    Open in GitHub Discussions
+                  </button>
+                  <button className="btn" style={{ fontSize: 7 }} onClick={() => setShowNarrative(false)}>Close</button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
       )}
 
       {lootDrop && !combatModal && (

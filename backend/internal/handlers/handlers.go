@@ -2899,3 +2899,284 @@ func (h *Handler) RunCard(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	fmt.Fprint(w, svg)
 }
+
+// RunNarrative generates a shareable Markdown blog post for a completed dungeon run.
+// The post narrates the key kro events that occurred during the run, lists unlocked
+// concepts, includes the dungeon CR YAML snippet, and closes with a kro CTA.
+//
+// Query params:
+//   - concepts=id1,id2,...  — comma-separated kro concept IDs unlocked (from frontend localStorage)
+//
+// Authenticated + ownership-checked (unlike RunCard which is intentionally public).
+func (h *Handler) RunNarrative(w http.ResponseWriter, r *http.Request) {
+	ns := r.PathValue("namespace")
+	name := r.PathValue("name")
+	if !validateNamespace(w, ns) {
+		return
+	}
+
+	dungeon, err := h.client.Dynamic.Resource(k8s.DungeonGVR).Namespace(ns).Get(
+		context.Background(), name, metav1.GetOptions{})
+	if err != nil {
+		writeError(w, sanitizeK8sError(err), http.StatusNotFound)
+		return
+	}
+
+	if ownerErr := requireDungeonOwner(r, dungeon); ownerErr != nil {
+		writeError(w, ownerErr.Error(), http.StatusForbidden)
+		return
+	}
+
+	spec, _ := dungeon.Object["spec"].(map[string]interface{})
+	if spec == nil {
+		writeError(w, "dungeon spec not found", http.StatusNotFound)
+		return
+	}
+
+	heroClass, _ := spec["heroClass"].(string)
+	if heroClass == "" {
+		heroClass = "warrior"
+	}
+	difficulty, _ := spec["difficulty"].(string)
+	if difficulty == "" {
+		difficulty = "normal"
+	}
+	attackSeq := getInt(spec, "attackSeq")
+	currentRoom := getInt(spec, "currentRoom")
+	if currentRoom < 1 {
+		currentRoom = 1
+	}
+	bossHP := getInt(spec, "bossHP")
+	room2BossHP := getInt(spec, "room2BossHP")
+	modifier, _ := spec["modifier"].(string)
+	monstersRaw, _ := spec["monsters"].(int64)
+	monsters := int(monstersRaw)
+	if monsters == 0 {
+		monsters = 1
+	}
+
+	// Parse unlocked concept IDs from query param
+	conceptsParam := r.URL.Query().Get("concepts")
+	conceptIDs := []string{}
+	if conceptsParam != "" {
+		for _, id := range strings.Split(conceptsParam, ",") {
+			if id = strings.TrimSpace(id); id != "" {
+				conceptIDs = append(conceptIDs, id)
+			}
+		}
+	}
+
+	// Concept ID → human-readable label + kro docs link
+	conceptLabels := map[string]string{
+		"resource-graph":      "Resource Graphs",
+		"cel-expressions":     "CEL Expressions",
+		"reconcile-loop":      "Reconcile Loop",
+		"crd-schema":          "CRD Schema",
+		"spec-status-split":   "Spec/Status Split",
+		"owner-references":    "Owner References",
+		"cel-conditionals":    "CEL Conditionals",
+		"cel-functions":       "CEL Functions",
+		"cel-writeback":       "CEL Writeback",
+		"rgd-template":        "RGD Templates",
+		"namespace-scoping":   "Namespace Scoping",
+		"kro-instance":        "kro Instances",
+		"kro-rbac":            "kro RBAC",
+		"ready-when":          "readyWhen Conditions",
+		"cel-math":            "CEL Math",
+		"cel-strings":         "CEL Strings",
+		"cel-maps":            "CEL Maps",
+		"cel-lists":           "CEL Lists",
+		"cel-comprehensions":  "CEL Comprehensions",
+		"spec-patch":          "Spec Patch",
+		"kro-defaults":        "kro Defaults",
+		"multi-resource-rgd":  "Multi-Resource RGDs",
+		"kro-status-fields":   "kro Status Fields",
+		"cel-ternary":         "CEL Ternary",
+		"taunt-state-machine": "State Machines in CEL",
+		"mana-lifecycle":      "Resource Lifecycle via CEL",
+		"cel-probability":     "Probability in CEL",
+	}
+	kroDocsBase := "https://kro.run/docs"
+
+	// Build concept section
+	var conceptLines []string
+	for _, id := range conceptIDs {
+		label := conceptLabels[id]
+		if label == "" {
+			label = strings.ReplaceAll(id, "-", " ")
+		}
+		conceptLines = append(conceptLines, fmt.Sprintf("- [%s](%s/concepts/%s)", label, kroDocsBase, id))
+	}
+
+	// Key kro events narrated from spec fields
+	type kroEvent struct {
+		turn int64
+		desc string
+		cel  string
+		rgd  string
+	}
+	var events []kroEvent
+
+	// Event 1: Dungeon CR created → kro reconciles 16 child resources
+	events = append(events, kroEvent{
+		turn: 1,
+		desc: fmt.Sprintf("The Dungeon CR `%s` was created. kro's `dungeon-graph` RGD immediately reconciled and created a Namespace, Hero CR, %d Monster CR(s), a Boss CR, Treasure CR, Modifier CR, and supporting ConfigMaps — all from a single custom resource.", name, monsters),
+		cel:  `size(schema.spec.monsterHP.filter(hp, hp > 0))  // monstersAlive count`,
+		rgd:  "dungeon-graph",
+	})
+
+	// Event 2: Hero class stats via CEL (hero-graph)
+	classHP := map[string]int{"warrior": 200, "mage": 120, "rogue": 150}[heroClass]
+	if classHP == 0 {
+		classHP = 150
+	}
+	classMana := map[string]int{"warrior": 0, "mage": 8, "rogue": 4}[heroClass]
+	events = append(events, kroEvent{
+		turn: 1,
+		desc: fmt.Sprintf("The `hero-graph` RGD computed the Hero's stats via CEL: max HP = %d for a %s, max mana = %d. The Hero ConfigMap was created with these values, written back by kro's CEL writeback feature.", classHP, heroClass, classMana),
+		cel:  fmt.Sprintf(`schema.spec.heroClass == "%s" ? %d : (schema.spec.heroClass == "warrior" ? 200 : 150)  // maxHP`, heroClass, classHP),
+		rgd:  "hero-graph",
+	})
+
+	// Event 3: Modifier effect
+	if modifier != "" && modifier != "none" {
+		modDesc := map[string]string{
+			"curse-darkness":      "Curse of Darkness — hero damage reduced by 20%.",
+			"curse-fury":          "Curse of Fury — monsters deal 30% more damage.",
+			"curse-fortitude":     "Curse of Fortitude — boss HP increased by 25%.",
+			"blessing-strength":   "Blessing of Strength — hero damage increased by 25%.",
+			"blessing-resilience": "Blessing of Resilience — hero takes 25% less damage.",
+			"blessing-fortune":    "Blessing of Fortune — loot drop chance doubled.",
+		}[modifier]
+		if modDesc == "" {
+			modDesc = modifier
+		}
+		events = append(events, kroEvent{
+			turn: 1,
+			desc: fmt.Sprintf("The dungeon modifier `%s` was active: %s The `modifier-graph` RGD computed the effect and multiplier entirely in CEL — no backend code involved.", modifier, modDesc),
+			cel:  `schema.spec.modifier == "blessing-strength" ? 1.25 : (schema.spec.modifier == "curse-darkness" ? 0.80 : 1.0)`,
+			rgd:  "modifier-graph",
+		})
+	}
+
+	// Event 4: Boss phase transitions (if boss was ever engaged)
+	if bossHP >= 0 {
+		events = append(events, kroEvent{
+			turn: attackSeq / 3,
+			desc: fmt.Sprintf("As the battle progressed, the `boss-graph` RGD tracked the boss phase in real time via CEL. When boss HP dropped below 50%%, kro recomputed `damageMultiplier` from 1.0 → 1.3; below 25%% it became 1.6. No backend code was needed — CEL expressions in the RGD drove the entire state machine."),
+			cel:  `schema.spec.bossHP <= schema.status.maxBossHP * 0.25 ? 1.6 : (schema.spec.bossHP <= schema.status.maxBossHP * 0.5 ? 1.3 : 1.0)`,
+			rgd:  "boss-graph",
+		})
+	}
+
+	// Event 5: Room 2 transition (if player made it)
+	if currentRoom >= 2 && room2BossHP > 0 {
+		events = append(events, kroEvent{
+			turn: attackSeq / 2,
+			desc: fmt.Sprintf("After clearing Room 1, the dungeon transitioned to Room 2. kro patched `spec.monsterHP` with 1.5x scaled values (trolls and ghouls replace goblins) and `spec.bossHP` with 1.3x values. The entire room state was driven by a single PATCH to the Dungeon CR spec — kro's `dungeon-graph` RGD reconciled all 16 child resources automatically."),
+			cel:  `schema.spec.currentRoom >= 2 ? int(schema.spec.room2BossHP * 1.3) : schema.spec.bossHP`,
+			rgd:  "dungeon-graph",
+		})
+	}
+
+	// Event 6: Loot drop via loot-graph (if inventory non-empty)
+	inventory, _ := spec["inventory"].(string)
+	if inventory != "" {
+		items := strings.Split(inventory, ",")
+		firstItem := ""
+		for _, it := range items {
+			it = strings.TrimSpace(it)
+			if it != "" {
+				firstItem = it
+				break
+			}
+		}
+		if firstItem != "" {
+			events = append(events, kroEvent{
+				turn: attackSeq / 4,
+				desc: fmt.Sprintf("A monster kill triggered a loot drop. The `loot-graph` RGD computed the item type (`%s`), rarity, and description entirely in CEL — the result was written to a Kubernetes Secret managed by kro, then surfaced to the frontend via the dungeon spec.", firstItem),
+				cel:  `schema.spec.difficulty == "hard" ? "epic" : (random.seededInt(0, 3, schema.metadata.uid) == 0 ? "rare" : "common")`,
+				rgd:  "loot-graph",
+			})
+		}
+	}
+
+	// Build YAML snippet from key spec fields
+	yamlSnippet := fmt.Sprintf(`apiVersion: rpg.krombat.io/v1alpha1
+kind: Dungeon
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  heroClass: %s
+  difficulty: %s
+  monsters: %d
+  heroHP: %d
+  bossHP: %d
+  attackSeq: %d
+  currentRoom: %d
+  modifier: "%s"
+  inventory: "%s"`,
+		name, ns,
+		heroClass, difficulty,
+		monsters,
+		getInt(spec, "heroHP"),
+		bossHP,
+		attackSeq, currentRoom,
+		modifier, inventory,
+	)
+
+	// Assemble the post
+	var sb strings.Builder
+
+	sb.WriteString(fmt.Sprintf("# I played a dungeon RPG on Kubernetes — here's what kro did\n\n"))
+	capitalize := func(s string) string {
+		if len(s) == 0 {
+			return s
+		}
+		return strings.ToUpper(s[:1]) + s[1:]
+	}
+	sb.WriteString(fmt.Sprintf("> **%s** | **%s** difficulty | **%d turns** | dungeon: `%s`\n\n", capitalize(heroClass), capitalize(difficulty), attackSeq, name))
+
+	if currentRoom >= 2 && bossHP <= 0 {
+		sb.WriteString("**Victory!** Both rooms cleared.\n\n")
+	} else if currentRoom >= 2 {
+		sb.WriteString("**Room 2 reached.** Final boss still standing.\n\n")
+	} else {
+		sb.WriteString("**Room 1 cleared.**\n\n")
+	}
+
+	sb.WriteString("---\n\n")
+	sb.WriteString("## What kro did during this run\n\n")
+	sb.WriteString("Every attack, every HP change, every loot drop — all driven by [kro](https://github.com/kubernetes-sigs/kro) ResourceGraphDefinitions on Kubernetes. Here are the key reconcile events:\n\n")
+
+	for i, ev := range events {
+		sb.WriteString(fmt.Sprintf("### %d. %s\n\n", i+1, ev.desc))
+		sb.WriteString(fmt.Sprintf("**RGD:** `%s`\n\n", ev.rgd))
+		sb.WriteString(fmt.Sprintf("**CEL expression:**\n```cel\n%s\n```\n\n", ev.cel))
+	}
+
+	sb.WriteString("---\n\n")
+
+	if len(conceptLines) > 0 {
+		sb.WriteString("## kro concepts I learned\n\n")
+		for _, l := range conceptLines {
+			sb.WriteString(l + "\n")
+		}
+		sb.WriteString("\n")
+		sb.WriteString("---\n\n")
+	}
+
+	sb.WriteString("## The Dungeon CR YAML\n\n")
+	sb.WriteString("This single Kubernetes custom resource describes the entire game state:\n\n")
+	sb.WriteString(fmt.Sprintf("```yaml\n%s\n```\n\n", yamlSnippet))
+
+	sb.WriteString("---\n\n")
+	sb.WriteString("## Try it yourself\n\n")
+	sb.WriteString("Play at **[learn-kro.eks.aws.dev](https://learn-kro.eks.aws.dev)** — no local setup needed.\n\n")
+	sb.WriteString("Built with **[kro](https://github.com/kubernetes-sigs/kro)** — Kubernetes Resource Orchestrator.\n\n")
+	sb.WriteString("> kro lets you define a graph of Kubernetes resources as a single custom resource, with CEL expressions for dynamic values and conditions. No controllers, no operators — just YAML and CEL.\n")
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"markdown": sb.String()})
+}
