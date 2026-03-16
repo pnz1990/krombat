@@ -561,18 +561,23 @@ export default function App() {
         const prevHeroHP = detail?.spec.heroHP ?? 100
         const newHeroHP = updated.spec.heroHP ?? 100
         const hpDropped = newHeroHP < prevHeroHP
-        const poisonActive = (detail?.spec.poisonTurns ?? 0) > 0
-        const burnActive = (detail?.spec.burnTurns ?? 0) > 0
-        if (hpDropped && (poisonActive || burnActive)) {
-          const dotDmg = prevHeroHP - newHeroHP
-          // Only show DoT float if the drop is consistent with DoT amounts
-          if (dotDmg === 5 || dotDmg === 8 || (dotDmg > 0 && dotDmg <= 13)) {
-            const color = poisonActive ? '#2ecc71' : '#e74c3c'
+        const prevPoisonTurns = detail?.spec.poisonTurns ?? 0
+        const prevBurnTurns = detail?.spec.burnTurns ?? 0
+        const newPoisonTurns = updated.spec.poisonTurns ?? 0
+        const newBurnTurns = updated.spec.burnTurns ?? 0
+        // Detect tickDoT specPatch: poisonTurns or burnTurns actually decremented
+        // (#500: use counter decrement as the reliable signal — HP drop can be obscured by simultaneous counter-attack)
+        const dotTicked = (prevPoisonTurns > 0 && newPoisonTurns < prevPoisonTurns) || (prevBurnTurns > 0 && newBurnTurns < prevBurnTurns)
+        if (dotTicked) {
+          // Show floating damage for the DoT portion
+          const dotDmg = (prevPoisonTurns > 0 && newPoisonTurns < prevPoisonTurns ? 5 : 0) + (prevBurnTurns > 0 && newBurnTurns < prevBurnTurns ? 8 : 0)
+          if (hpDropped && dotDmg > 0) {
+            const color = prevPoisonTurns > 0 ? '#2ecc71' : '#e74c3c'
             setFloatingDmg({ target: 'hero', amount: `-${dotDmg}`, color })
             setTimeout(() => setFloatingDmg(null), 1200)
-            // #450: fire spec-patch insight on first DoT tick — best teaching moment
-            triggerInsight('dot-applied')
           }
+          // #450/#500: fire spec-patch insight on tickDoT — tickDoT is a specPatch node that writes heroHP/poisonTurns/burnTurns back to spec
+          triggerInsight('dot-applied')
         }
         // Detect monster kill
         const prevDeadCount = (detail?.spec.monsterHP || []).filter((hp: number) => hp <= 0).length
@@ -893,6 +898,9 @@ export default function App() {
       {showProfile && (
         <ProfilePanel profile={profile} loading={profileLoading} authUser={authUser || null} onClose={() => setShowProfile(false)} />
       )}
+
+      {/* Help Modal — rendered globally so z-index is unaffected by DungeonView subtree (#495) */}
+      {showHelp && <HelpModal onClose={() => setShowHelp(false)} onCheat={() => { setShowHelp(false); setTimeout(() => setShowCheat(true), 100) }} />}
 
       {/* kro Concept Modal */}
       {kroConceptModal && (
@@ -1989,8 +1997,6 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
 
        {/* ── Mini-map ─────────────────────────────────────────────────── */}
        <DungeonMiniMap spec={spec} />
-
-      {showHelp && <HelpModal onClose={onToggleHelp} onCheat={onToggleCheat} />}
 
       {showCheat && <CheatModal onClose={onToggleCheat} onAction={(target: string) => onAttack(target, 0)} />}
 
