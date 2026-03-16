@@ -2066,3 +2066,94 @@ body {
   from { opacity: 0; transform: translateX(60px); }
   to   { opacity: 1; transform: translateX(0); }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   kubectl Terminal (#457)
+   ═══════════════════════════════════════════════════════════════ */
+.kubectl-terminal {
+  background: #0d1117;
+  border: 2px solid #00ff41;
+  border-radius: 4px;
+  font-family: 'Courier New', 'Menlo', monospace;
+  font-size: 11px;
+  display: flex;
+  flex-direction: column;
+  max-height: 420px;
+  margin-top: 16px;
+}
+.kubectl-terminal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: #161b22;
+  border-bottom: 1px solid #21262d;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 7px;
+}
+.kubectl-terminal-title { color: #00ff41; }
+.kubectl-terminal-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 10px;
+  cursor: text;
+  min-height: 180px;
+}
+.kt-line { margin-bottom: 2px; }
+.kt-prompt { color: #00ff41; }
+.kt-output .kt-text { color: #e8e8e8; white-space: pre; }
+.kt-error .kt-text { color: #ff6b6b; white-space: pre; }
+.kt-kro .kt-text { color: #00d4ff; }
+.kt-yaml .kt-yaml { color: #f5c518; background: transparent; border: none; padding: 0; font-size: 11px; margin: 0; }
+.kt-annotation { margin-top: 4px; margin-left: 2px; }
+.kt-annotation-toggle {
+  background: none;
+  border: 1px solid #21262d;
+  border-radius: 2px;
+  color: #00d4ff;
+  cursor: pointer;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 5px;
+  padding: 2px 6px;
+}
+.kt-annotation-toggle:hover { background: rgba(0,212,255,0.08); }
+.kt-annotation-body {
+  margin-top: 4px;
+  padding: 6px 8px;
+  background: rgba(0,212,255,0.04);
+  border-left: 2px solid #00d4ff;
+  border-radius: 0 2px 2px 0;
+}
+.kt-ann-what { color: #e8e8e8; font-size: 11px; margin-bottom: 4px; line-height: 1.4; }
+.kt-ann-rgd { color: #00d4ff; font-size: 10px; margin-bottom: 4px; font-family: 'Press Start 2P', monospace; font-size: 5px; }
+.kt-ann-cel {
+  color: #f5c518;
+  background: rgba(245,197,24,0.06);
+  border: none;
+  padding: 4px 6px;
+  font-size: 10px;
+  margin: 4px 0;
+  white-space: pre-wrap;
+}
+.kt-ann-concept { color: #8b949e; font-size: 9px; font-family: 'Press Start 2P', monospace; font-size: 5px; }
+.kubectl-terminal-input-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-top: 1px solid #21262d;
+  background: #0d1117;
+}
+.kt-prompt { color: #00ff41; font-size: 12px; font-family: 'Courier New', monospace; user-select: none; }
+.kt-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #e8e8e8;
+  font-family: 'Courier New', 'Menlo', monospace;
+  font-size: 11px;
+  caret-color: #00ff41;
+}
+.kt-input::placeholder { color: #4a4a5a; }
+.kt-input:disabled { opacity: 0.5; }

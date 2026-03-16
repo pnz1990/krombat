@@ -1371,6 +1371,22 @@ client.Resource(dungeonGVR).Namespace(ns).Patch(ctx,
 ✓ specPatch — CEL writes back to spec
   ... and 17 more`,
   },
+  {
+    title: 'kubectl Terminal Mode',
+    body: "Inside any dungeon, open ☰ → kubectl Terminal for a real CLI experience. Type kubectl commands — they call the actual backend API. Every command shows a [kro] annotation explaining which RGD fired and which CEL expression ran.",
+    snippet: `$ kubectl get dungeons
+NAME           HERO-CLASS  DIFFICULTY  HP    BOSS-HP  ROOM
+my-dungeon     warrior     normal      163   400      1
+
+$ kubectl describe dungeon my-dungeon
+Spec:
+  heroHP: 163  difficulty: normal
+  bossHP: 400  currentRoom: 1
+
+[kro] What just happened? ▼
+  RGD: dungeon-graph (read)
+  CEL: status.bossPhase = bossHP <= maxBossHP*0.5 ? "phase2" : "phase1"`,
+  },
 ]
 
 export function KroOnboardingOverlay({ onDismiss, isAuthenticated }: { onDismiss: () => void; isAuthenticated: boolean }) {
