@@ -1387,6 +1387,15 @@ Spec:
   RGD: dungeon-graph (read)
   CEL: status.bossPhase = bossHP <= maxBossHP*0.5 ? "phase2" : "phase1"`,
   },
+  {
+    title: 'Share Your Run',
+    body: "When you win, a shareable Run Card is auto-generated — an SVG image showing your hero, difficulty, turn count, and kro concepts unlocked. Click ↗ Share Run on the victory screen to copy a tweet-ready text + card URL to your clipboard. Every win is a kro awareness moment.",
+    snippet: `# The card is served as a plain SVG by the backend:
+GET /api/v1/run-card/<ns>/<dungeon-name>?concepts=N
+
+# No image hosting needed. The URL is shareable as-is.
+# Every card footer links back to learn-kro.eks.aws.dev`,
+  },
 ]
 
 export function KroOnboardingOverlay({ onDismiss, isAuthenticated }: { onDismiss: () => void; isAuthenticated: boolean }) {

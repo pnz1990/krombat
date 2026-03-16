@@ -2724,3 +2724,178 @@ func (h *Handler) GetDungeonResource(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(obj.Object)
 }
+
+// RunCard generates a shareable SVG run card for a completed dungeon.
+// This endpoint is intentionally unauthenticated — the card contains only
+// public-facing display info (hero class, difficulty, turns, dungeon name).
+// Query params:
+//   - concepts=N  — kro concepts unlocked during the run (optional, from frontend localStorage)
+func (h *Handler) RunCard(w http.ResponseWriter, r *http.Request) {
+	ns := r.PathValue("namespace")
+	name := r.PathValue("name")
+	if !validateNamespace(w, ns) {
+		return
+	}
+
+	dungeon, err := h.client.Dynamic.Resource(k8s.DungeonGVR).Namespace(ns).Get(
+		context.Background(), name, metav1.GetOptions{})
+	if err != nil {
+		writeError(w, sanitizeK8sError(err), http.StatusNotFound)
+		return
+	}
+
+	spec, _ := dungeon.Object["spec"].(map[string]interface{})
+	if spec == nil {
+		writeError(w, "dungeon spec not found", http.StatusNotFound)
+		return
+	}
+
+	heroClass, _ := spec["heroClass"].(string)
+	if heroClass == "" {
+		heroClass = "warrior"
+	}
+	difficulty, _ := spec["difficulty"].(string)
+	if difficulty == "" {
+		difficulty = "normal"
+	}
+	attackSeq := getInt(spec, "attackSeq")
+	currentRoom := getInt(spec, "currentRoom")
+	if currentRoom < 1 {
+		currentRoom = 1
+	}
+
+	// Optional kro concepts unlocked (passed from frontend)
+	conceptsStr := r.URL.Query().Get("concepts")
+	conceptsUnlocked, _ := strconv.ParseInt(conceptsStr, 10, 64)
+	if conceptsUnlocked < 0 {
+		conceptsUnlocked = 0
+	}
+	if conceptsUnlocked > 24 {
+		conceptsUnlocked = 24
+	}
+
+	// Sanitise name for display (truncate at 28 chars)
+	displayName := name
+	if len(displayName) > 28 {
+		displayName = displayName[:25] + "..."
+	}
+
+	// Hero class icon (Unicode block art)
+	heroIcon := map[string]string{
+		"warrior": "⚔",
+		"mage":    "✦",
+		"rogue":   "†",
+	}[heroClass]
+	if heroIcon == "" {
+		heroIcon = "⚔"
+	}
+
+	// Difficulty colour
+	diffColour := map[string]string{
+		"easy":   "#4ec94e",
+		"normal": "#f0c060",
+		"hard":   "#e05050",
+	}[difficulty]
+	if diffColour == "" {
+		diffColour = "#f0c060"
+	}
+
+	// Room label
+	roomLabel := "Room 1"
+	if currentRoom >= 2 {
+		roomLabel = "All Rooms"
+	}
+
+	// kro concept bar (0-24)
+	const totalConcepts = 24
+	conceptBarWidth := int(float64(conceptsUnlocked) / float64(totalConcepts) * 220)
+
+	svg := fmt.Sprintf(`<svg xmlns="http://www.w3.org/2000/svg" width="480" height="270" viewBox="0 0 480 270">
+  <defs>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&amp;display=swap');
+      text { font-family: 'Press Start 2P', 'Courier New', monospace; }
+    </style>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%%" stop-color="#0d0f14"/>
+      <stop offset="100%%" stop-color="#1a1d2e"/>
+    </linearGradient>
+    <linearGradient id="bar" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%%" stop-color="#5b8cf5"/>
+      <stop offset="100%%" stop-color="#a855f7"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="480" height="270" fill="url(#bg)" rx="8"/>
+  <rect x="1" y="1" width="478" height="268" fill="none" stroke="#2a2d3e" stroke-width="1" rx="7"/>
+
+  <!-- Top accent bar -->
+  <rect x="0" y="0" width="480" height="4" fill="#5b8cf5" rx="2"/>
+
+  <!-- kro brand tag -->
+  <rect x="20" y="18" width="60" height="16" fill="#1e2235" rx="3"/>
+  <text x="50" y="30" text-anchor="middle" font-size="7" fill="#5b8cf5">kro / k8s</text>
+
+  <!-- Dungeon name -->
+  <text x="240" y="56" text-anchor="middle" font-size="10" fill="#e8eaf6" letter-spacing="1">%s</text>
+
+  <!-- Divider -->
+  <line x1="40" y1="68" x2="440" y2="68" stroke="#2a2d3e" stroke-width="1"/>
+
+  <!-- Hero icon + class -->
+  <text x="80" y="105" text-anchor="middle" font-size="28" fill="#f0c060">%s</text>
+  <text x="80" y="122" text-anchor="middle" font-size="8" fill="#9ca3af">%s</text>
+
+  <!-- Difficulty pill -->
+  <rect x="150" y="88" width="80" height="22" fill="#1e2235" rx="4"/>
+  <text x="190" y="104" text-anchor="middle" font-size="8" fill="%s">%s</text>
+
+  <!-- Turns -->
+  <rect x="250" y="88" width="80" height="22" fill="#1e2235" rx="4"/>
+  <text x="290" y="104" text-anchor="middle" font-size="8" fill="#9ca3af">%d turns</text>
+
+  <!-- Room cleared -->
+  <rect x="348" y="88" width="92" height="22" fill="#1e2235" rx="4"/>
+  <text x="394" y="104" text-anchor="middle" font-size="7" fill="#4ec94e">%s</text>
+
+  <!-- kro concepts section -->
+  <text x="130" y="148" text-anchor="middle" font-size="7" fill="#9ca3af">kro concepts</text>
+  <rect x="20" y="154" width="220" height="8" fill="#1e2235" rx="4"/>
+  <rect x="20" y="154" width="%d" height="8" fill="url(#bar)" rx="4"/>
+  <text x="248" y="162" font-size="7" fill="#9ca3af">%d / %d</text>
+
+  <!-- Victory label -->
+  <text x="370" y="148" text-anchor="middle" font-size="7" fill="#f0c060">VICTORY</text>
+  <text x="370" y="162" text-anchor="middle" font-size="18" fill="#f0c060">★</text>
+
+  <!-- Divider -->
+  <line x1="40" y1="182" x2="440" y2="182" stroke="#2a2d3e" stroke-width="1"/>
+
+  <!-- Footer -->
+  <text x="240" y="205" text-anchor="middle" font-size="7" fill="#4e5568">Powered by kro on Kubernetes</text>
+  <text x="240" y="222" text-anchor="middle" font-size="7" fill="#5b8cf5">learn-kro.eks.aws.dev</text>
+
+  <!-- Bottom decorative dots -->
+  <circle cx="60" cy="250" r="2" fill="#2a2d3e"/>
+  <circle cx="80" cy="250" r="2" fill="#2a2d3e"/>
+  <circle cx="100" cy="250" r="2" fill="#2a2d3e"/>
+  <circle cx="380" cy="250" r="2" fill="#2a2d3e"/>
+  <circle cx="400" cy="250" r="2" fill="#2a2d3e"/>
+  <circle cx="420" cy="250" r="2" fill="#2a2d3e"/>
+</svg>`,
+		displayName,
+		heroIcon,
+		heroClass,
+		diffColour, difficulty,
+		attackSeq,
+		roomLabel,
+		conceptBarWidth,
+		conceptsUnlocked, totalConcepts,
+	)
+
+	w.Header().Set("Content-Type", "image/svg+xml")
+	w.Header().Set("Cache-Control", "public, max-age=300")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	fmt.Fprint(w, svg)
+}
