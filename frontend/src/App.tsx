@@ -2877,7 +2877,7 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
                     </Tooltip>
                     <Tooltip text={wb > 0 ? `Weapon equipped: +${wb} damage (${wu} uses left)` : 'Weapon — none equipped'}>
                       <div className={`equip-slot${wb > 0 ? ' filled' : ' empty'}`}>
-                        {wb > 0 ? <><ItemSprite id={wb >= 20 ? 'weapon-epic' : wb >= 10 ? 'weapon-rare' : 'weapon-common'} size={22} /><span className="slot-stat">+{wb}<br/>{wu}u</span></> : <PixelIcon name="sword" size={14} color="#333" />}
+                        {wb > 0 ? <><ItemSprite id={wb >= 20 ? 'weapon-epic' : wb >= 10 ? 'weapon-rare' : 'weapon-common'} size={22} /><span className="slot-stat">+{wb}<br/>{wu}u</span></> : <PixelIcon name="weapon-slot" size={14} color="#333" />}
                       </div>
                     </Tooltip>
                   </div>
@@ -2898,12 +2898,12 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
                     <div className="equip-row">
                       <Tooltip text={rb > 0 ? `Ring equipped: +${rb} HP regen at start of each round` : 'Ring — none equipped'}>
                         <div className={`equip-slot${rb > 0 ? ' filled' : ' empty'}`}>
-                          {rb > 0 ? <><PixelIcon name="ring" size={14} /><span className="slot-stat">+{rb}/t</span></> : <PixelIcon name="ring" size={14} color="#333" />}
-                        </div>
-                      </Tooltip>
-                      <Tooltip text={amb > 0 ? `Amulet equipped: +${amb}% to all damage dealt` : 'Amulet — none equipped'}>
-                        <div className={`equip-slot${amb > 0 ? ' filled' : ' empty'}`}>
-                          {amb > 0 ? <><PixelIcon name="amulet" size={14} /><span className="slot-stat">+{amb}%</span></> : <PixelIcon name="amulet" size={14} color="#333" />}
+                          {rb > 0 ? <><ItemSprite id={rb >= 12 ? 'ring-epic' : rb >= 8 ? 'ring-rare' : 'ring-common'} size={22} /><span className="slot-stat">+{rb}/t</span></> : <PixelIcon name="ring" size={14} color="#333" />}
+                         </div>
+                       </Tooltip>
+                       <Tooltip text={amb > 0 ? `Amulet equipped: +${amb}% to all damage dealt` : 'Amulet — none equipped'}>
+                         <div className={`equip-slot${amb > 0 ? ' filled' : ' empty'}`}>
+                           {amb > 0 ? <><ItemSprite id={amb >= 30 ? 'amulet-epic' : amb >= 20 ? 'amulet-rare' : 'amulet-common'} size={22} /><span className="slot-stat">+{amb}%</span></> : <PixelIcon name="amulet" size={14} color="#333" />}
                         </div>
                       </Tooltip>
                     </div>
