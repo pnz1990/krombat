@@ -587,6 +587,10 @@ export default function App() {
         if ((detail?.spec.attackSeq ?? 0) === 0 && (updated.spec.attackSeq ?? 0) > 0) triggerInsight('first-attack')
         // Second attack — teach the reconcile loop concept
         if ((detail?.spec.attackSeq ?? 0) === 1 && (updated.spec.attackSeq ?? 0) > 1) triggerInsight('second-attack')
+        // #459: class-specific deep dive triggers
+        if (heroAction.includes('Taunt activated')) triggerInsight('warrior-taunt-used')
+        if (heroAction.includes('heals for')) triggerInsight('mage-heal-used')
+        if (enemyAction.includes('dodged') || heroAction.includes('Rogue dodged')) triggerInsight('rogue-dodge-fired')
       }
 
       // Don't clear attackPhase/attackTarget — user must dismiss combat modal
