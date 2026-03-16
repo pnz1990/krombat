@@ -1980,6 +1980,14 @@ body {
 .lb-row.lb-victory td:first-child { border-left: 2px solid var(--gold); }
 .lb-row.lb-defeat td:first-child { border-left: 2px solid #e94560; }
 .lb-row.lb-room1-cleared td:first-child { border-left: 2px solid #00ff41; }
+.lb-filters { display: flex; gap: 6px; margin-bottom: 10px; }
+.lb-filter-btn {
+  background: none; border: 1px solid #333; color: var(--text-dim);
+  font-family: inherit; font-size: 7px; padding: 3px 8px; cursor: pointer;
+  border-radius: 2px; transition: border-color 0.15s, color 0.15s;
+}
+.lb-filter-btn:hover { border-color: #666; color: #ccc; }
+.lb-filter-btn.lb-filter-active { border-color: var(--gold); color: var(--gold); }
 
 /* ── New Game+ ────────────────────────────────────────────────────────────── */
 .ng-plus-badge {
