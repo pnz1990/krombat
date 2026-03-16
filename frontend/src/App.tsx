@@ -1520,7 +1520,6 @@ function EventLogTabs({ events, k8sLog, reconcileStream, kroUnlocked, onViewKroC
             )}
             {displayedStream.map((entry, i) => {
               const entryKey = `${entry.ts}-${entry.resource}-${i}`
-              const isExpanded = expandedWhy === entryKey
               // Only show diffs that have actual changes (exclude tombstone ~ entries with no useful info)
               const meaningfulFields = entry.fields.filter(f => f.path !== '~' || entry.action === 'DELETED')
               if (meaningfulFields.length === 0 && entry.action !== 'DELETED') return null
@@ -1533,6 +1532,8 @@ function EventLogTabs({ events, k8sLog, reconcileStream, kroUnlocked, onViewKroC
                     <span className="reconcile-rv">rv:{entry.resourceVersion}</span>
                   </div>
                   {meaningfulFields.map((fd, fi) => {
+                    const fieldKey = `${entryKey}-${fi}`
+                    const isFieldExpanded = expandedWhy === fieldKey
                     const color = fd.new === '' ? '#e74c3c'  // deleted/cleared
                       : fd.old === '' ? '#2ecc71'            // added
                       : fd.new > fd.old ? '#2ecc71'          // increased (numeric-ish)
@@ -1547,11 +1548,11 @@ function EventLogTabs({ events, k8sLog, reconcileStream, kroUnlocked, onViewKroC
                         {(fd.cel || fd.rgd) && (
                           <button
                             className="reconcile-why-btn"
-                            onClick={() => setExpandedWhy(isExpanded ? null : entryKey)}
+                            onClick={() => setExpandedWhy(isFieldExpanded ? null : fieldKey)}
                             title="Why? — see the kro CEL expression"
                           >Why?</button>
                         )}
-                        {isExpanded && fi === 0 && (fd.cel || fd.rgd) && (
+                        {isFieldExpanded && (fd.cel || fd.rgd) && (
                           <div className="reconcile-why-panel">
                             {fd.rgd && <div className="reconcile-why-rgd">RGD: {fd.rgd}</div>}
                             {fd.cel && <pre className="reconcile-why-cel">{fd.cel}</pre>}
