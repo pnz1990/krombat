@@ -5,6 +5,7 @@ import { useState, useEffect, useRef } from 'react'
 // Frame mapping: 1=idle, 2=walk1, 3=walk2, 4=attack1, 5=attack2, 6=hurt, 7=victory/dead
 const FRAME_COUNT: Record<string, number> = {
   warrior: 7, mage: 7, rogue: 7, dragon: 7, goblin: 6, skeleton: 6, troll: 6, ghoul: 6, 'bat-boss': 7,
+  archer: 6, shaman: 6,
 }
 
 export type SpriteAction = 'idle' | 'attack' | 'hurt' | 'dead' | 'victory' | 'itemUse'
@@ -52,7 +53,7 @@ export function Sprite({ spriteType, action, size = 64, flip = false }: SpritePr
   if (!FRAME_COUNT[spriteType]) return <div style={{ width: size, height: size, fontSize: size * 0.4, textAlign: 'center', lineHeight: `${size}px`, color: '#e94560', fontFamily: 'monospace' }}>?</div>
 
   const isBoss = spriteType === 'dragon' || spriteType === 'bat-boss'
-  const isMonster = spriteType === 'goblin' || spriteType === 'skeleton' || spriteType === 'troll' || spriteType === 'ghoul'
+  const isMonster = spriteType === 'goblin' || spriteType === 'skeleton' || spriteType === 'troll' || spriteType === 'ghoul' || spriteType === 'archer' || spriteType === 'shaman'
   const frames = isBoss ? BOSS_ACTION_FRAMES[action] : isMonster ? MONSTER_ACTION_FRAMES[action] : ACTION_FRAMES[action]
 
   useEffect(() => {
@@ -96,8 +97,8 @@ export function getMonsterSprite(index: number, room: number = 1, monsterTypes?:
     switch (mtype) {
       case 'goblin': return 'goblin'
       case 'skeleton': return 'skeleton'
-      case 'archer': return 'goblin'   // same sprite, different behavior
-      case 'shaman': return 'skeleton' // same sprite, different behavior
+      case 'archer': return 'archer'
+      case 'shaman': return 'shaman'
       case 'troll': return 'troll'
       case 'ghoul': return 'ghoul'
       default: break
@@ -124,45 +125,43 @@ export function getMonsterName(index: number, room: number = 1, monsterTypes?: s
   return index % 2 === 0 ? 'goblin' : 'skeleton'
 }
 
-// Item/icon sprite strips: 6 frames each, ~848px per frame, 832px tall (same scale as monsters)
+// Item/icon sprites: individual files per rarity
 const ITEM_STRIP: Record<string, { frames: number; frameW: number; frameH: number; file: string }> = {
-  weapons:   { frames: 6, frameW: 853, frameH: 832, file: '/sprites/items/weapons.png' },
-  armor:     { frames: 6, frameW: 848, frameH: 832, file: '/sprites/items/armor.png' },
 }
 
-// Map item type+rarity to strip and index, or direct file path
+// Map item type+rarity to file path
 type ItemMapEntry = { strip: string; index: number; file?: never } | { file: string; strip?: never; index?: never }
 const ITEM_MAP: Record<string, ItemMapEntry> = {
-  'weapon-common':     { strip: 'weapons', index: 0 },
-  'weapon-rare':       { strip: 'weapons', index: 1 },
-  'weapon-epic':       { strip: 'weapons', index: 2 },
-  'armor-common':      { file: '/sprites/items/armor/1.png' },
-  'armor-rare':        { file: '/sprites/items/armor/2.png' },
-  'armor-epic':        { file: '/sprites/items/armor/3.png' },
-  'shield-common':     { file: '/sprites/items/shield/1.png' },
-  'shield-rare':       { file: '/sprites/items/shield/2.png' },
-  'shield-epic':       { file: '/sprites/items/shield/3.png' },
-  'hppotion-common':   { file: '/sprites/items/potions/hp-1.png' },
-  'hppotion-rare':     { file: '/sprites/items/potions/hp-2.png' },
-  'hppotion-epic':     { file: '/sprites/items/potions/hp-3.png' },
-  'manapotion-common': { file: '/sprites/items/potions/mana-1.png' },
-  'manapotion-rare':   { file: '/sprites/items/potions/mana-2.png' },
-  'manapotion-epic':   { file: '/sprites/items/potions/mana-3.png' },
-  'helmet-common':     { file: '/sprites/items/helmet/1.png' },
-  'helmet-rare':       { file: '/sprites/items/helmet/2.png' },
-  'helmet-epic':       { file: '/sprites/items/helmet/3.png' },
-  'pants-common':      { file: '/sprites/items/pants/1.png' },
-  'pants-rare':        { file: '/sprites/items/pants/2.png' },
-  'pants-epic':        { file: '/sprites/items/pants/3.png' },
-  'boots-common':      { file: '/sprites/items/boots/1.png' },
-  'boots-rare':        { file: '/sprites/items/boots/2.png' },
-  'boots-epic':        { file: '/sprites/items/boots/3.png' },
-  'ring-common':       { file: '/sprites/items/ring/1.png' },
-  'ring-rare':         { file: '/sprites/items/ring/2.png' },
-  'ring-epic':         { file: '/sprites/items/ring/3.png' },
-  'amulet-common':     { file: '/sprites/items/amulet/1.png' },
-  'amulet-rare':       { file: '/sprites/items/amulet/2.png' },
-  'amulet-epic':       { file: '/sprites/items/amulet/3.png' },
+  'weapon-common':     { file: '/sprites/weapons/1.png' },
+  'weapon-rare':       { file: '/sprites/weapons/2.png' },
+  'weapon-epic':       { file: '/sprites/weapons/3.png' },
+  'armor-common':      { file: '/sprites/armor/1.png' },
+  'armor-rare':        { file: '/sprites/armor/2.png' },
+  'armor-epic':        { file: '/sprites/armor/3.png' },
+  'shield-common':     { file: '/sprites/shield/1.png' },
+  'shield-rare':       { file: '/sprites/shield/2.png' },
+  'shield-epic':       { file: '/sprites/shield/3.png' },
+  'hppotion-common':   { file: '/sprites/potions/hp-1.png' },
+  'hppotion-rare':     { file: '/sprites/potions/hp-2.png' },
+  'hppotion-epic':     { file: '/sprites/potions/hp-3.png' },
+  'manapotion-common': { file: '/sprites/potions/mana-1.png' },
+  'manapotion-rare':   { file: '/sprites/potions/mana-2.png' },
+  'manapotion-epic':   { file: '/sprites/potions/mana-3.png' },
+  'helmet-common':     { file: '/sprites/helmet/1.png' },
+  'helmet-rare':       { file: '/sprites/helmet/2.png' },
+  'helmet-epic':       { file: '/sprites/helmet/3.png' },
+  'pants-common':      { file: '/sprites/pants/1.png' },
+  'pants-rare':        { file: '/sprites/pants/2.png' },
+  'pants-epic':        { file: '/sprites/pants/3.png' },
+  'boots-common':      { file: '/sprites/boots/1.png' },
+  'boots-rare':        { file: '/sprites/boots/2.png' },
+  'boots-epic':        { file: '/sprites/boots/3.png' },
+  'ring-common':       { file: '/sprites/ring/1.png' },
+  'ring-rare':         { file: '/sprites/ring/2.png' },
+  'ring-epic':         { file: '/sprites/ring/3.png' },
+  'amulet-common':     { file: '/sprites/amulet/1.png' },
+  'amulet-rare':       { file: '/sprites/amulet/2.png' },
+  'amulet-epic':       { file: '/sprites/amulet/3.png' },
 }
 
 const MODIFIER_MAP: Record<string, { file: string }> = {

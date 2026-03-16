@@ -1559,7 +1559,7 @@ function FlyingBat({ startX, startY, endX, endY, dur, onDone }: { startX: number
   }, [])
 
   return (
-    <img src={`/sprites/dungeon/bat-${frame}.png`} alt="" className="flying-bat"
+    <img src={`/sprites/bat/${frame}.png`} alt="" className="flying-bat"
       style={{ left: `${pos.x}%`, top: `${pos.y}%`, transform: `translate(-50%,-50%) scaleX(${endX > startX ? 1 : -1})` }} />
   )
 }
@@ -2602,7 +2602,7 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
         <div className="left-panel">
           <div className={`dungeon-arena${spec.modifier === 'blessing-fortune' ? ' arena-blessing-fortune' : ''}`} style={getModifierArenaStyle(spec.modifier)}>
             {/* Stone floor texture layers */}
-            <div className="arena-floor" />
+            <div className="arena-floor" style={{ backgroundImage: `url('/sprites/dungeon/floor-${currentRoom === 2 ? 2 : 1}.png')` }} />
             <div className="arena-glow" />
 
             {/* Dungeon props — scattered decorations */}
