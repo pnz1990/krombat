@@ -106,6 +106,7 @@ A turn-based dungeon RPG where game state lives in Kubernetes Custom Resources o
 
 - **NEVER run applications locally** — all builds via Docker/CI only
 - **NEVER push directly to main as an agent** — always use a feature branch + PR (see Git Workflow below)
+- **NEVER `kubectl delete dungeons --all`** — the cluster is live with real user data. Always scope deletes to the test user label: `-l "krombat.io/owner=${_TEST_USER}"`. See the Testing Workflow section for the exact command.
 - **Pre-push hook runs ALL 4 test suites** — integration (32), guardrails (34), backend API (21), UI smoke (59) + journeys (88). Push blocked if any fail. Use `--no-verify` only when RGD schema changes require deploy-first
 - **To deploy**: push to main → CI builds image → CI rollout restarts both backend+frontend
 - **When RGD schema changes**: `kubectl delete rgd <name>` → Argo CD recreates
@@ -162,8 +163,12 @@ gh pr merge <pr-number> --squash --delete-branch
 # 1. Make code changes
 # 2. Commit and push via PR (see Git Workflow)
 # 3. Wait for CI deploy to land on prod (Argo CD syncs in ~6s after merge to main)
-# 4. Clean up any stale dungeons before testing:
-kubectl --context arn:aws:eks:us-west-2:319279230668:cluster/krombat delete dungeons --all -A
+# 4. Clean up stale TEST dungeons before testing (NEVER --all — that deletes real user data):
+_TEST_USER=$(kubectl --context arn:aws:eks:us-west-2:319279230668:cluster/krombat \
+  get secret krombat-test-auth -n rpg-system \
+  -o jsonpath='{.data.KROMBAT_TEST_USER}' | base64 -d)
+kubectl --context arn:aws:eks:us-west-2:319279230668:cluster/krombat \
+  delete dungeons -l "krombat.io/owner=${_TEST_USER}" -A --ignore-not-found --wait=false
 # 5. Run journey tests in batches of 8 against prod (NEVER port-forward):
 BASE_URL=https://learn-kro.eks.aws.dev node tests/e2e/run-journeys.js 01,02,03,04,05,06,07,08
 BASE_URL=https://learn-kro.eks.aws.dev node tests/e2e/run-journeys.js 09,10,11,12,13,14,15,16
