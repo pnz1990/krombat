@@ -174,6 +174,9 @@ export default function App() {
   const reconcileCycleCountRef = useRef(0)
   const reconcileWasActiveRef = useRef(false)
   const celTraceSeenRef = useRef(false)
+  // Track certs that have already been triggered this session to prevent repeat toasts
+  // (insightDismissCountRef keeps incrementing past the threshold on each dismiss)
+  const certTriggeredThisSessionRef = useRef<Set<string>>(new Set())
 
   const triggerInsight = useCallback((event: string) => {
     const trigger = getInsightForEvent(event)
@@ -187,16 +190,16 @@ export default function App() {
 
   // Tier 2 certificate trigger (#361) — called from UI interaction callbacks
   const handleCertTrigger = useCallback(async (certId: string) => {
-    if (profile?.kroCertificates?.includes(certId)) return // already earned
+    if (profile?.kroCertificates?.includes(certId)) return // already earned (persisted)
+    if (certTriggeredThisSessionRef.current.has(certId)) return // already triggered this session
+    certTriggeredThisSessionRef.current.add(certId)
     const updated = await awardCert(certId)
     if (!updated) return
     setProfile(prev => prev ? { ...prev, kroCertificates: updated } : prev)
-    if (!profile?.kroCertificates?.includes(certId)) {
-      // Show toast
-      if (certToastTimerRef.current) clearTimeout(certToastTimerRef.current)
-      setCertToast(certId)
-      certToastTimerRef.current = setTimeout(() => setCertToast(null), 4000)
-    }
+    // Show toast
+    if (certToastTimerRef.current) clearTimeout(certToastTimerRef.current)
+    setCertToast(certId)
+    certToastTimerRef.current = setTimeout(() => setCertToast(null), 4000)
   }, [profile])
 
   // Auto-surface CEL Playground once the player is engaged (10+ concepts unlocked)
