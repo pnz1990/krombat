@@ -12,6 +12,7 @@ import {
   type InsightTrigger, type KroConceptId,
 } from './KroTeach'
 import { KroGraphPanel } from './KroGraph'
+import { KubectlTerminal } from './KubectlTerminal'
 
 // 8-bit styled text icons (consistent cross-platform, matches pixel font)
 const ICO = {
@@ -1710,6 +1711,24 @@ function HelpModal({ onClose, onCheat }: { onClose: () => void; onCheat: () => v
         <p>Reach <b>Level 10 (Dungeon Architect)</b> at 12,000 career XP. Check your progress bar in the Profile panel.</p>
       </>
     )},
+    { title: 'kubectl Terminal', content: (
+      <>
+        <p>Open the <b>kubectl Terminal</b> from the ☰ menu inside any dungeon. It gives you a real CLI experience — your commands call the actual backend API. No kubectl binary needed.</p>
+        <table className="help-table">
+          <thead><tr><th>Command</th><th>What it does</th></tr></thead>
+          <tbody>
+            <tr><td><code>kubectl apply -f dungeon.yaml</code></td><td>Create a new dungeon CR</td></tr>
+            <tr><td><code>kubectl get dungeons</code></td><td>List your dungeons</td></tr>
+            <tr><td><code>kubectl get dungeon &lt;name&gt;</code></td><td>Show spec fields</td></tr>
+            <tr><td><code>kubectl describe dungeon &lt;name&gt;</code></td><td>Verbose output + status</td></tr>
+            <tr><td><code>kubectl delete dungeon &lt;name&gt;</code></td><td>Delete a dungeon</td></tr>
+            <tr><td><code>cat dungeon.yaml</code></td><td>Show the YAML template</td></tr>
+          </tbody>
+        </table>
+        <p>Every command shows a collapsible <b>[kro] What just happened?</b> block explaining which RGD was triggered and the CEL expression that ran.</p>
+        <p>Use ↑↓ arrow keys for command history. Tab to autocomplete dungeon name.</p>
+      </>
+    )},
   ]
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -1823,6 +1842,7 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
   const [showCertificate, setShowCertificate] = useState(false)
   const [showDungeonHamburger, setShowDungeonHamburger] = useState(false)
   const [showPlayground, setShowPlayground] = useState(false)
+  const [showTerminal, setShowTerminal] = useState(false)  // #457 kubectl terminal
   // Auto-show certificate once on room-2 victory
   const certShownRef = useRef(false)
   useEffect(() => {
@@ -1934,10 +1954,13 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
             <div style={{ position: 'relative' }} onMouseLeave={() => setShowDungeonHamburger(false)}>
               <button className="hamburger-btn" aria-label="Menu" onClick={() => setShowDungeonHamburger(v => !v)}>☰</button>
               {showDungeonHamburger && (
-                <div className="hamburger-menu">
-                  <button className="hamburger-item" onClick={() => { setShowDungeonHamburger(false); onOpenLeaderboard() }}>Leaderboard</button>
-                  <button className="hamburger-item" onClick={() => { setShowDungeonHamburger(false); setShowPlayground(true) }}>CEL Playground</button>
-                </div>
+                 <div className="hamburger-menu">
+                   <button className="hamburger-item" onClick={() => { setShowDungeonHamburger(false); onOpenLeaderboard() }}>Leaderboard</button>
+                   <button className="hamburger-item" onClick={() => { setShowDungeonHamburger(false); setShowPlayground(true) }}>CEL Playground</button>
+                   <button className="hamburger-item" onClick={() => { setShowDungeonHamburger(false); setShowTerminal(t => !t) }}>
+                     {showTerminal ? 'Hide Terminal' : '⌨ kubectl Terminal'}
+                   </button>
+                 </div>
               )}
             </div>
            <button className="back-btn" onClick={onBack}>← Back</button>
@@ -2512,6 +2535,16 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
         showPlayground={showPlayground} onOpenPlayground={() => setShowPlayground(true)} onClosePlayground={() => setShowPlayground(false)}
         onCertTrigger={onCertTrigger}
         glossaryOpenCountRef={glossaryOpenCountRef} />
+
+      {/* kubectl Terminal (#457) */}
+      {showTerminal && (
+        <KubectlTerminal
+          dungeonNs={cr.metadata.namespace ?? 'default'}
+          dungeonName={cr.metadata.name}
+          dungeonCR={cr}
+          onClose={() => setShowTerminal(false)}
+        />
+      )}
     </div>
   )
 }
