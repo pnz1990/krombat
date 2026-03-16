@@ -28,7 +28,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: backend
-          image: 319279230668.dkr.ecr.us-west-2.amazonaws.com/krombat/backend:91330b0eed1b61c7de0da18ce26a8ffb0ad72c38
+          image: 319279230668.dkr.ecr.us-west-2.amazonaws.com/krombat/backend:bffe5b8ee0106e279079ea1080030fe673c31569
           ports:
             - containerPort: 8080
             - containerPort: 9090
