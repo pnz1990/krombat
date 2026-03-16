@@ -24,7 +24,7 @@
 //   21. Stream entries are newest-first (latest entry at top)
 //   22. No critical JS errors during journey
 const { chromium } = require('playwright');
-const { createDungeonUI, deleteDungeon, testLogin } = require('./helpers');
+const { createDungeonUI, deleteDungeon, testLogin, attackMonster, navigateHome } = require('./helpers');
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 const TIMEOUT = 25000;
@@ -39,24 +39,6 @@ async function openReconcileTab(page) {
   await tab.click();
   await page.waitForTimeout(400);
   return true;
-}
-
-async function attackFirstTarget(page) {
-  // Click first available monster or boss sprite to trigger a combat turn
-  const monsterBtn = page.locator('.monster-area .monster-sprite, .monster-target, [data-testid^="monster-"], .arena-target').first();
-  if (await monsterBtn.count() > 0) {
-    await monsterBtn.click();
-    await page.waitForTimeout(3500); // wait for WS diff events
-    return true;
-  }
-  // Fallback: try any .arena-sprite clickable
-  const anyTarget = page.locator('.arena-sprite').first();
-  if (await anyTarget.count() > 0) {
-    await anyTarget.click();
-    await page.waitForTimeout(3500);
-    return true;
-  }
-  return false;
 }
 
 async function run() {
@@ -105,19 +87,9 @@ async function run() {
       passed++; // soft-pass test 20
     }
 
-    // Create a dungeon
+    // Create a dungeon — createDungeonUI auto-navigates to the dungeon view
     await createDungeonUI(page, dName, { heroClass: 'warrior', difficulty: 'easy', monsters: 1 });
-    await page.waitForTimeout(3000); // allow kro to reconcile
-
-    // Navigate to the dungeon
-    const dungeonLink = page.locator(`[data-testid="dungeon-${dName}"], a:has-text("${dName}")`).first();
-    if (await dungeonLink.count() > 0) {
-      await dungeonLink.click();
-    } else {
-      // Try clicking the dungeon name in the list
-      await page.locator(`.dungeon-list .dungeon-name:has-text("${dName}")`).first().click().catch(() => {});
-    }
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(2000); // allow kro to finish reconciling
 
     // ── Test 1: Reconcile Stream tab exists ──────────────────────────────────
     console.log('\n=== Reconcile Stream tab ===');
@@ -165,8 +137,8 @@ async function run() {
     if (await gameTab.count() > 0) await gameTab.click();
     await page.waitForTimeout(300);
 
-    const attacked = await attackFirstTarget(page);
-    if (!attacked) {
+    const attackResult = await attackMonster(page, 0).catch(() => null);
+    if (!attackResult) {
       warn('Could not find attack target — stream tests will check ADDED events from dungeon creation');
     } else {
       ok('Combat turn triggered successfully');
@@ -332,29 +304,22 @@ async function run() {
 
     // ── Test 18: Stream clears on navigation ────────────────────────────────
     console.log('\n=== Navigation clears stream ===');
-    const backBtn = page.locator('button:has-text("← Back"), button:has-text("Back"), .back-btn').first();
-    if (await backBtn.count() > 0) {
-      await backBtn.click();
-      await page.waitForTimeout(1000);
-      // Navigate back to the same dungeon
-      const dLink = page.locator(`[data-testid="dungeon-${dName}"], a:has-text("${dName}")`).first();
-      if (await dLink.count() > 0) {
-        await dLink.click();
-        await page.waitForTimeout(1500);
-        // Open reconcile tab and check it's empty
-        await openReconcileTab(page);
-        const entriesAfterNav = page.locator('.reconcile-entry');
-        const countAfterNav = await entriesAfterNav.count();
-        countAfterNav === 0
-          ? ok('Stream clears when navigating away and back') // test 18
-          : warn(`Stream shows ${countAfterNav} entries after navigation (may have ADDED events from re-reconcile)`);
-        if (countAfterNav > 0) passed++; // soft-pass test 18
-      } else {
-        warn('Could not navigate back to dungeon — skipping clear test');
-        passed++; // soft-pass test 18
-      }
+    await navigateHome(page, BASE_URL);
+    // Navigate back to the same dungeon via the dungeon list item
+    const dLink = page.locator(`.dungeon-item:has-text("${dName}"), .dungeon-card:has-text("${dName}")`).first();
+    if (await dLink.count() > 0) {
+      await dLink.click();
+      await page.waitForTimeout(2000);
+      // Open reconcile tab and check it's empty
+      await openReconcileTab(page);
+      const entriesAfterNav = page.locator('.reconcile-entry');
+      const countAfterNav = await entriesAfterNav.count();
+      countAfterNav === 0
+        ? ok('Stream clears when navigating away and back') // test 18
+        : warn(`Stream shows ${countAfterNav} entries after navigation (may have ADDED events from re-reconcile — acceptable)`);
+      if (countAfterNav > 0) passed++; // soft-pass test 18
     } else {
-      warn('Back button not found — skipping stream clear test');
+      warn('Could not navigate back to dungeon — skipping clear test');
       passed++; // soft-pass test 18
     }
 
