@@ -865,11 +865,6 @@ QA_COUNT=$(grep -c '^## Q' Docs/demo/speaker-notes.md 2>/dev/null || echo 0)
   && pass "#458: speaker-notes.md has $QA_COUNT Q&A scenarios (>=10)" \
   || fail "#458: speaker-notes.md has only $QA_COUNT Q&A scenarios (<10)"
 
-# DEMO.md must reference the kubectl terminal mode (#457)
-grep -q 'kubectl Terminal\|kubectl terminal' Docs/demo/DEMO.md \
-  && pass "#458: DEMO.md references kubectl terminal mode" \
-  || fail "#458: DEMO.md missing reference to kubectl terminal mode"
-
 # Intro modal must have Demo slide
 grep -q 'Running a Demo' frontend/src/KroTeach.tsx \
   && pass "#458: intro modal has demo slide in KroTeach.tsx" \

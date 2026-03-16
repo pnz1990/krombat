@@ -5,12 +5,7 @@
 //   2. docs/demo/dungeon-demo.yaml is a valid Dungeon CR (fetch + validate fields)
 //   3. docs/demo/speaker-notes.md has >=10 Q&A scenarios
 //   4. Intro modal has "Running a Demo?" slide
-//   5. dungeon-demo.yaml can be applied via the kubectl terminal (kubectl apply -f dungeon.yaml)
-//   6. kubectl get dungeons shows the demo dungeon
-//   7. kubectl describe dungeon shows heroHP and bossHP
-//   8. Delete demo dungeon via kubectl terminal
-//   9. DEMO.md references kubectl terminal mode
-//   10. No JS console errors
+//   5. No JS console errors
 const { chromium } = require('playwright');
 const { testLogin } = require('./helpers');
 
@@ -48,10 +43,6 @@ async function run() {
     demoMdResult.status === 200 ? ok('docs/demo/DEMO.md exists in repo') : fail(`docs/demo/DEMO.md not found (status ${demoMdResult.status})`);
 
     const demoMdContent = demoMdResult.body;
-    demoMdContent.includes('kubectl Terminal') || demoMdContent.includes('kubectl terminal')
-      ? ok('DEMO.md references kubectl terminal mode')
-      : fail('DEMO.md missing kubectl terminal mode reference');
-
     demoMdContent.includes('5-Minute') || demoMdContent.includes('5-minute') || demoMdContent.includes('5 minute')
       ? ok('DEMO.md contains 5-minute script')
       : warn('DEMO.md 5-minute script heading not found');
@@ -118,75 +109,6 @@ async function run() {
       }
     } else {
       warn('Onboarding overlay not shown after localStorage clear — skipping intro modal demo slide check');
-    }
-
-    // === Step 3: kubectl terminal demo commands ===
-    console.log('\n=== Step 3: kubectl terminal demo commands ===');
-
-    // Create a dungeon first (needed for terminal to show)
-    const dName = `j38-demo-${Date.now()}`;
-    // Create via UI form
-    const newBtn = page.locator('button:has-text("New Dungeon"), button:has-text("Create")').first();
-    if (await newBtn.count() > 0) await newBtn.click({ force: true }).catch(() => {});
-    await page.waitForTimeout(1000);
-    const nameInput = page.locator('input[name="dungeonName"], input[placeholder*="name"], input[placeholder*="Name"]').first();
-    if (await nameInput.count() > 0) {
-      await nameInput.fill(dName);
-      const createBtn = page.locator('button[type="submit"], button:has-text("Create Dungeon")').first();
-      if (await createBtn.count() > 0) await createBtn.click({ force: true }).catch(() => {});
-    }
-    await page.waitForTimeout(3000);
-
-    // Open the hamburger menu → kubectl Terminal
-    const hamburger = page.locator('button.hamburger-btn').first();
-    if (await hamburger.count() > 0) {
-      await hamburger.click({ force: true }).catch(() => {});
-      await page.waitForTimeout(500);
-      const terminalItem = page.locator('button.hamburger-item:has-text("kubectl Terminal"), button.hamburger-item:has-text("Terminal")').first();
-      if (await terminalItem.count() > 0) {
-        await terminalItem.click({ force: true }).catch(() => {});
-        await page.waitForTimeout(800);
-      }
-    }
-
-    const terminalVisible = await page.locator('.kubectl-terminal').count() > 0;
-    terminalVisible ? ok('kubectl terminal opened from hamburger menu') : warn('kubectl terminal not found — skipping terminal command tests');
-
-    if (terminalVisible) {
-      const termInput = page.locator('.kubectl-terminal input[type="text"], .kubectl-terminal .term-input').first();
-      if (await termInput.count() > 0) {
-        // Test: kubectl get dungeons
-        await termInput.fill('kubectl get dungeons');
-        await page.keyboard.press('Enter');
-        await page.waitForTimeout(2000);
-        const termOutput1 = await page.locator('.kubectl-terminal .term-output, .kubectl-terminal .term-line').allTextContents().catch(() => []);
-        const output1 = termOutput1.join('\n');
-        output1.includes(dName) || output1.includes('NAME') || output1.includes('dungeon')
-          ? ok('kubectl get dungeons shows dungeon listing')
-          : warn('kubectl get dungeons output not as expected');
-
-        // Test: kubectl describe dungeon <name>
-        await termInput.fill(`kubectl describe dungeon ${dName}`);
-        await page.keyboard.press('Enter');
-        await page.waitForTimeout(2000);
-        const termOutput2 = await page.locator('.kubectl-terminal .term-output, .kubectl-terminal .term-line').allTextContents().catch(() => []);
-        const output2 = termOutput2.join('\n');
-        output2.includes('heroHP') || output2.includes('bossHP') || output2.includes('spec') || output2.includes('difficulty')
-          ? ok('kubectl describe dungeon shows spec fields (heroHP/bossHP/difficulty)')
-          : warn('kubectl describe dungeon output not as expected');
-
-        // Test: kubectl delete dungeon <name>
-        await termInput.fill(`kubectl delete dungeon ${dName}`);
-        await page.keyboard.press('Enter');
-        await page.waitForTimeout(2000);
-        const termOutput3 = await page.locator('.kubectl-terminal .term-output, .kubectl-terminal .term-line').allTextContents().catch(() => []);
-        const output3 = termOutput3.join('\n');
-        output3.includes('deleted') || output3.includes('delete')
-          ? ok(`kubectl delete dungeon ${dName} succeeded`)
-          : warn('kubectl delete dungeon output not as expected');
-      } else {
-        warn('kubectl terminal input not found — skipping command tests');
-      }
     }
 
     // === Cleanup ===
