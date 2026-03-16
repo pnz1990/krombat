@@ -1,0 +1,9 @@
+apiVersion: game.k8s.example/v1alpha1
+kind: Dungeon
+metadata:
+  name: demo-dungeon-kubecon-2026
+  namespace: default
+spec:
+  monsters: 2
+  difficulty: normal
+  heroClass: warrior

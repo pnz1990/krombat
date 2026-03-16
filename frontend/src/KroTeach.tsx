@@ -1396,6 +1396,16 @@ GET /api/v1/run-card/<ns>/<dungeon-name>?concepts=N
 # No image hosting needed. The URL is shareable as-is.
 # Every card footer links back to learn-kro.eks.aws.dev`,
   },
+  {
+    title: 'Running a Demo? We have a script.',
+    body: "Planning to show kro at a meetup, KubeCon booth, or lightning talk? A complete 5-minute rehearsable demo script is in the repo — no local setup needed, runs entirely from this browser. Includes speaker notes with answers to the 10 most common kro questions.",
+    snippet: `# Docs/demo/DEMO.md — 5-minute live demo script
+# Docs/demo/dungeon-demo.yaml — the YAML shown on stage
+# Docs/demo/speaker-notes.md — Q&A cheat sheet (10+ scenarios)
+
+# To open the demo script:
+# github.com/pnz1990/krombat/blob/main/Docs/demo/DEMO.md`,
+  },
 ]
 
 export function KroOnboardingOverlay({ onDismiss, isAuthenticated }: { onDismiss: () => void; isAuthenticated: boolean }) {
