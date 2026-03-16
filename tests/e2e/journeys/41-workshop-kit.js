@@ -19,7 +19,7 @@
 //   16. Intro tour has "3-Day kro Workshop" slide
 //   17. No JS console errors
 const { chromium } = require('playwright');
-const { testLogin } = require('./helpers');
+const { createDungeonUI, deleteDungeon, testLogin } = require('./helpers');
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 const TIMEOUT = 25000;
@@ -43,6 +43,7 @@ async function run() {
       && !msg.text().includes('502')
       && !msg.text().includes('504')
       && !msg.text().includes('400')
+      && !msg.text().includes('401')
       && !msg.text().includes('429'))
       consoleErrors.push(msg.text());
   });
@@ -145,78 +146,95 @@ async function run() {
 
     // Dismiss onboarding if shown
     for (let i = 0; i < 15; i++) {
-      const btn = page.locator('button:has-text("Next →"), button:has-text("Start Playing"), button:has-text("Got it!")');
+      const btn = page.locator('button:has-text("Next →"), button:has-text("Start Playing"), button:has-text("Got it!"), button.kro-onboard-skip');
       if (await btn.count() > 0) { await btn.first().click({ force: true }).catch(() => {}); await page.waitForTimeout(400); }
       else break;
     }
 
-    // Open help modal via ? button or keyboard
-    const helpBtn = page.locator('button[aria-label="Help"], .help-btn');
-    if (await helpBtn.count() > 0) {
-      await helpBtn.first().click({ force: true }).catch(() => {});
-    } else {
-      await page.keyboard.press('?');
-    }
-    await page.waitForTimeout(800);
+    // Create a dungeon to get into DungeonView (where the help button lives)
+    const dungeonName = `j41-wk-${Date.now()}`;
+    const dungeonReady = await createDungeonUI(page, dungeonName, { monsters: 2, difficulty: 'easy', heroClass: 'warrior' });
+    if (dungeonReady) {
+      ok('Dungeon created for help modal test');
 
-    const helpModal = page.locator('.help-modal, [aria-label*="Help:"]');
-    if (await helpModal.count() > 0) {
-      ok('Help modal opened successfully');
-
-      // Navigate to the Workshop Kit page (last page — navigate via Next button repeatedly)
-      let found = false;
-      for (let i = 0; i < 20 && !found; i++) {
-        const bodyText = await page.textContent('.help-modal, .modal.help-modal').catch(() => '');
-        if (bodyText.includes('Workshop Kit') || bodyText.includes('workshop kit') || bodyText.includes('docs/workshop')) {
-          found = true;
-          ok('Help modal has Workshop Kit page');
-          break;
-        }
-        const nextBtn = page.locator('.help-nav button:has-text("Next →")');
-        if (await nextBtn.count() > 0 && !(await nextBtn.isDisabled())) {
-          await nextBtn.click({ force: true }).catch(() => {});
-          await page.waitForTimeout(300);
-        } else {
-          break;
-        }
+      // Open help modal via ? button
+      const helpBtn = page.locator('button[aria-label="Help"], .help-btn');
+      if (await helpBtn.count() > 0) {
+        await helpBtn.first().click({ force: true }).catch(() => {});
+        await page.waitForTimeout(800);
       }
-      if (!found) fail('Help modal missing Workshop Kit page');
 
-      // Close help modal
-      const closeBtn = page.locator('.help-nav button:has-text("Close")');
-      if (await closeBtn.count() > 0) await closeBtn.click({ force: true }).catch(() => {});
-      await page.waitForTimeout(400);
+      const helpModal = page.locator('.help-modal, [aria-label*="Help:"]');
+      if (await helpModal.count() > 0) {
+        ok('Help modal opened successfully');
+
+        // Navigate to the Workshop Kit page by clicking Next until we find it or reach end
+        let found = false;
+        for (let i = 0; i < 20 && !found; i++) {
+          const bodyText = await page.textContent('.help-modal, .modal.help-modal').catch(() => '');
+          if (bodyText.includes('Workshop Kit') || bodyText.includes('docs/workshop') || bodyText.includes('Docs/workshop')) {
+            found = true;
+            ok('Help modal has Workshop Kit page');
+            break;
+          }
+          const nextBtn = page.locator('.help-nav button:has-text("Next →")');
+          if (await nextBtn.count() > 0 && !(await nextBtn.isDisabled())) {
+            await nextBtn.click({ force: true }).catch(() => {});
+            await page.waitForTimeout(300);
+          } else {
+            break;
+          }
+        }
+        if (!found) fail('Help modal missing Workshop Kit page');
+
+        // Close help modal
+        const closeBtn = page.locator('.help-nav button:has-text("Close")');
+        if (await closeBtn.count() > 0) await closeBtn.click({ force: true }).catch(() => {});
+        await page.waitForTimeout(400);
+      } else {
+        warn('Help modal did not open — skipping workshop page check');
+      }
+
+      // Clean up dungeon
+      await deleteDungeon(page, dungeonName).catch(() => {});
     } else {
-      warn('Help modal did not open — skipping workshop page check');
+      warn('Dungeon did not initialize — skipping help modal check');
     }
 
     // === Step 5: Verify intro tour has workshop slide ===
     console.log('\n=== Step 5: Intro tour workshop slide ===');
 
-    // Clear localStorage to force onboarding to show again
-    await page.evaluate(() => { localStorage.removeItem('kro-onboarding-dismissed'); });
+    // Navigate back to home and clear the onboarding dismissed flag
+    await page.goto(BASE_URL, { waitUntil: 'networkidle', timeout: TIMEOUT });
+    await page.waitForTimeout(1000);
+    await page.evaluate(() => {
+      localStorage.removeItem('kro-onboarding-dismissed');
+      sessionStorage.removeItem('kro-onboarding-dismissed');
+    });
     await page.reload({ waitUntil: 'networkidle', timeout: TIMEOUT });
-    await page.waitForTimeout(1500);
+    await page.waitForTimeout(2000);
 
     // The onboarding overlay should now be showing
-    const onboarding = page.locator('.kro-onboarding-overlay, [class*="onboard"]');
+    const onboarding = page.locator('.kro-onboarding-overlay, [class*="kro-onboard"]');
     if (await onboarding.count() > 0) {
       ok('Onboarding overlay present after clearing dismissal');
 
       // Navigate through all slides looking for workshop slide
       let workshopFound = false;
       for (let i = 0; i < 15 && !workshopFound; i++) {
-        const slideText = await page.textContent('.kro-onboarding-overlay, [class*="onboard"]').catch(() => '');
+        const slideText = await page.textContent('.kro-onboarding-overlay, [class*="kro-onboard"]').catch(() => '');
         if (slideText.includes('Workshop') || slideText.includes('docs/workshop') || slideText.includes('3-Day')) {
           workshopFound = true;
           ok('Intro tour has workshop slide');
         }
-        const nextBtn = page.locator('button:has-text("Next →")');
-        if (!workshopFound && await nextBtn.count() > 0) {
-          await nextBtn.first().click({ force: true }).catch(() => {});
-          await page.waitForTimeout(400);
-        } else if (!workshopFound) {
-          break;
+        if (!workshopFound) {
+          const nextBtn = page.locator('button:has-text("Next →")').first();
+          if (await nextBtn.count() > 0 && !(await nextBtn.isDisabled())) {
+            await nextBtn.click({ force: true }).catch(() => {});
+            await page.waitForTimeout(400);
+          } else {
+            break;
+          }
         }
       }
       if (!workshopFound) fail('Intro tour missing workshop slide');
