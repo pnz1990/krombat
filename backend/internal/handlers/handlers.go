@@ -1162,13 +1162,26 @@ func (h *Handler) GetLeaderboard(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data, _ := cm.Object["data"].(map[string]interface{})
+	testUser := os.Getenv("KROMBAT_TEST_USER") // exclude test-user entries from the public board
 	entries := make([]LeaderboardEntry, 0, len(data))
 	for _, v := range data {
 		raw, _ := v.(string)
 		var e LeaderboardEntry
-		if json.Unmarshal([]byte(raw), &e) == nil && e.Outcome == "victory" {
-			entries = append(entries, e)
+		if json.Unmarshal([]byte(raw), &e) != nil {
+			continue
 		}
+		if e.Outcome != "victory" {
+			continue
+		}
+		// Exclude entries with no githubLogin (legacy/test runs before auth was required)
+		if e.GitHubLogin == "" {
+			continue
+		}
+		// Exclude entries from the test user
+		if testUser != "" && e.GitHubLogin == testUser {
+			continue
+		}
+		entries = append(entries, e)
 	}
 
 	// Sort by fewest turns (ascending), then by timestamp descending for ties
