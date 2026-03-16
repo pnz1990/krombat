@@ -938,6 +938,63 @@ grep -q 'Reconcile Stream' frontend/src/KroTeach.tsx \
   && pass "#462: tests/e2e/journeys/39-reconcile-stream.js exists" \
   || fail "#462: tests/e2e/journeys/39-reconcile-stream.js missing"
 
+# ─── #460 Blog Post Generator guardrails ─────────────────────────────────────
+
+# RunNarrative handler must exist in handlers.go
+grep -q 'func (h \*Handler) RunNarrative' backend/internal/handlers/handlers.go \
+  && pass "#460: RunNarrative handler exists in handlers.go" \
+  || fail "#460: RunNarrative handler missing from handlers.go"
+
+# run-narrative route must be registered in main.go
+grep -q 'GET /api/v1/run-narrative/' backend/cmd/main.go \
+  && pass "#460: GET /api/v1/run-narrative route registered in main.go" \
+  || fail "#460: GET /api/v1/run-narrative route missing from main.go"
+
+# RunNarrative must return application/json Content-Type
+grep -q '"application/json"' backend/internal/handlers/handlers.go \
+  && pass "#460: handlers.go uses application/json (RunNarrative)" \
+  || fail "#460: handlers.go missing application/json"
+
+# Frontend must have run-narrative-btn
+grep -q 'run-narrative-btn' frontend/src/App.tsx \
+  && pass "#460: run-narrative-btn in App.tsx" \
+  || fail "#460: run-narrative-btn missing from App.tsx"
+
+# Frontend must have run-narrative-modal
+grep -q 'run-narrative-modal' frontend/src/App.tsx \
+  && pass "#460: run-narrative-modal in App.tsx" \
+  || fail "#460: run-narrative-modal missing from App.tsx"
+
+# Frontend must have Copy Markdown button
+grep -q 'Copy Markdown' frontend/src/App.tsx \
+  && pass "#460: Copy Markdown button in App.tsx" \
+  || fail "#460: Copy Markdown button missing from App.tsx"
+
+# Frontend must have Open in GitHub Discussions button
+grep -q 'Open in GitHub Discussions' frontend/src/App.tsx \
+  && pass "#460: Open in GitHub Discussions button in App.tsx" \
+  || fail "#460: Open in GitHub Discussions button missing from App.tsx"
+
+# CSS must have run-narrative styles
+grep -q 'run-narrative-modal\|run-narrative-btn\|run-narrative-textarea' frontend/src/index.css \
+  && pass "#460: run-narrative CSS styles in index.css" \
+  || fail "#460: run-narrative CSS styles missing from index.css"
+
+# Help modal must document Blog Post Generator
+grep -q 'Blog Post Generator\|Tell the story\|run narrative\|run-narrative' frontend/src/App.tsx \
+  && pass "#460: Help modal documents Blog Post Generator" \
+  || fail "#460: Help modal missing Blog Post Generator documentation"
+
+# Intro tour must have Tell the story slide
+grep -q 'Tell the story\|Tell the Story\|blog.*post\|Blog Post' frontend/src/KroTeach.tsx \
+  && pass "#460: KroTeach.tsx intro tour has Tell the story slide" \
+  || fail "#460: KroTeach.tsx missing Tell the story intro slide"
+
+# Journey 40 must exist
+[ -f "tests/e2e/journeys/40-blog-post-generator.js" ] \
+  && pass "#460: tests/e2e/journeys/40-blog-post-generator.js exists" \
+  || fail "#460: tests/e2e/journeys/40-blog-post-generator.js missing"
+
 # --- Summary ---
 
 echo ""

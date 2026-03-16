@@ -1500,6 +1500,23 @@ GET /api/v1/run-card/<ns>/<dungeon-name>?concepts=N
     RGD: dungeon-graph (bossCR template)
     CEL: size(schema.spec.monsterHP.filter(hp, hp > 0))`,
   },
+  {
+    title: 'Tell the Story of Your Run',
+    body: "After winning, click \"Tell the story of this run\" on the victory screen. The backend generates a Markdown blog post narrating the key kro events — boss phase transitions, loot drops, room transitions — each with the CEL expression that drove it. Copy to clipboard or open directly in GitHub Discussions.",
+    snippet: `# I played a dungeon RPG on Kubernetes — here's what kro did
+
+> Warrior | Hard difficulty | 42 turns | dungeon: my-dungeon
+
+### 1. The Dungeon CR triggered 16 kro reconciliations
+RGD: dungeon-graph
+CEL: size(schema.spec.monsterHP.filter(hp, hp > 0))
+
+## kro concepts I learned
+- [CEL Expressions](https://kro.run/docs/concepts/cel-expressions)
+- [Resource Graphs](https://kro.run/docs/concepts/resource-graph)
+
+Built with kro — https://github.com/kubernetes-sigs/kro`,
+  },
 ]
 
 export function KroOnboardingOverlay({ onDismiss, isAuthenticated }: { onDismiss: () => void; isAuthenticated: boolean }) {

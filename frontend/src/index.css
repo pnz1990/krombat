@@ -2199,6 +2199,43 @@ body {
 .run-card-share-btn:hover { background: rgba(91,140,245,0.18); }
 .run-card-share-btn:active { background: rgba(91,140,245,0.25); }
 
+/* #460 Blog post / run narrative */
+.run-narrative-btn {
+  font-size: 7px;
+  padding: 4px 12px;
+  border-color: #a855f7;
+  color: #a855f7;
+  background: rgba(168,85,247,0.08);
+  transition: background 0.15s;
+}
+.run-narrative-btn:hover { background: rgba(168,85,247,0.18); }
+.run-narrative-btn:active { background: rgba(168,85,247,0.25); }
+
+.run-narrative-modal {
+  max-width: 680px;
+  width: 96vw;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+.run-narrative-textarea {
+  flex: 1;
+  min-height: 320px;
+  max-height: 50vh;
+  width: 100%;
+  background: #0a0a1a;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-family: 'Courier New', monospace;
+  font-size: 9px;
+  line-height: 1.5;
+  padding: 10px;
+  resize: vertical;
+  box-sizing: border-box;
+}
+.run-narrative-textarea:focus { outline: 1px solid #a855f7; }
+
 /* ── #462 Reconcile Stream tab ──────────────────────────────────────────── */
 .log-tab.reconcile-tab { color: #5dade2; }
 .log-tab.reconcile-tab.active { color: #00d4ff; }
