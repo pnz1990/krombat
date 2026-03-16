@@ -34,10 +34,19 @@ function ok(msg)   { console.log(`  ✅ ${msg}`); passed++; }
 function fail(msg) { console.log(`  ❌ ${msg}`); failed++; }
 function warn(msg) { console.log(`  ⚠️  ${msg}`); warnings++; }
 
+async function closeHamburgerIfOpen(page) {
+  // The backdrop is only in the DOM while the menu is open — click it to close
+  const backdrop = page.locator('.hamburger-backdrop');
+  if (await backdrop.count() > 0) {
+    await backdrop.click().catch(() => {});
+    await page.waitForSelector('.hamburger-backdrop', { state: 'detached', timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(200);
+  }
+}
+
 async function openTerminal(page) {
-  // Wait for any leftover hamburger backdrop to disappear before clicking
-  await page.waitForSelector('.hamburger-backdrop', { state: 'detached', timeout: 3000 }).catch(() => {});
-  await page.waitForTimeout(200);
+  // Close any open hamburger menu first
+  await closeHamburgerIfOpen(page);
   const hamBtn = page.locator('button.hamburger-btn[aria-label="Menu"]');
   await hamBtn.waitFor({ timeout: TIMEOUT }).catch(() => {});
   if (await hamBtn.count() === 0) return false;
