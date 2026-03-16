@@ -2118,6 +2118,7 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
     return 'phase1'
   })()
   const gameOver = isDefeated || (spec.bossHP <= 0 && allMonstersDead)
+  const currentRoom = spec.currentRoom || 1
   // room2BossHP > 0 guards against the brief kro reconciliation window where currentRoom=2
   // but enterRoom2Resolve hasn't fired yet (monsterHP/bossHP still show Room 1 cleared state)
   const isVictory = gameOver && !isDefeated && (spec.currentRoom || 1) === 2 && (spec.room2BossHP || 0) > 0
