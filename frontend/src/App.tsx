@@ -12,7 +12,6 @@ import {
   type InsightTrigger, type KroConceptId,
 } from './KroTeach'
 import { KroGraphPanel } from './KroGraph'
-import { KubectlTerminal } from './KubectlTerminal'
 
 // ─── Reconcile Stream types (#462) ───────────────────────────────────────────
 interface FieldDiff {
@@ -1823,29 +1822,6 @@ function HelpModal({ onClose }: { onClose: () => void }) {
         <p>Reach <b>Level 10 (Dungeon Architect)</b> at 12,000 career XP. Check your progress bar in the Profile panel.</p>
       </>
     )},
-    { title: 'kubectl Terminal', content: (
-      <>
-        <p>Open the <b>kubectl Terminal</b> from the ☰ menu inside any dungeon. Read-only — covers all 9 kro CRDs. No kubectl binary needed.</p>
-        <table className="help-table">
-          <thead><tr><th>Command</th><th>What it does</th></tr></thead>
-          <tbody>
-            <tr><td><code>kubectl get dungeons</code></td><td>List your dungeons</td></tr>
-            <tr><td><code>kubectl get dungeon &lt;name&gt; -o yaml</code></td><td>Full Dungeon CR as YAML</td></tr>
-            <tr><td><code>kubectl get hero &lt;dungeon&gt;</code></td><td>Hero CR (hp, mana, class)</td></tr>
-            <tr><td><code>kubectl get boss &lt;dungeon&gt; -o yaml</code></td><td>Full Boss CR as YAML</td></tr>
-            <tr><td><code>kubectl get monsters &lt;dungeon&gt;</code></td><td>All monster CRs + HP + state</td></tr>
-            <tr><td><code>kubectl get monster &lt;dungeon&gt; &lt;idx&gt;</code></td><td>One monster (index 0..N-1)</td></tr>
-            <tr><td><code>kubectl get treasure &lt;dungeon&gt;</code></td><td>Treasure CR state</td></tr>
-            <tr><td><code>kubectl get modifier &lt;dungeon&gt;</code></td><td>Modifier CR + effect</td></tr>
-            <tr><td><code>kubectl get loot &lt;dungeon&gt;</code></td><td>List dropped loot CRs</td></tr>
-            <tr><td><code>kubectl describe &lt;type&gt; &lt;dungeon&gt;</code></td><td>Verbose info + kro status</td></tr>
-            <tr><td><code>cat dungeon.yaml</code></td><td>Show the YAML template</td></tr>
-          </tbody>
-        </table>
-        <p>Every command shows a collapsible <b>[kro] What just happened?</b> block. Use ↑↓ for history. Tab to autocomplete dungeon name.</p>
-        <p>Write operations (apply, delete, patch) are disabled — use the game UI.</p>
-      </>
-    )},
     { title: 'Share Run Card', content: (
       <>
         <p>After winning a dungeon, a <b>Run Card</b> is generated — a shareable SVG image showing your hero class, difficulty, turn count, dungeon name, and kro concepts unlocked.</p>
@@ -2009,7 +1985,6 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
   const [showCertificate, setShowCertificate] = useState(false)
   const [showDungeonHamburger, setShowDungeonHamburger] = useState(false)
   const [showPlayground, setShowPlayground] = useState(false)
-  const [showTerminal, setShowTerminal] = useState(false)  // #457 kubectl terminal
   const [shareCopied, setShareCopied] = useState(false)   // #456 run card share feedback
   const [showNarrative, setShowNarrative] = useState(false)   // #460 blog post generator
   const [narrativeText, setNarrativeText] = useState('')       // #460
@@ -2131,9 +2106,6 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
                   <div className="hamburger-menu">
                     <button className="hamburger-item" onClick={() => { setShowDungeonHamburger(false); onOpenLeaderboard() }}>Leaderboard</button>
                     <button className="hamburger-item" onClick={() => { setShowDungeonHamburger(false); setShowPlayground(true) }}>CEL Playground</button>
-                    <button className="hamburger-item" onClick={() => { setShowDungeonHamburger(false); setShowTerminal(t => !t) }}>
-                      {showTerminal ? 'Hide Terminal' : '⌨ kubectl Terminal'}
-                    </button>
                   </div>
                 </>
               )}
@@ -2830,15 +2802,6 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
         onCertTrigger={onCertTrigger}
         glossaryOpenCountRef={glossaryOpenCountRef} />
 
-      {/* kubectl Terminal (#457) */}
-      {showTerminal && (
-        <KubectlTerminal
-          dungeonNs={cr.metadata.namespace ?? 'default'}
-          dungeonName={cr.metadata.name}
-          dungeonCR={cr}
-          onClose={() => setShowTerminal(false)}
-        />
-      )}
     </div>
   )
 }

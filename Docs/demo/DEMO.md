@@ -12,7 +12,7 @@
 
 1. Open `https://learn-kro.eks.aws.dev` in a browser tab and sign in (Google OAuth).
 2. Delete any leftover dungeons from prior runs so the UI is clean.
-3. Have the kubectl Terminal open (☰ → kubectl Terminal) inside a dungeon so the audience can see it immediately.
+3. Have a dungeon open and the K8s Logs tab visible so the audience can see reconcile events immediately.
 4. Increase browser font size to 125–150% for projector visibility.
 5. Confirm the cluster is responding: create a test dungeon named `demo-test`, see it load, then delete it.
 
@@ -30,41 +30,23 @@ Open the game at `https://learn-kro.eks.aws.dev`. Click **New Dungeon**, fill in
 
 > "I just applied a real CR to a live EKS cluster. kro is now watching it."
 
-Open ☰ → kubectl Terminal. Type:
+Open the **K8s Logs tab** in the event log panel. You can see the creation events flowing in.
 
-```
-kubectl get dungeon demo-dungeon-kubecon-2026 -o yaml
-```
-
-> "Here is the full Dungeon CR that kro is reconciling right now."
-
-> "kro created 16 resources from that one CR: a Namespace, a Hero CR, Monster CRs, a Boss CR, a Treasure CR, 9 specPatch nodes. All from a single RGD — a ResourceGraphDefinition."
+> "Here are the Kubernetes events as kro reconciles the Dungeon CR in real time. kro created 16 resources from that one CR: a Namespace, a Hero CR, Monster CRs, a Boss CR, a Treasure CR, 9 specPatch nodes. All from a single RGD — a ResourceGraphDefinition."
 
 ---
 
 ## Minute 2 — The CR
 
-**[Show: kubectl Terminal]**
+**[Open: kro graph panel (graph icon in event log)]**
 
-Type:
+> "This is the live resource graph — the same graph kro maintains in memory. Every node here is a resource kro created from the dungeon-graph RGD."
 
-```
-kubectl get dungeon demo-dungeon-kubecon-2026
-```
+**[Click a node — e.g., combatResolve]**
 
-> "Here is the dungeon CR. Look at `spec.heroHP`, `spec.monsterHP`, `spec.bossHP`. This is not a database row. This is Kubernetes spec. kro owns it."
+> "Each node shows the CEL expression that defines it. This is the actual CEL that runs on every reconcile. kro evaluates it, gets a value, and writes it back to the Dungeon CR spec."
 
-Type:
-
-```
-kubectl describe dungeon demo-dungeon-kubecon-2026
-```
-
-> "Every field you see here is either written by the player's action, or computed by a CEL expression inside a kro specPatch node. The backend writes `attackSeq`. kro reacts, runs CEL, and writes the result back into `spec`."
-
-**[Point to the `[kro] What just happened?` annotation below the output]**
-
-> "This annotation tells you exactly which RGD node fired and which CEL expression ran. That's the kro teaching layer built into this game."
+> "Look at the spec fields in the Reconcile Stream tab — `spec.heroHP`, `spec.monsterHP`, `spec.bossHP`. This is not a database row. This is Kubernetes spec. kro owns it."
 
 ---
 
@@ -82,15 +64,15 @@ kubectl describe dungeon demo-dungeon-kubecon-2026
 
 ---
 
-## Minute 4 — The resource graph
+## Minute 4 — The reconcile stream
 
-**[Open: kro panel (graph icon in event log)]**
+**[Open: event log → Reconcile Stream tab]**
 
-> "This is the live resource graph — the same graph kro maintains in memory. Every node here is a resource kro created from the dungeon-graph RGD."
+> "Every time kro processes a reconcile event, you see the exact field diffs right here. Old value → new value. Which specPatch node fired. Which CEL expression computed it."
 
-**[Click a node — e.g., combatResolve]**
+**[Click Attack on a monster, point to stream]**
 
-> "Click a node to see the CEL expression that defines it. This is not pseudocode — it's the actual CEL that runs on every reconcile. kro evaluates it, gets a value, and writes it back to the Dungeon CR spec."
+> "Watch `spec.monsterHP[0]` change. That's kro writing the result of `monsterHP[i] - heroDamage` back into the spec. No controller code — just CEL in a YAML file."
 
 > "This is the ResourceGraphDefinition pattern: declare what to create, declare how to compute it in CEL, and let kro wire the whole thing together. No imperative code."
 

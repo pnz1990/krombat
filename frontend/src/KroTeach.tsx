@@ -1453,24 +1453,6 @@ client.Resource(dungeonGVR).Namespace(ns).Patch(ctx,
   ... and 17 more`,
   },
   {
-    title: 'kubectl Terminal Mode',
-    body: "Inside any dungeon, open ☰ → kubectl Terminal for a read-only CLI that covers all 9 kro CRDs. Type kubectl get/describe for any resource — hero, boss, monsters, treasure, modifier, loot. Add -o yaml to see the full CR. Every command shows a [kro] annotation explaining which RGD fired and which CEL expression ran.",
-    snippet: `$ kubectl get monsters my-dungeon
-NAME                     INDEX   HP    STATE
-my-dungeon-monster-0     0       50    alive
-my-dungeon-monster-1     1       0     dead
-
-$ kubectl get boss my-dungeon -o yaml
-apiVersion: game.k8s.example/v1alpha1
-kind: Boss
-spec:
-  hp: 280
-  maxHP: 400
-status:
-  phase: phase2
-  damageMultiplier: "13"   # 1.3x — kro boss-graph CEL`,
-  },
-  {
     title: 'Share Your Run',
     body: "When you win, a shareable Run Card is auto-generated — an SVG image showing your hero, difficulty, turn count, and kro concepts unlocked. Click ↗ Share Run on the victory screen to copy a tweet-ready text + card URL to your clipboard. Every win is a kro awareness moment.",
     snippet: `# The card is served as a plain SVG by the backend:
