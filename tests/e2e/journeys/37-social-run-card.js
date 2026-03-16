@@ -107,6 +107,10 @@ async function run() {
     }
     await clearModals(page);
 
+    // Wait for post-boss room 1 flow: treasure opens auto, door unlocks auto (~2-4s)
+    await page.waitForTimeout(4000);
+    await clearModals(page);
+
     // Check room 1 cleared (treasure + door appear)
     // Wait for door to unlock then enter room 2
     let body = await page.textContent('body').catch(() => '');
@@ -122,12 +126,14 @@ async function run() {
     }
 
     // Enter room 2 via door button
-    for (let i = 0; i < 10; i++) {
-      const doorBtn = page.locator('button.dungeon-door');
-      if (await doorBtn.count() > 0 && await doorBtn.isEnabled()) {
-        await doorBtn.click({ force: true }).catch(() => {});
+    for (let i = 0; i < 20; i++) {
+      const doorBtn = page.locator('[aria-label="Enter Room 2"], .arena-entity.door-entity[role="button"]');
+      if (await doorBtn.count() > 0) {
+        await doorBtn.first().click({ force: true }).catch(() => {});
         await page.waitForTimeout(3000);
-        break;
+        // Check if we're in room 2
+        const bAfterDoor = await page.textContent('body').catch(() => '');
+        if (bAfterDoor.includes('troll') || bAfterDoor.includes('ghoul') || bAfterDoor.includes('TROLL') || bAfterDoor.includes('GHOUL') || bAfterDoor.includes('Room 2')) break;
       }
       await page.waitForTimeout(1500);
     }
@@ -135,6 +141,9 @@ async function run() {
     body = await page.textContent('body').catch(() => '');
     const inRoom2 = body.includes('Room 2') || body.includes('room2') || body.includes('troll') || body.includes('ghoul') || body.includes('TROLL') || body.includes('GHOUL');
     inRoom2 ? ok('Entered room 2') : warn('Room 2 entry uncertain — continuing');
+
+    // Wait for room 2 to fully initialise (kro reconciles new monster/boss HP)
+    await page.waitForTimeout(4000);
 
     // === 3: Kill room 2 monsters and boss ===
     console.log('\n=== Step 3: Clear room 2 ===');
@@ -167,6 +176,19 @@ async function run() {
     body = await page.textContent('body').catch(() => '');
     const hasVictory = body.includes('VICTORY') || await page.locator('.victory-banner').count() > 0;
     hasVictory ? ok('Victory banner visible') : fail('Victory banner not visible after clearing room 2');
+
+    // Dismiss the auto-shown kro certificate modal (fires 800ms after victory)
+    // It overlays the victory banner and must be dismissed before we can interact with run card
+    await page.waitForTimeout(1500);
+    for (let i = 0; i < 5; i++) {
+      const certOverlay = page.locator('.kro-cert-overlay');
+      if (await certOverlay.count() === 0) break;
+      await page.evaluate(() => { const el = document.querySelector('.kro-cert-overlay'); if (el) el.click(); }).catch(() => {});
+      await page.waitForTimeout(700);
+    }
+    // Also dismiss any other blocking modals
+    await clearModals(page);
+    await page.waitForTimeout(500);
 
     // === 4–7: Run card UI checks ===
     console.log('\n=== Step 4: Run card UI ===');
