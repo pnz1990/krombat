@@ -312,7 +312,7 @@ export default function App() {
     }
   }, [selected])
 
-  const handleCreate = async (name: string, monsters: number, difficulty: string, heroClass: string) => {
+  const handleCreate = async (name: string, monsters: number, difficulty: string, heroClass: string, onSuccess: () => void) => {
     setError('')
     try {
       await createDungeon(name, monsters, difficulty, heroClass, 'default')
@@ -327,6 +327,7 @@ export default function App() {
       setTimeout(() => triggerInsight('dungeon-created-2nd'), 3000)
       setTimeout(() => triggerInsight('schema-validated'), 5000)
       localStorage.setItem('lastDungeon', JSON.stringify({ ns: 'default', name }))
+      onSuccess() // clear the form only on success (#490)
       navigate(`/dungeon/default/${name}`)
     } catch (e: any) { reportError('create-dungeon', e); setError(e.message) }
   }
@@ -505,15 +506,16 @@ export default function App() {
           addEvent('chest', `Loot dropped: ${updated.spec.lastLootDrop}`)
         }
         // Kill detection: use actual monsterHP spec change, not Go log text
-        if (pollSucceeded) {
-          const prevMonHP: number[] = detail?.spec.monsterHP || []
-          const newMonHP: number[] = updated.spec.monsterHP || []
-          newMonHP.forEach((hp, idx) => {
-            if (hp <= 0 && (prevMonHP[idx] ?? 1) > 0) {
-              addEvent('skull', `monster-${idx} slain!`)
-            }
-          })
-        }
+          if (pollSucceeded) {
+            const prevMonHP: number[] = detail?.spec.monsterHP || []
+            const newMonHP: number[] = updated.spec.monsterHP || []
+            newMonHP.forEach((hp, idx) => {
+              if (hp <= 0 && (prevMonHP[idx] ?? 1) > 0) {
+                const displayName = getMonsterName(idx, updated.spec.currentRoom || 1, updated.spec.monsterTypes)
+                addEvent('skull', `${displayName} slain!`)
+              }
+            })
+          }
       }
       if (pollSucceeded && enemyAction) {
         const eIcon = enemyAction.includes('POISON') ? 'poison' : enemyAction.includes('BURN') ? 'fire' : enemyAction.includes('STUN') ? 'lightning' : enemyAction.includes('defeated') ? 'crown' : 'skull'
@@ -780,19 +782,22 @@ export default function App() {
         <>
           {showOnboarding && <KroOnboardingOverlay onDismiss={() => setShowOnboarding(false)} isAuthenticated={!!authUser} />}
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 4 }}>
-            <div style={{ position: 'relative' }} onMouseLeave={() => setShowHamburger(false)}>
+            <div style={{ position: 'relative' }}>
               <button className="hamburger-btn" aria-label="Menu" onClick={() => setShowHamburger(v => !v)}>☰</button>
               {showHamburger && (
-                <div className="hamburger-menu">
-                  <button className="hamburger-item" onClick={() => { setShowHamburger(false); handleOpenLeaderboard() }}>Leaderboard</button>
-                  <button className="hamburger-item" onClick={() => { setShowHamburger(false); setShowOnboarding(true) }}>About kro</button>
-                  {authUser && <button className="hamburger-item" onClick={() => { setShowHamburger(false); handleOpenProfile() }}>Profile @{authUser.login}</button>}
-                  {authUser && <button className="hamburger-item" onClick={() => { setShowHamburger(false); handleLogout() }}>Logout @{authUser.login}</button>}
-                </div>
+                <>
+                  <div className="hamburger-backdrop" onClick={() => setShowHamburger(false)} />
+                  <div className="hamburger-menu">
+                    <button className="hamburger-item" onClick={() => { setShowHamburger(false); handleOpenLeaderboard() }}>Leaderboard</button>
+                    <button className="hamburger-item" onClick={() => { setShowHamburger(false); setShowOnboarding(true) }}>About kro</button>
+                    {authUser && <button className="hamburger-item" onClick={() => { setShowHamburger(false); handleOpenProfile() }}>Profile @{authUser.login}</button>}
+                    {authUser && <button className="hamburger-item" onClick={() => { setShowHamburger(false); handleLogout() }}>Logout @{authUser.login}</button>}
+                  </div>
+                </>
               )}
             </div>
           </div>
-          <CreateForm onCreate={handleCreate} />
+          <CreateForm onCreate={(n, m, d, c, onSuccess) => handleCreate(n, m, d, c, onSuccess)} />
           {resumePrompt && (
             <div className="card" style={{ borderColor: '#f5c518', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '8px 12px' }}>
               <span style={{ fontSize: '8px', color: '#f5c518' }}>Resume last dungeon: <strong>{resumePrompt.name}</strong>?</span>
@@ -805,7 +810,7 @@ export default function App() {
           <DungeonList dungeons={dungeons} onSelect={handleSelect} onDelete={handleDelete} deleting={deleting} lastDungeon={resumePrompt ?? undefined} />
           {authUser && (
             <div style={{ textAlign: 'center', marginTop: 8, fontSize: '7px', color: 'var(--text-dim)' }}>
-              Your dungeon data is kept for 30 days.
+              Your dungeon data is kept for 4 hours.
             </div>
           )}
         </>
@@ -897,14 +902,15 @@ export default function App() {
   )
 }
 
-function CreateForm({ onCreate }: { onCreate: (n: string, m: number, d: string, c: string) => void }) {
+function CreateForm({ onCreate }: { onCreate: (n: string, m: number, d: string, c: string, onSuccess: () => void) => void }) {
   const [name, setName] = useState('')
   const [monsters, setMonsters] = useState(3)
   const [difficulty, setDifficulty] = useState('normal')
   const [heroClass, setHeroClass] = useState('warrior')
   const dnsLabelRegex = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/
   const nameValid = name === '' || dnsLabelRegex.test(name)
-  const canCreate = name.length > 0 && dnsLabelRegex.test(name)
+  const monstersValid = monsters >= 1 && monsters <= 10
+  const canCreate = name.length > 0 && dnsLabelRegex.test(name) && monstersValid
   return (
     <div className="create-form">
       <div>
@@ -916,9 +922,13 @@ function CreateForm({ onCreate }: { onCreate: (n: string, m: number, d: string, 
           maxLength={63}
           pattern="[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?"
         />
-        {!nameValid && <div className="input-error">Lowercase letters, numbers, hyphens only. Max 63 chars. Must start and end with alphanumeric.</div>}
+        {!nameValid && <div className="input-error">Name: lowercase letters, numbers, hyphens only. Max 63 chars. Must start and end with alphanumeric.</div>}
       </div>
-      <div><label>Monsters</label><input type="number" min={1} max={10} value={monsters} onChange={e => setMonsters(+e.target.value)} /></div>
+      <div>
+        <label>Monsters</label>
+        <input type="number" min={1} max={10} value={monsters} onChange={e => setMonsters(+e.target.value)} />
+        {!monstersValid && <div className="input-error">Monsters: must be between 1 and 10.</div>}
+      </div>
       <div><label>Difficulty</label>
         <select value={difficulty} onChange={e => setDifficulty(e.target.value)}>
           <option value="easy">Easy</option><option value="normal">Normal</option><option value="hard">Hard</option>
@@ -929,7 +939,7 @@ function CreateForm({ onCreate }: { onCreate: (n: string, m: number, d: string, 
           <option value="warrior">Warrior</option><option value="mage">Mage</option><option value="rogue">Rogue</option>
         </select>
       </div>
-      <button className="btn btn-gold" disabled={!canCreate} onClick={() => { if (canCreate) { onCreate(name, monsters, difficulty, heroClass); setName('') } }}>
+      <button className="btn btn-gold" disabled={!canCreate} onClick={() => { if (canCreate) { onCreate(name, monsters, difficulty, heroClass, () => setName('')) } }}>
         Create Dungeon
       </button>
     </div>
@@ -1806,11 +1816,9 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
   const isDefeated = status?.defeated || heroHP <= 0
   const allMonstersDead = (spec.monsterHP || []).every((hp: number) => hp <= 0)
   const bossState = spec.bossHP <= 0 ? 'defeated' : allMonstersDead ? 'ready' : 'pending'
-  // Boss phase — read from kro-derived status (boss-graph CEL), fallback to local derivation
+  // Boss phase — always derive from HP % (instant, no kro lag), status is only used when HP is 0
   const bossPhase: 'phase1' | 'phase2' | 'phase3' | 'defeated' = (() => {
     if (spec.bossHP <= 0) return 'defeated'
-    const fromStatus = status?.bossPhase as string | undefined
-    if (fromStatus && fromStatus !== 'phase1') return fromStatus as 'phase2' | 'phase3'
     if (maxBossHP > 0) {
       const pct = (spec.bossHP / maxBossHP) * 100
       if (pct <= 25) return 'phase3'
@@ -1960,16 +1968,19 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
          <h2><PixelIcon name="sword" size={14} /> {dungeonName}{spec.runCount != null && spec.runCount > 0 ? <span className="ng-plus-badge" style={{ fontSize: '6px', marginLeft: 6 }}>NG+{spec.runCount}</span> : null}</h2>
          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
            <button className="help-btn" aria-label="Help" onClick={onToggleHelp}>?</button>
-            <div style={{ position: 'relative' }} onMouseLeave={() => setShowDungeonHamburger(false)}>
+            <div style={{ position: 'relative' }}>
               <button className="hamburger-btn" aria-label="Menu" onClick={() => setShowDungeonHamburger(v => !v)}>☰</button>
               {showDungeonHamburger && (
-                 <div className="hamburger-menu">
-                   <button className="hamburger-item" onClick={() => { setShowDungeonHamburger(false); onOpenLeaderboard() }}>Leaderboard</button>
-                   <button className="hamburger-item" onClick={() => { setShowDungeonHamburger(false); setShowPlayground(true) }}>CEL Playground</button>
-                   <button className="hamburger-item" onClick={() => { setShowDungeonHamburger(false); setShowTerminal(t => !t) }}>
-                     {showTerminal ? 'Hide Terminal' : '⌨ kubectl Terminal'}
-                   </button>
-                 </div>
+                <>
+                  <div className="hamburger-backdrop" onClick={() => setShowDungeonHamburger(false)} />
+                  <div className="hamburger-menu">
+                    <button className="hamburger-item" onClick={() => { setShowDungeonHamburger(false); onOpenLeaderboard() }}>Leaderboard</button>
+                    <button className="hamburger-item" onClick={() => { setShowDungeonHamburger(false); setShowPlayground(true) }}>CEL Playground</button>
+                    <button className="hamburger-item" onClick={() => { setShowDungeonHamburger(false); setShowTerminal(t => !t) }}>
+                      {showTerminal ? 'Hide Terminal' : '⌨ kubectl Terminal'}
+                    </button>
+                  </div>
+                </>
               )}
             </div>
            <button className="back-btn" onClick={onBack}>← Back</button>
@@ -2049,7 +2060,11 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
 
       {!gameOver && !combatModal && (
         <div className="turn-bar">
-          <span className="turn-indicator"><PixelIcon name="sword" size={12} /> Ready to attack!</span>
+          {(spec.stunTurns ?? 0) > 0 ? (
+            <span className="turn-indicator" style={{ color: '#f1c40f' }}><PixelIcon name="stun" size={12} /> STUNNED — skipping this turn</span>
+          ) : (
+            <span className="turn-indicator"><PixelIcon name="sword" size={12} /> Ready to attack!</span>
+          )}
         </div>
       )}
 
@@ -2319,8 +2334,11 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
                       {bossPhase === 'phase2' ? 'ENRAGED' : 'BERSERK'}
                     </div>
                   )}
-                  <Sprite spriteType={(spec.currentRoom || 1) === 2 ? 'bat-boss' : 'dragon'} action={bAction} size={144} />
-                  <div className="arena-shadow" style={{ width: 120 }} />
+                   <Sprite spriteType={(spec.currentRoom || 1) === 2 ? 'bat-boss' : 'dragon'} action={bAction} size={144} />
+                   <div className="arena-shadow" style={{ width: 120 }} />
+                   {bossState === 'ready' && !gameOver && !attackPhase && (
+                     <div className="arena-atk-hint">ATK</div>
+                   )}
                   <div className="arena-hover-ui">
                     <div className="arena-hp-bar"><div className={`arena-hp-fill ${spec.bossHP > 0 ? 'high' : 'low'}`} style={{ width: `${Math.min((spec.bossHP / maxBossHP) * 100, 100)}%` }} /></div>
                     <div className="arena-name">Boss · {spec.bossHP}/{maxBossHP}</div>
@@ -2340,13 +2358,13 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
             {/* Monsters in semicircle */}
             {(spec.monsterHP || []).map((hp, idx) => {
               const count = spec.monsterHP.length
-              const state = hp > 0 ? 'alive' : 'dead'
+              if (hp <= 0) return null // hide dead monsters from arena (#498)
               const mName = `${dungeonName}-monster-${idx}`
               const mSprite = getMonsterSprite(idx, spec.currentRoom || 1, spec.monsterTypes)
               const mDisplayName = getMonsterName(idx, spec.currentRoom || 1, spec.monsterTypes)
-              let mAction: SpriteAction = state === 'dead' ? 'dead' : 'idle'
+              let mAction: SpriteAction = 'idle'
               const inCombat = combatModal && (combatModal.phase === 'rolling' || combatModal.phase === 'resolved')
-              if (inCombat && state === 'alive') mAction = 'attack'
+              if (inCombat) mAction = 'attack'
               if (inCombat && attackTarget === mName) mAction = 'attack'
 
               // Position in semicircle (top arc around hero)
@@ -2358,29 +2376,32 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
               const facingRight = cx < 50
 
               return (
-                <div key={mName} className={`arena-entity monster-entity ${state}`}
+                <div key={mName} className="arena-entity monster-entity alive"
                   style={{ left: `${cx}%`, top: `${cy}%` }}
-                  role={state === 'alive' && !gameOver && !attackPhase ? 'button' : undefined}
-                  tabIndex={state === 'alive' && !gameOver && !attackPhase ? 0 : undefined}
-                  aria-label={`${mDisplayName} · HP: ${hp}/${maxMonsterHP}${state === 'dead' ? ' (dead)' : ''}`}
-                  onKeyDown={state === 'alive' && !gameOver && !attackPhase ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onAttack(mName, 0) } } : undefined}>
-                  {floatingDmg?.target === mName && <div className="floating-dmg" style={{ color: '#e94560' }}>{floatingDmg.amount}</div>}
-                  <Sprite spriteType={mSprite} action={mAction} size={72} flip={!facingRight} />
-                  <div className="arena-shadow" />
-                  <div className="arena-hover-ui">
-                    <div className="arena-hp-bar"><div className={`arena-hp-fill ${hp > maxMonsterHP * 0.6 ? 'high' : hp > maxMonsterHP * 0.3 ? 'mid' : 'low'}`} style={{ width: `${Math.min((hp / maxMonsterHP) * 100, 100)}%` }} /></div>
-                    <div className="arena-name">{mDisplayName} · {hp}/{maxMonsterHP}</div>
-                    {state === 'alive' && !gameOver && !attackPhase && (
-                      <div className="arena-actions">
-                        <button className="btn btn-primary arena-atk-btn" onClick={() => onAttack(mName, 0)}><PixelIcon name="dice" size={8} /> {status?.diceFormula || '2d12+6'}</button>
-                        {spec.heroClass === 'rogue' && (spec.backstabCooldown ?? 0) === 0 && (
-                          <button className="btn btn-ability arena-atk-btn" onClick={() => onAttack(mName + '-backstab', 0)}>Backstab</button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )
+                  role={!gameOver && !attackPhase ? 'button' : undefined}
+                  tabIndex={!gameOver && !attackPhase ? 0 : undefined}
+                  aria-label={`${mDisplayName} · HP: ${hp}/${maxMonsterHP}`}
+                  onKeyDown={!gameOver && !attackPhase ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onAttack(mName, 0) } } : undefined}>
+                   {floatingDmg?.target === mName && <div className="floating-dmg" style={{ color: '#e94560' }}>{floatingDmg.amount}</div>}
+                   <Sprite spriteType={mSprite} action={mAction} size={72} flip={!facingRight} />
+                   <div className="arena-shadow" />
+                   {!gameOver && !attackPhase && (
+                     <div className="arena-atk-hint">ATK</div>
+                   )}
+                   <div className="arena-hover-ui">
+                     <div className="arena-hp-bar"><div className={`arena-hp-fill ${hp > maxMonsterHP * 0.6 ? 'high' : hp > maxMonsterHP * 0.3 ? 'mid' : 'low'}`} style={{ width: `${Math.min((hp / maxMonsterHP) * 100, 100)}%` }} /></div>
+                     <div className="arena-name">{mDisplayName} · {hp}/{maxMonsterHP}</div>
+                     {!gameOver && !attackPhase && (
+                       <div className="arena-actions">
+                         <button className="btn btn-primary arena-atk-btn" onClick={() => onAttack(mName, 0)}><PixelIcon name="dice" size={8} /> {status?.diceFormula || '2d12+6'}</button>
+                         {spec.heroClass === 'rogue' && (spec.backstabCooldown ?? 0) === 0 && (
+                           <button className="btn btn-ability arena-atk-btn" onClick={() => onAttack(mName + '-backstab', 0)}>Backstab</button>
+                         )}
+                       </div>
+                     )}
+                   </div>
+                 </div>
+               )
             })}
 
             {/* Hero in center */}
@@ -2526,7 +2547,7 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
 
                 <div className="status-row">
                   {modifier !== 'none' && <Tooltip text={`${modifier.startsWith('curse') ? 'Curse' : 'Blessing'}: ${status?.modifier || modifier}`}><div className={`status-badge ${modifier.startsWith('curse') ? 'curse' : 'blessing'}`}><ItemSprite id={modifier} size={18} /></div></Tooltip>}
-                  {taunt > 0 && <Tooltip text={taunt === 1 ? 'Taunt ready: next attack has 60% counter-attack reduction' : 'TAUNTING: 60% counter-attack reduction active this turn'}><div className="status-badge effect taunt"><PixelIcon name="shield" size={12} /><span>{taunt === 2 ? 'ACT' : 'RDY'}</span></div></Tooltip>}
+                  {taunt > 0 && <Tooltip text={taunt === 1 ? 'Taunt ready: next attack has 60% counter-attack reduction' : 'TAUNTING: 60% counter-attack reduction active this turn'}><div className="status-badge effect taunt"><PixelIcon name="shield" size={12} /><span>{taunt === 2 ? 'ACT' : 'ON'}</span></div></Tooltip>}
                   {poison > 0 && <Tooltip text={`Poison: -5 HP per turn, ${poison} turns remaining`}><div className="status-badge effect" data-effect="poison"><PixelIcon name="poison" size={12} /><span>{poison}</span></div></Tooltip>}
                   {burn > 0 && <Tooltip text={`Burn: -8 HP per turn, ${burn} turns remaining`}><div className="status-badge effect" data-effect="burn"><PixelIcon name="fire" size={12} /><span>{burn}</span></div></Tooltip>}
                   {stun > 0 && <Tooltip text={`Stun: skip next attack, ${stun} turns remaining`}><div className="status-badge effect" data-effect="stun"><PixelIcon name="lightning" size={12} /><span>{stun}</span></div></Tooltip>}

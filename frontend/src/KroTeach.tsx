@@ -541,13 +541,13 @@ metadata:
     learnMore: 'kubectl get hero,cm,secret -n default -o yaml | grep -A5 ownerReferences',
   },
 
-   'spec-mutation': {
-     id: 'spec-mutation',
-     title: 'Spec Mutation Triggers Full Reconcile',
-     tagline: 'One patch to spec → kro reconciles the entire resource graph.',
-     body: `When you enter Room 2, the Go backend calls the Kubernetes API to patch the Dungeon CR spec with \`lastAction: 'enter-room-2'\` and increments \`actionSeq\`. kro watches the Dungeon CR and immediately re-evaluates all CEL expressions in dungeon-graph.
+  'spec-mutation': {
+    id: 'spec-mutation',
+    title: 'Spec Mutation Triggers Full Reconcile',
+    tagline: 'One patch to spec → kro reconciles the entire resource graph.',
+    body: `When you enter Room 2, the Go backend calls the Kubernetes API to patch the Dungeon CR spec with \`lastAction: 'enter-room-2'\` and increments \`actionSeq\`. kro watches the Dungeon CR and immediately re-evaluates all CEL expressions in dungeon-graph.
 kro's \`enterRoom2Resolve\` specPatch node detects the action and computes the new \`monsterHP\`, \`bossHP\`, \`room2MonsterHP\`, \`room2BossHP\` values via CEL — writing them back to \`spec.*\` directly. New Monster CRs and an updated Boss CR are then created from those spec values. Kubernetes becomes the state machine.`,
-     snippet: `# Backend writes only the trigger — kro does the rest
+    snippet: `# Backend writes only the trigger — kro does the rest
 patch := map[string]interface{}{
   "spec": map[string]interface{}{
     "lastAction": "enter-room-2",
@@ -556,8 +556,8 @@ patch := map[string]interface{}{
   },
 }
 // manifests/rgds/dungeon-graph.yaml reacts automatically`,
-     learnMore: 'manifests/rgds/dungeon-graph.yaml — enterRoom2Resolve specPatch node',
-   },
+    learnMore: 'manifests/rgds/dungeon-graph.yaml — enterRoom2Resolve specPatch node',
+  },
 
   'cel-playground': {
     id: 'cel-playground',

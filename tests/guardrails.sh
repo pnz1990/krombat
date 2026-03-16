@@ -372,7 +372,7 @@ echo "$ACTION_RGD_RESOURCES" | grep -q '\[\]' && pass "action-graph RGD is a no-
 # --- Combat animation guardrails ---
 echo "=== Combat animation guardrails"
 grep -q "inCombat && attackTarget === mName) mAction = 'attack'" frontend/src/App.tsx && pass "Monster target uses attack anim during combat" || fail "Monster target not using attack anim"
-grep -q "inCombat && state === 'alive') mAction = 'attack'" frontend/src/App.tsx && pass "Alive monsters use attack anim during combat" || fail "Alive monsters not using attack anim"
+ grep -q "inCombat) mAction = 'attack'" frontend/src/App.tsx && pass "Alive monsters use attack anim during combat" || fail "Alive monsters not using attack anim"
 grep -q "inCombatB && attackTarget.*boss.*bAction = 'attack'" frontend/src/App.tsx && pass "Boss target uses attack anim during combat" || fail "Boss target not using attack anim"
 CLEAR_COUNT=$(grep -c "setAttackTarget(null)" frontend/src/App.tsx)
 [ "$CLEAR_COUNT" -le 4 ] && pass "attackTarget cleared only in dismiss/catch/item ($CLEAR_COUNT)" || fail "attackTarget cleared too many places: $CLEAR_COUNT"
