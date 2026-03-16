@@ -168,14 +168,26 @@ async function run() {
     // === 4: "Tell the story" button ===
     console.log('\n=== Step 4: Tell the story button ===');
 
-    // Dismiss cert modal first
-    await page.waitForTimeout(500);
-    for (let i = 0; i < 5; i++) {
+    // Aggressively dismiss cert modal + insight cards before interacting
+    for (let i = 0; i < 10; i++) {
       const certOverlay = page.locator('.kro-cert-overlay');
-      if (await certOverlay.count() === 0) break;
-      await page.evaluate(() => { const el = document.querySelector('.kro-cert-overlay'); if (el) el.click(); }).catch(() => {});
-      await page.waitForTimeout(700);
+      const insightCard = page.locator('.kro-insight-overlay');
+      if (await certOverlay.count() === 0 && await insightCard.count() === 0) break;
+      if (await certOverlay.count() > 0) {
+        await page.evaluate(() => { const el = document.querySelector('.kro-cert-overlay'); if (el) el.click(); }).catch(() => {});
+        await page.waitForTimeout(600);
+      }
+      if (await insightCard.count() > 0) {
+        await page.evaluate(() => {
+          const btn = document.querySelector('.kro-insight-btn') || document.querySelector('.kro-insight-dismiss');
+          if (btn) btn.click();
+        }).catch(() => {});
+        await page.waitForTimeout(400);
+      }
     }
+    // Also dismiss any "Continue" / "Got it!" buttons
+    await clearModals(page);
+    await page.waitForTimeout(500);
 
     const storyBtn = page.locator('button.run-narrative-btn');
     const storyBtnCount = await storyBtn.count();
@@ -185,8 +197,38 @@ async function run() {
     console.log('\n=== Step 5: Narrative modal ===');
     let narrativeMarkdown = '';
     if (storyBtnCount > 0) {
-      await storyBtn.first().click({ force: true }).catch(() => {});
-      await page.waitForTimeout(500);
+      // Click with retry — cert/insight overlay may grab the first click
+      let modalOpened = false;
+      for (let attempt = 0; attempt < 4; attempt++) {
+        // Dismiss any lingering overlays before each attempt
+        for (let j = 0; j < 6; j++) {
+          const certOverlay = page.locator('.kro-cert-overlay');
+          const insightCard = page.locator('.kro-insight-overlay');
+          if (await certOverlay.count() === 0 && await insightCard.count() === 0) break;
+          if (await certOverlay.count() > 0) {
+            await page.evaluate(() => { const el = document.querySelector('.kro-cert-overlay'); if (el) el.click(); }).catch(() => {});
+            await page.waitForTimeout(500);
+          }
+          if (await insightCard.count() > 0) {
+            await page.evaluate(() => {
+              const btn = document.querySelector('.kro-insight-btn') || document.querySelector('.kro-insight-dismiss');
+              if (btn) btn.click();
+            }).catch(() => {});
+            await page.waitForTimeout(400);
+          }
+        }
+        await page.waitForTimeout(300);
+        await storyBtn.first().click({ force: true }).catch(() => {});
+        // Wait for modal to appear (up to 2s)
+        try {
+          await page.waitForSelector('.run-narrative-modal', { timeout: 2000 });
+          modalOpened = true;
+          break;
+        } catch {
+          // Modal didn't appear — retry
+          console.log(`  [debug] attempt ${attempt + 1}: narrative modal not found after click, retrying`);
+        }
+      }
 
       // Modal should appear
       const modalAppeared = await page.locator('.run-narrative-modal').count() > 0;
