@@ -627,7 +627,7 @@ body {
 .arena-floor {
   position: absolute; inset: 0;
   border-radius: inherit;
-  background: url('/sprites/dungeon/floor.png') repeat center/150px;
+  background: url('/sprites/dungeon/floor-1.png') repeat center/150px;
   image-rendering: pixelated;
 }
 .arena-floor::after {
