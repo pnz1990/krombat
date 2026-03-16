@@ -2033,3 +2033,36 @@ body {
 }
 .hamburger-item:last-child { border-bottom: none; }
 .hamburger-item:hover { background: rgba(255,255,255,0.06); color: var(--gold); }
+
+/* kro Certificate toast (#361) */
+.cert-toast {
+  position: fixed;
+  bottom: 80px;
+  right: 20px;
+  background: #0a1628;
+  border: 2px solid #00d4ff;
+  border-radius: 4px;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  z-index: 9000;
+  animation: certSlideIn 0.35s ease-out;
+  font-family: 'Press Start 2P', monospace;
+  max-width: 240px;
+  box-shadow: 0 0 16px rgba(0, 212, 255, 0.4);
+}
+.cert-toast-title {
+  font-size: 6px;
+  color: #00d4ff;
+  margin-bottom: 4px;
+  letter-spacing: 0.05em;
+}
+.cert-toast-name {
+  font-size: 8px;
+  color: var(--text-bright);
+}
+@keyframes certSlideIn {
+  from { opacity: 0; transform: translateX(60px); }
+  to   { opacity: 1; transform: translateX(0); }
+}

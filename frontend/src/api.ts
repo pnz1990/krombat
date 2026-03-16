@@ -165,6 +165,19 @@ export async function getProfile(): Promise<UserProfile | null> {
   }
 }
 
+// Award a Tier 2 certificate (frontend-triggered on K8s log tab interactions, #361).
+export async function awardCert(cert: string): Promise<string[] | null> {
+  try {
+    const r = await fetch(`${BASE}/profile/cert`, {
+      ...CREDS, method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cert }),
+    })
+    if (!r.ok) return null
+    return r.json()
+  } catch {
+    return null
+  }
+}
 
 export class ApiError extends Error {
   constructor(public readonly status: number, message: string) {

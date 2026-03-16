@@ -773,6 +773,7 @@ interface KroGraphPanelProps {
   prevCr?: DungeonCR | null
   reconciling: boolean
   onViewConcept: (id: KroConceptId) => void
+  onExpand?: () => void  // called once when user expands the panel (#361)
 }
 
 interface DiffEntry {
@@ -859,8 +860,18 @@ function computeRGDDiff(prev: DungeonCR | null | undefined, curr: DungeonCR): Di
   return diff
 }
 
-export function KroGraphPanel({ cr, prevCr, reconciling, onViewConcept }: KroGraphPanelProps) {
+export function KroGraphPanel({ cr, prevCr, reconciling, onViewConcept, onExpand }: KroGraphPanelProps) {
   const [collapsed, setCollapsed] = useState(false)
+  const expandFiredRef = useRef(false)
+
+  // Fire onExpand once on first mount — the panel starts expanded (#361)
+  useEffect(() => {
+    if (!expandFiredRef.current) {
+      expandFiredRef.current = true
+      onExpand?.()
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const [diff, setDiff] = useState<DiffEntry[]>([])
   const [diffVisible, setDiffVisible] = useState(false)
   const diffTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
