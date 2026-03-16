@@ -87,7 +87,7 @@ async function run() {
     const panelGone = await page.locator('.leaderboard-panel').count() === 0;
     panelGone ? ok('Leaderboard panel closed by close button') : fail('Leaderboard panel not dismissed by close button');
 
-    // ── Create a dungeon, then delete it to generate a leaderboard entry ──────
+    // ── Create a dungeon, then delete it — victories-only leaderboard should NOT show it ──
     console.log('\n  [Create and delete dungeon for leaderboard entry]');
     const loaded = await createDungeonUI(page, dName, { monsters: 2, difficulty: 'easy', heroClass: 'warrior' });
     loaded ? ok('Dungeon created and game view loaded') : fail('Dungeon view did not load');
@@ -106,12 +106,12 @@ async function run() {
     // Accept the browser confirm() dialog that appears on deletion
     page.once('dialog', d => d.accept());
 
-    // Delete the dungeon (this triggers leaderboard recording in the backend)
+    // Delete the dungeon (abandoned outcome — should NOT appear in leaderboard)
     const deleted = await deleteDungeon(page, dName);
     deleted ? ok(`Dungeon "${dName}" deleted`) : fail(`Could not delete dungeon "${dName}" via UI`);
     await page.waitForTimeout(4000); // Give backend time to record
 
-    // ── Open leaderboard again via hamburger and check for the entry ──────────
+    // ── Open leaderboard again — abandoned dungeon must NOT be listed ──────────
     console.log('\n  [Leaderboard shows deleted dungeon entry]');
     const panelOpened = await openLeaderboardViaHamburger(page);
     panelOpened ? ok('Leaderboard panel opened via hamburger after deletion') : fail('Leaderboard panel not found after deletion');
@@ -119,63 +119,45 @@ async function run() {
     const panel2 = page.locator('.leaderboard-panel');
     const panelText = await panel2.textContent().catch(() => '');
 
-    if (panelText.includes(dName)) {
-      ok(`Leaderboard contains entry for "${dName}"`);
-
-      // Check table columns present
-      const table = page.locator('.leaderboard-table');
-      (await table.count() > 0) ? ok('Leaderboard table rendered') : fail('Leaderboard table not found');
-
-      const rows = page.locator('.lb-row');
-      const rowCount = await rows.count();
-      rowCount > 0 ? ok(`Leaderboard has ${rowCount} row(s)`) : fail('Leaderboard has no rows despite entry expected');
-
-      // Check the row for our dungeon
-      const ourRow = page.locator(`.lb-row:has-text("${dName}")`);
-      if (await ourRow.count() > 0) {
-        ok(`Row for "${dName}" found in leaderboard`);
-        const rowText = await ourRow.textContent();
-        rowText.includes('warrior') || rowText.includes('⚔') ? ok('Hero class shown in leaderboard row') : warn('Hero class not in row text');
-        rowText.includes('easy') ? ok('Difficulty shown in leaderboard row') : warn('Difficulty not in row text');
-      }
-
-      // ── Difficulty filter buttons ─────────────────────────────────────────
-      console.log('\n  [Difficulty filter]');
-      const filterBtns = page.locator('.lb-filter-btn');
-      const filterCount = await filterBtns.count();
-      filterCount === 4 ? ok('Difficulty filter has 4 buttons (All, easy, normal, hard)') : fail(`Expected 4 filter buttons, got ${filterCount}`);
-
-      // "All" should be active by default
-      const allBtn = page.locator('.lb-filter-btn.lb-filter-active');
-      const activeText = await allBtn.first().textContent().catch(() => '');
-      activeText.toLowerCase().includes('all') ? ok('"All" filter active by default') : warn(`Active filter is "${activeText}", expected "All"`);
-
-      // Click "easy" — our dungeon is easy, should still appear
-      const easyBtn = page.locator('.lb-filter-btn', { hasText: 'easy' });
-      if (await easyBtn.count() > 0) {
-        await easyBtn.click();
-        await page.waitForTimeout(300);
-        const stillVisible = (await page.locator(`.lb-row:has-text("${dName}")`).count()) > 0
-          || (await page.locator('.leaderboard-table').count()) > 0
-          || (await page.locator('.leaderboard-panel').textContent()).includes('easy');
-        ok('Easy filter applied without error');
-
-        // Click "hard" — our dungeon is easy, table should be empty or show no-data message
-        const hardBtn = page.locator('.lb-filter-btn', { hasText: 'hard' });
-        if (await hardBtn.count() > 0) {
-          await hardBtn.click();
-          await page.waitForTimeout(300);
-          const hardTable = await page.locator('.leaderboard-table').count();
-          const noData = (await page.locator('.leaderboard-panel').textContent()).includes('hard');
-          (hardTable === 0 || noData) ? ok('Hard filter hides easy run') : warn('Hard filter may not be filtering correctly');
-        }
-
-        // Reset to All
-        const allBtnReset = page.locator('.lb-filter-btn', { hasText: 'All' });
-        if (await allBtnReset.count() > 0) await allBtnReset.click();
-      }
+    // Leaderboard is victories-only — a deleted/abandoned dungeon must NOT appear
+    if (!panelText.includes(dName)) {
+      ok(`Leaderboard correctly excludes abandoned dungeon "${dName}" (victories-only filter)`);
     } else {
-      fail(`Leaderboard does not contain entry for "${dName}" — leaderboard write path is broken`);
+      fail(`Leaderboard shows abandoned dungeon "${dName}" — victories-only filter is broken`);
+    }
+
+    // Panel still renders (empty state or real entries are both fine)
+    const panelStillRendered = (await panel2.count()) > 0;
+    panelStillRendered ? ok('Leaderboard panel renders without crash (empty state OK)') : fail('Leaderboard panel disappeared unexpectedly');
+
+    // Difficulty filter buttons should always be present regardless of entries
+    console.log('\n  [Difficulty filter]');
+    const filterBtns = page.locator('.lb-filter-btn');
+    const filterCount = await filterBtns.count();
+    filterCount === 4 ? ok('Difficulty filter has 4 buttons (All, easy, normal, hard)') : fail(`Expected 4 filter buttons, got ${filterCount}`);
+
+    // "All" should be active by default
+    const allBtn = page.locator('.lb-filter-btn.lb-filter-active');
+    const activeText = await allBtn.first().textContent().catch(() => '');
+    activeText.toLowerCase().includes('all') ? ok('"All" filter active by default') : warn(`Active filter is "${activeText}", expected "All"`);
+
+    // Filter buttons are clickable without crash
+    const easyBtn = page.locator('.lb-filter-btn', { hasText: 'easy' });
+    if (await easyBtn.count() > 0) {
+      await easyBtn.click();
+      await page.waitForTimeout(300);
+      ok('Easy filter applied without error');
+
+      const hardBtn = page.locator('.lb-filter-btn', { hasText: 'hard' });
+      if (await hardBtn.count() > 0) {
+        await hardBtn.click();
+        await page.waitForTimeout(300);
+        ok('Hard filter applied without error');
+      }
+
+      // Reset to All
+      const allBtnReset = page.locator('.lb-filter-btn', { hasText: 'All' });
+      if (await allBtnReset.count() > 0) await allBtnReset.click();
     }
 
     // ── ConfigMap footer note visible ────────────────────────────────────────
