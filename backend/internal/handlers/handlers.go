@@ -1743,13 +1743,13 @@ func deriveCombatLog(
 	var notes []string
 
 	if wasStunned {
-		// Hero was stunned: no damage dealt
+		// Hero was stunned: no damage dealt, but enemies still counter-attack.
+		// Set heroAction and fall through to compute enemyAction from pre→post HP diff.
 		if diceFormula != "" {
 			heroAction = fmt.Sprintf("[%s] Hero STUNNED! — no attack this turn", diceFormula)
 		} else {
 			heroAction = "Hero STUNNED! — no attack this turn"
 		}
-		return heroAction, "Hero was stunned this turn."
 	}
 
 	// Compute effective damage from spec diff
@@ -1817,8 +1817,10 @@ func deriveCombatLog(
 	if diceFormula != "" {
 		formulaStr = fmt.Sprintf("[%s] ", diceFormula)
 	}
-	heroAction = fmt.Sprintf("%sHero (%s) deals %d damage to %s (HP: %d -> %d)%s",
-		formulaStr, heroClass, effectiveDamage, realTarget, oldHP, newHP, noteStr)
+	if !wasStunned {
+		heroAction = fmt.Sprintf("%sHero (%s) deals %d damage to %s (HP: %d -> %d)%s",
+			formulaStr, heroClass, effectiveDamage, realTarget, oldHP, newHP, noteStr)
+	}
 
 	// --- Enemy action ---
 	heroDmgTaken := preHeroHP - postHeroHP
