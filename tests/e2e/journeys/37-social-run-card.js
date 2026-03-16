@@ -98,23 +98,21 @@ async function run() {
     // Kill boss
     for (let i = 0; i < 60; i++) {
       await clearModals(page);
-      const body = await page.textContent('body').catch(() => '');
-      if (body.includes('victory-banner') || body.includes('VICTORY')) break;
       const bossBtn = page.locator('.arena-entity.boss-entity .arena-atk-btn.btn-primary');
-      if (await bossBtn.count() === 0) break;
+      if (await bossBtn.count() === 0) break; // boss dead — no attack button
       await bossBtn.click({ force: true }).catch(() => {});
       await page.waitForTimeout(2500);
     }
     await clearModals(page);
 
     // Wait for post-boss room 1 flow: treasure opens auto, door unlocks auto (~2-4s)
-    await page.waitForTimeout(4000);
+    await page.waitForTimeout(5000);
     await clearModals(page);
 
-    // Check room 1 cleared (treasure + door appear)
-    // Wait for door to unlock then enter room 2
+    // Check room 1 cleared — wait for door to unlock
+    await page.waitForSelector('[aria-label="Enter Room 2"]', { timeout: 10000 }).catch(() => {});
     let body = await page.textContent('body').catch(() => '');
-    const room1Done = body.includes('ROOM 2') || body.includes('Enter Room 2') || body.includes('door') || body.includes('dungeon-door');
+    const room1Done = await page.locator('[aria-label="Enter Room 2"]').count() > 0 || body.includes('Enter Room 2');
     room1Done ? ok('Room 1 cleared — door/room2 available') : warn('Room 1 cleared state uncertain');
 
     // Click treasure if present
@@ -139,7 +137,9 @@ async function run() {
     }
 
     body = await page.textContent('body').catch(() => '');
-    const inRoom2 = body.includes('Room 2') || body.includes('room2') || body.includes('troll') || body.includes('ghoul') || body.includes('TROLL') || body.includes('GHOUL');
+    // Use DOM check for room 2 — body text is polluted by event log entries
+    const inRoom2 = await page.locator('.arena-entity.monster-entity').count() > 0 &&
+      await page.locator('[aria-label="Enter Room 2"]').count() === 0; // door gone = inside room 2
     inRoom2 ? ok('Entered room 2') : warn('Room 2 entry uncertain — continuing');
 
     // Wait for room 2 to fully initialise (kro reconciles new monster/boss HP)
@@ -162,8 +162,9 @@ async function run() {
     // Kill room 2 boss
     for (let i = 0; i < 80; i++) {
       await clearModals(page);
-      const bodyNow = await page.textContent('body').catch(() => '');
-      if (bodyNow.includes('victory-banner') || bodyNow.includes('VICTORY')) break;
+      // Use DOM check (.victory-banner) not text check (to avoid matching event log "VICTORY!")
+      const victoryBannerPresent = await page.locator('.victory-banner').count() > 0;
+      if (victoryBannerPresent) break;
       const boss2Btn = page.locator('.arena-entity.boss-entity .arena-atk-btn.btn-primary');
       if (await boss2Btn.count() === 0) break;
       await boss2Btn.click({ force: true }).catch(() => {});
@@ -171,24 +172,35 @@ async function run() {
     }
     await clearModals(page);
 
-    // Wait for victory banner
-    await page.waitForSelector('.victory-banner', { timeout: 15000 }).catch(() => {});
-    body = await page.textContent('body').catch(() => '');
-    const hasVictory = body.includes('VICTORY') || await page.locator('.victory-banner').count() > 0;
+    // Wait for victory banner — use DOM selector only (not body text which is polluted by event log)
+    await page.waitForSelector('.victory-banner', { timeout: 20000 }).catch(() => {});
+    const hasVictory = await page.locator('.victory-banner').count() > 0;
     hasVictory ? ok('Victory banner visible') : fail('Victory banner not visible after clearing room 2');
 
-    // Dismiss the auto-shown kro certificate modal (fires 800ms after victory)
-    // It overlays the victory banner and must be dismissed before we can interact with run card
-    await page.waitForTimeout(1500);
-    for (let i = 0; i < 5; i++) {
-      const certOverlay = page.locator('.kro-cert-overlay');
-      if (await certOverlay.count() === 0) break;
-      await page.evaluate(() => { const el = document.querySelector('.kro-cert-overlay'); if (el) el.click(); }).catch(() => {});
-      await page.waitForTimeout(700);
+    // Wait for React to finish rendering run card section inside the banner
+    await page.waitForTimeout(2000);
+
+    // Debug: dump the victory-banner and full body to understand what's rendered
+    const victoryBannerCount = await page.locator('.victory-banner').count();
+    const runCardCountNow = await page.locator('.run-card-img').count();
+    console.log(`  [debug] victory-banner count: ${victoryBannerCount}, run-card-img count: ${runCardCountNow}`);
+
+    // Take a screenshot for debugging
+    await page.screenshot({ path: '/tmp/j37-victory-debug.png', fullPage: false }).catch(() => {});
+    console.log('  [debug] screenshot saved to /tmp/j37-victory-debug.png');
+
+    // If victory banner is gone, dump what IS on the page
+    if (victoryBannerCount === 0) {
+      const currentBody = await page.textContent('body').catch(() => '');
+      console.log(`  [debug] body text (first 300): ${currentBody.substring(0, 300)}`);
+      // Check if we're on dungeon list (navigated away)
+      const dungeonTiles = await page.locator('.dungeon-tile').count();
+      const dungeonView = await page.locator('.dungeon-arena').count();
+      console.log(`  [debug] dungeon-tile count: ${dungeonTiles}, dungeon-arena count: ${dungeonView}`);
+    } else {
+      const victoryBannerHtml = await page.locator('.victory-banner').first().innerHTML().catch(() => '(empty)');
+      console.log(`  [debug] victory-banner inner HTML (first 600 chars): ${victoryBannerHtml.substring(0, 600)}`);
     }
-    // Also dismiss any other blocking modals
-    await clearModals(page);
-    await page.waitForTimeout(500);
 
     // === 4–7: Run card UI checks ===
     console.log('\n=== Step 4: Run card UI ===');
@@ -218,6 +230,15 @@ async function run() {
     const shareBtn = page.locator('button.run-card-share-btn');
     const shareBtnCount = await shareBtn.count();
     shareBtnCount > 0 ? ok('↗ Share Run button present') : fail('↗ Share Run button not found');
+
+    // Dismiss the auto-shown kro certificate modal before interacting with share button
+    await page.waitForTimeout(500);
+    for (let i = 0; i < 5; i++) {
+      const certOverlay = page.locator('.kro-cert-overlay');
+      if (await certOverlay.count() === 0) break;
+      await page.evaluate(() => { const el = document.querySelector('.kro-cert-overlay'); if (el) el.click(); }).catch(() => {});
+      await page.waitForTimeout(700);
+    }
 
     // 8. Click Share Run — text changes to "✓ Copied!"
     if (shareBtnCount > 0) {
