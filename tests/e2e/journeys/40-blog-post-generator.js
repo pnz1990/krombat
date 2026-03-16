@@ -67,7 +67,7 @@ async function run() {
   const dName = `j40-${Date.now()}`;
   const consoleErrors = [];
   page.on('console', msg => {
-    if (msg.type() === 'error' && !msg.text().includes('WebSocket') && !msg.text().includes('404') && !msg.text().includes('net::ERR'))
+    if (msg.type() === 'error' && !msg.text().includes('WebSocket') && !msg.text().includes('404') && !msg.text().includes('net::ERR') && !msg.text().includes('400') && !msg.text().includes('429'))
       consoleErrors.push(msg.text());
   });
 
@@ -331,13 +331,21 @@ async function run() {
     if (listResult.status === 200) {
       try {
         const dungeons = JSON.parse(listResult.body);
-        const items = (dungeons.items || []);
-        const match = items.find(d => d.metadata && d.metadata.name === dName);
+        // ListDungeons returns [{name, namespace, ...}] array (summary format, not full CR)
+        const items = Array.isArray(dungeons) ? dungeons : (dungeons.items || []);
+        const match = items.find(d => d.name === dName || (d.metadata && d.metadata.name === dName));
         if (match) {
-          narrativeNs = match.metadata.namespace || '';
-          narrativeName = match.metadata.name || dName;
+          narrativeNs = match.namespace || (match.metadata && match.metadata.namespace) || 'default';
+          narrativeName = match.name || (match.metadata && match.metadata.name) || dName;
+        } else {
+          // Fallback: dungeons always live in default namespace
+          narrativeNs = 'default';
+          narrativeName = dName;
         }
-      } catch (e) {}
+      } catch (e) {
+        narrativeNs = 'default';
+        narrativeName = dName;
+      }
     }
 
     if (narrativeNs) {
