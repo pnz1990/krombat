@@ -2838,10 +2838,11 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
                       {items.map((item, i) => {
                         const rarity = item.split('-').pop()!
                         const isPotion = item.includes('potion')
+                        const isManaPotion = item.includes('manapotion')
                         const desc =                           item.includes('weapon') ? `Weapon (${rarity}) — click to equip, +damage for 3 attacks` :
                           item.includes('armor') ? `Armor (${rarity}) — click to equip, +defense for dungeon` :
                           item.includes('hppotion') ? `HP Potion (${rarity}) — click to restore HP` :
-                          item.includes('manapotion') ? `Mana Potion (${rarity}) — click to restore mana` :
+                          isManaPotion ? (heroClass === 'mage' ? `Mana Potion (${rarity}) — click to restore mana` : `Mana Potion (${rarity}) — Mage only`) :
                           item.includes('helmet') ? `Helmet (${rarity}) — click to equip, +crit chance` :
                           item.includes('pants') ? `Pants (${rarity}) — click to equip, +dodge chance` :
                           item.includes('boots') ? `Boots (${rarity}) — click to equip, +status resist` :
@@ -2849,7 +2850,7 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
                           item.includes('amulet') ? `Amulet (${rarity}) — click to equip, +% damage boost` : item
                         return (
                           <Tooltip key={i} text={desc}>
-                            <button className="backpack-slot" disabled={gameOver || !!attackPhase}
+                            <button className="backpack-slot" disabled={gameOver || !!attackPhase || (isManaPotion && heroClass !== 'mage')}
                               style={{ borderColor: RARITY_COLOR[rarity] || '#555' }}
                               onClick={() => onAttack(isPotion ? `use-${item}` : `equip-${item}`, 0)}>
                               <ItemSprite id={item} size={22} />
