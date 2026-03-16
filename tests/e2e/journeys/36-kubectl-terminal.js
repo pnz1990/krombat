@@ -118,8 +118,14 @@ async function run() {
     await termBtn.count() > 0
       ? ok('"kubectl Terminal" button found in dungeon hamburger menu')
       : fail('"kubectl Terminal" button missing from dungeon hamburger menu');
-    await page.keyboard.press('Escape');
-    await page.waitForTimeout(600);
+    // Close the menu by clicking the backdrop (Escape does not close it — no keydown handler)
+    const backdrop = page.locator('.hamburger-backdrop');
+    if (await backdrop.count() > 0) {
+      await backdrop.click();
+    } else {
+      await hamBtn.click(); // toggle off
+    }
+    await page.waitForTimeout(400);
 
     // ── Open terminal ────────────────────────────────────────────────────────
     console.log('\n=== Open terminal panel ===');
