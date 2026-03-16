@@ -15,8 +15,9 @@ spec:
     spec:
       serviceAccountName: rpg-backend-sa
       topologySpreadConstraints:
-        # #471: 4 replicas across 2 AZs — maxSkew:0 enforces exactly 2 pods per AZ
-        - maxSkew: 0
+        # #471: 4 replicas, maxSkew:1 across 2 AZs — steady state is [2,2]
+        # maxSkew:0 causes pending pods during rolling update (scheduler sees 3 zones)
+        - maxSkew: 1
           topologyKey: topology.kubernetes.io/zone
           whenUnsatisfiable: DoNotSchedule
           labelSelector:
