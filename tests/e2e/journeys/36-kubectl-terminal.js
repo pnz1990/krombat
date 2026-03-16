@@ -35,6 +35,9 @@ function fail(msg) { console.log(`  ❌ ${msg}`); failed++; }
 function warn(msg) { console.log(`  ⚠️  ${msg}`); warnings++; }
 
 async function openTerminal(page) {
+  // Wait for any leftover hamburger backdrop to disappear before clicking
+  await page.waitForSelector('.hamburger-backdrop', { state: 'detached', timeout: 3000 }).catch(() => {});
+  await page.waitForTimeout(200);
   const hamBtn = page.locator('button.hamburger-btn[aria-label="Menu"]');
   await hamBtn.waitFor({ timeout: TIMEOUT }).catch(() => {});
   if (await hamBtn.count() === 0) return false;
@@ -116,7 +119,7 @@ async function run() {
       ? ok('"kubectl Terminal" button found in dungeon hamburger menu')
       : fail('"kubectl Terminal" button missing from dungeon hamburger menu');
     await page.keyboard.press('Escape');
-    await page.waitForTimeout(200);
+    await page.waitForTimeout(600);
 
     // ── Open terminal ────────────────────────────────────────────────────────
     console.log('\n=== Open terminal panel ===');
