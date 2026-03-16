@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, type MutableRefObject } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { DungeonSummary, DungeonCR, listDungeons, getDungeon, createDungeon, createNewGamePlus, submitAttack, deleteDungeon, ApiError, LeaderboardEntry, getLeaderboard, UserProfile, getProfile, reportError, trackEvent, getMe, logout, AuthUser } from './api'
+import { DungeonSummary, DungeonCR, listDungeons, getDungeon, createDungeon, createNewGamePlus, submitAttack, deleteDungeon, ApiError, LeaderboardEntry, getLeaderboard, UserProfile, getProfile, awardCert, reportError, trackEvent, getMe, logout, AuthUser } from './api'
 import { useWebSocket, WSEvent } from './useWebSocket'
 
 import { Sprite, getMonsterSprite, getMonsterName, SpriteAction, ItemSprite } from './Sprite'
@@ -141,6 +141,14 @@ export default function App() {
   const [showProfile, setShowProfile] = useState(false)
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [profileLoading, setProfileLoading] = useState(false)
+  // kro Certificates (#361) — toast + Tier 2 trigger counters
+  const [certToast, setCertToast] = useState<string | null>(null)
+  const certToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const insightDismissCountRef = useRef(0)
+  const glossaryOpenCountRef = useRef(0)
+  const reconcileCycleCountRef = useRef(0)
+  const reconcileWasActiveRef = useRef(false)
+  const celTraceSeenRef = useRef(false)
 
   const triggerInsight = useCallback((event: string) => {
     const trigger = getInsightForEvent(event)
@@ -152,6 +160,20 @@ export default function App() {
     setInsightQueue(q => [...q, trigger])
   }, [unlock])
 
+  // Tier 2 certificate trigger (#361) — called from UI interaction callbacks
+  const handleCertTrigger = useCallback(async (certId: string) => {
+    if (profile?.kroCertificates?.includes(certId)) return // already earned
+    const updated = await awardCert(certId)
+    if (!updated) return
+    setProfile(prev => prev ? { ...prev, kroCertificates: updated } : prev)
+    if (!profile?.kroCertificates?.includes(certId)) {
+      // Show toast
+      if (certToastTimerRef.current) clearTimeout(certToastTimerRef.current)
+      setCertToast(certId)
+      certToastTimerRef.current = setTimeout(() => setCertToast(null), 4000)
+    }
+  }, [profile])
+
   // Auto-surface CEL Playground once the player is engaged (10+ concepts unlocked)
   const playgroundFiredRef = useRef(false)
   useEffect(() => {
@@ -160,6 +182,20 @@ export default function App() {
       setTimeout(() => triggerInsight('cel-playground-unlocked'), 2000)
     }
   }, [unlocked.size, triggerInsight])
+
+  // Track kro-reconcile cycles for cert (#361)
+  useEffect(() => {
+    if (reconciling) {
+      reconcileWasActiveRef.current = true
+    } else if (reconcileWasActiveRef.current) {
+      reconcileWasActiveRef.current = false
+      reconcileCycleCountRef.current += 1
+      if (reconcileCycleCountRef.current >= 3) {
+        handleCertTrigger('kro-reconcile')
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reconciling])
 
   const { connected, lastEvent } = useWebSocket(selected?.ns, selected?.name)
   const selectedRef = useRef(selected)
@@ -808,6 +844,9 @@ export default function App() {
           onViewKroConcept={setKroConceptModal}
           reconciling={reconciling}
           onOpenLeaderboard={handleOpenLeaderboard}
+          onCertTrigger={handleCertTrigger}
+          glossaryOpenCountRef={glossaryOpenCountRef}
+          celTraceSeenRef={celTraceSeenRef}
         />
       ) : null}
 
@@ -815,10 +854,30 @@ export default function App() {
       {insightQueue.length > 0 && (
         <InsightCard
           trigger={insightQueue[0]}
-          onDismiss={() => setInsightQueue(q => q.slice(1))}
+          onDismiss={() => {
+            setInsightQueue(q => q.slice(1))
+            insightDismissCountRef.current += 1
+            if (insightDismissCountRef.current >= 3) {
+              handleCertTrigger('insight-card')
+            }
+          }}
           onViewConcept={setKroConceptModal}
         />
       )}
+
+      {/* kro Certificate toast (#361) */}
+      {certToast && (() => {
+        const def = CERT_REGISTRY.find(c => c.id === certToast)
+        return (
+          <div className="cert-toast" aria-live="polite" data-testid="cert-toast">
+            <PixelIcon name={def?.icon ?? 'star'} size={14} />
+            <div>
+              <div className="cert-toast-title">kro Certificate Earned!</div>
+              <div className="cert-toast-name">{def?.name ?? certToast}</div>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Leaderboard — rendered globally so it works from any screen */}
       {showLeaderboard && (
@@ -992,6 +1051,34 @@ const BADGE_ICONS: Record<string, string> = {
 }
 const ALL_BADGES = Object.keys(BADGE_LABELS)
 
+// ─── kro Certificate Registry (#361) ─────────────────────────────────────────
+interface CertDef {
+  id: string; name: string; tier: 1 | 2 | 3
+  hint: string    // shown when not yet earned
+  icon: string    // PixelIcon name
+}
+const CERT_REGISTRY: CertDef[] = [
+  // Tier 1 — Observer (awarded automatically by backend on run completion)
+  { id: 'first-dungeon',      name: 'Dungeon Architect',       tier: 1, icon: 'helm',    hint: 'Create your first dungeon (a Kubernetes CR!)' },
+  { id: 'cel-state',          name: 'CEL State Machine',       tier: 1, icon: 'mana',    hint: 'Win a dungeon (kro CEL computed victory=true)' },
+  { id: 'two-rooms',          name: 'Graph Traverser',         tier: 1, icon: 'door',    hint: 'Clear both rooms (traverse the full resource graph)' },
+  { id: 'loot-system',        name: 'Resource Graph Explorer', tier: 1, icon: 'chest',   hint: 'Equip 3+ different item types in one run' },
+  // Tier 2 — Practitioner (awarded by POST /api/v1/profile/cert from frontend interactions)
+  { id: 'log-explorer',       name: 'Log Explorer',            tier: 2, icon: 'scroll',  hint: 'Open the K8s Log Tab for the first time' },
+  { id: 'kro-reconcile',      name: 'kro Watcher',             tier: 2, icon: 'book',    hint: 'Watch 3 kro reconciliation cycles in a dungeon' },
+  { id: 'cel-trace',          name: 'CEL Tracer',              tier: 2, icon: 'book',    hint: 'View a CelTrace in the combat log' },
+  { id: 'insight-card',       name: 'Insight Reader',          tier: 2, icon: 'star',    hint: 'Dismiss 3 InsightCards in one dungeon run' },
+  { id: 'glossary',           name: 'Glossary Scholar',        tier: 2, icon: 'scroll',  hint: 'Open 5 glossary terms from the kro tab' },
+  { id: 'graph-panel',        name: 'Graph Viewer',            tier: 2, icon: 'crown',   hint: 'Open the kro resource graph panel' },
+  // Tier 3 — Architect (awarded automatically by backend on run completion)
+  { id: 'boss-phase',         name: 'Phase Controller',        tier: 3, icon: 'sword',   hint: 'Win a dungeon fighting boss through all 3 phases' },
+  { id: 'modifier-master',    name: 'Modifier Master',         tier: 3, icon: 'skull',   hint: 'Win on Hard with a Curse modifier active' },
+  { id: 'new-game-plus-cert', name: 'Ascendant Architect',     tier: 3, icon: 'crown',   hint: 'Win a New Game+ run' },
+  { id: 'cel-scholar',        name: 'CEL Scholar',             tier: 3, icon: 'mana',    hint: 'Reach Level 5 (XP system)' },
+  { id: 'dungeon-master',     name: 'Dungeon Master',          tier: 3, icon: 'trophy',  hint: 'Win 5 dungeons total across different classes' },
+]
+const TIER_LABELS: Record<number, string> = { 1: 'Tier 1 — Observer', 2: 'Tier 2 — Practitioner', 3: 'Tier 3 — Architect' }
+
 function ProfilePanel({ profile, loading, authUser, onClose }: {
   profile: UserProfile | null; loading: boolean; authUser: AuthUser | null; onClose: () => void
 }) {
@@ -1110,17 +1197,44 @@ function ProfilePanel({ profile, loading, authUser, onClose }: {
                   </div>
                 </div>
 
-                {/* kro Certificates */}
-                {profile.kroCertificates && profile.kroCertificates.length > 0 && (
-                  <div>
-                    <div style={{ fontSize: '7px', color: 'var(--text-dim)', marginBottom: 4, letterSpacing: '0.05em' }}>KRO CERTIFICATES</div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                      {profile.kroCertificates.map(c => (
-                        <span key={c} style={{ fontSize: '7px', padding: '2px 6px', background: 'var(--panel-bg)', border: '1px solid var(--gold)', borderRadius: 2, color: 'var(--gold)' }}>{c}</span>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                {/* kro Certificates — grouped by tier (#361) */}
+                <div>
+                  {[1, 2, 3].map(tier => {
+                    const tierCerts = CERT_REGISTRY.filter(c => c.tier === tier)
+                    const earnedCerts = new Set(profile.kroCertificates ?? [])
+                    const earnedCount = tierCerts.filter(c => earnedCerts.has(c.id)).length
+                    return (
+                      <div key={tier} style={{ marginBottom: 8 }}>
+                        <div style={{ fontSize: '7px', color: 'var(--text-dim)', marginBottom: 4, letterSpacing: '0.05em' }}>
+                          {TIER_LABELS[tier]} — {earnedCount}/{tierCerts.length}
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                          {tierCerts.map(cert => {
+                            const earned = earnedCerts.has(cert.id)
+                            return (
+                              <div key={cert.id}
+                                title={earned ? cert.name : cert.hint}
+                                aria-label={`cert: ${cert.name}${earned ? ' earned' : ''}`}
+                                data-testid={`cert-${cert.id}${earned ? '-earned' : ''}`}
+                                style={{
+                                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+                                  background: 'var(--panel-bg)', border: `1px solid ${earned ? '#00d4ff' : 'var(--border)'}`,
+                                  padding: '4px 6px', borderRadius: 2, opacity: earned ? 1 : 0.35,
+                                  minWidth: 52,
+                                }}
+                              >
+                                <PixelIcon name={cert.icon} size={12} />
+                                <span style={{ fontSize: '6px', color: earned ? '#00d4ff' : 'var(--text-dim)', textAlign: 'center', maxWidth: 60 }}>
+                                  {cert.name}
+                                </span>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
               </>
             ) : (
               <div style={{ fontSize: '8px', color: 'var(--text-dim)', textAlign: 'center', padding: 12 }}>
@@ -1191,7 +1305,7 @@ function FlyingBat({ startX, startY, endX, endY, dur, onDone }: { startX: number
       style={{ left: `${pos.x}%`, top: `${pos.y}%`, transform: `translate(-50%,-50%) scaleX(${endX > startX ? 1 : -1})` }} />
   )
 }
-function EventLogTabs({ events, k8sLog, kroUnlocked, onViewKroConcept, dungeonNs, dungeonName, showPlayground, onOpenPlayground, onClosePlayground }: {
+function EventLogTabs({ events, k8sLog, kroUnlocked, onViewKroConcept, dungeonNs, dungeonName, showPlayground, onOpenPlayground, onClosePlayground, onCertTrigger, glossaryOpenCountRef }: {
   events: WSEvent[]
   k8sLog: { ts: string; cmd: string; res: string; yaml?: string }[]
   kroUnlocked: Set<KroConceptId>
@@ -1201,16 +1315,28 @@ function EventLogTabs({ events, k8sLog, kroUnlocked, onViewKroConcept, dungeonNs
   showPlayground: boolean
   onOpenPlayground: () => void
   onClosePlayground: () => void
+  onCertTrigger?: (certId: string) => void  // Tier 2 cert callbacks (#361)
+  glossaryOpenCountRef?: MutableRefObject<number>
 }) {
   const [tab, setTab] = useState<'game' | 'k8s' | 'kro'>('game')
   const [yamlModal, setYamlModal] = useState<{ yaml: string; cmd: string } | null>(null)
   const [kroConceptModal, setKroConceptModal] = useState<KroConceptId | null>(null)
+  const k8sTabOpenedRef = useRef(false)
+
+  const handleTabChange = (newTab: 'game' | 'k8s' | 'kro') => {
+    setTab(newTab)
+    // Tier 2 cert: first time K8s log tab is opened (#361)
+    if (newTab === 'k8s' && !k8sTabOpenedRef.current) {
+      k8sTabOpenedRef.current = true
+      onCertTrigger?.('log-explorer')
+    }
+  }
   return (
     <div style={{ marginTop: 16 }}>
       <div className="log-tabs">
-        <button className={`log-tab${tab === 'game' ? ' active' : ''}`} onClick={() => setTab('game')}>Game Log</button>
-        <button className={`log-tab${tab === 'k8s' ? ' active' : ''}`} onClick={() => setTab('k8s')}>K8s Log</button>
-        <button className={`log-tab kro-tab${tab === 'kro' ? ' active' : ''}`} onClick={() => setTab('kro')}>
+        <button className={`log-tab${tab === 'game' ? ' active' : ''}`} onClick={() => handleTabChange('game')}>Game Log</button>
+        <button className={`log-tab${tab === 'k8s' ? ' active' : ''}`} onClick={() => handleTabChange('k8s')}>K8s Log</button>
+        <button className={`log-tab kro-tab${tab === 'kro' ? ' active' : ''}`} onClick={() => handleTabChange('kro')}>
           kro ({kroUnlocked.size}/{Object.keys(KRO_CONCEPTS).length})
         </button>
       </div>
@@ -1278,7 +1404,16 @@ function EventLogTabs({ events, k8sLog, kroUnlocked, onViewKroConcept, dungeonNs
         </div>
       ) : (
         <div>
-          <KroGlossary unlocked={kroUnlocked} onViewConcept={id => setKroConceptModal(id)} />
+          <KroGlossary unlocked={kroUnlocked} onViewConcept={id => {
+            setKroConceptModal(id)
+            // Tier 2: glossary cert after 5 terms opened (#361)
+            if (glossaryOpenCountRef) {
+              glossaryOpenCountRef.current += 1
+              if (glossaryOpenCountRef.current >= 5) {
+                onCertTrigger?.('glossary')
+              }
+            }
+          }} />
         </div>
       )}
     </div>
@@ -1610,7 +1745,7 @@ function getModifierArenaStyle(modifier: string | undefined): React.CSSPropertie
   }
 }
 
-function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sLog, showLoot, onOpenLoot, onCloseLoot, attackPhase, roomLoading, animPhase, attackTarget, showHelp, onToggleHelp, showCheat, onToggleCheat, floatingDmg, bossPhaseFlash, combatModal, onDismissCombat, lootDrop, onDismissLoot, wsConnected, apiError, kroUnlocked, onViewKroConcept, reconciling, onOpenLeaderboard }: {
+function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sLog, showLoot, onOpenLoot, onCloseLoot, attackPhase, roomLoading, animPhase, attackTarget, showHelp, onToggleHelp, showCheat, onToggleCheat, floatingDmg, bossPhaseFlash, combatModal, onDismissCombat, lootDrop, onDismissLoot, wsConnected, apiError, kroUnlocked, onViewKroConcept, reconciling, onOpenLeaderboard, onCertTrigger, glossaryOpenCountRef, celTraceSeenRef }: {
   cr: DungeonCR; prevCr?: DungeonCR | null; onBack: () => void; onNewGamePlus?: () => void; onAttack: (t: string, d: number) => void; events: WSEvent[]; k8sLog: { ts: string; cmd: string; res: string; yaml?: string }[]
   showLoot: boolean; onOpenLoot: () => void; onCloseLoot: () => void
   attackPhase: string | null; roomLoading: boolean
@@ -1628,6 +1763,9 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
   onViewKroConcept: (id: KroConceptId) => void
   reconciling: boolean
   onOpenLeaderboard: () => void
+  onCertTrigger?: (certId: string) => void  // Tier 2 cert callbacks (#361)
+  glossaryOpenCountRef?: MutableRefObject<number>
+  celTraceSeenRef?: MutableRefObject<boolean>
 }) {
   if (!cr?.metadata?.name) return <div className="loading">Loading dungeon</div>
   const spec = cr.spec || { monsters: 0, difficulty: 'normal', monsterHP: [], bossHP: 0, heroHP: 100 }
@@ -1693,6 +1831,16 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
       setTimeout(() => setShowCertificate(true), 800)
     }
   }, [isVictory])
+
+  // Tier 2: cel-trace cert — fire once when CelTrace is rendered in combat results (#361)
+  useEffect(() => {
+    if (combatModal && combatModal.phase !== 'rolling' && combatModal.heroAction) {
+      if (celTraceSeenRef && !celTraceSeenRef.current) {
+        celTraceSeenRef.current = true
+        onCertTrigger?.('cel-trace')
+      }
+    }
+  }, [combatModal, celTraceSeenRef, onCertTrigger])
 
   // Room 1 cleared celebration — show for 3s when boss defeated in room 1
   const [showRoom1Cleared, setShowRoom1Cleared] = useState(false)
@@ -2356,11 +2504,14 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
         </div>
       </div>
 
-      <KroGraphPanel cr={cr} prevCr={prevCr} reconciling={reconciling} onViewConcept={onViewKroConcept} />
+      <KroGraphPanel cr={cr} prevCr={prevCr} reconciling={reconciling} onViewConcept={onViewKroConcept}
+        onExpand={() => onCertTrigger?.('graph-panel')} />
 
       <EventLogTabs events={events} k8sLog={k8sLog} kroUnlocked={kroUnlocked} onViewKroConcept={onViewKroConcept}
         dungeonNs={cr.metadata.namespace} dungeonName={cr.metadata.name}
-        showPlayground={showPlayground} onOpenPlayground={() => setShowPlayground(true)} onClosePlayground={() => setShowPlayground(false)} />
+        showPlayground={showPlayground} onOpenPlayground={() => setShowPlayground(true)} onClosePlayground={() => setShowPlayground(false)}
+        onCertTrigger={onCertTrigger}
+        glossaryOpenCountRef={glossaryOpenCountRef} />
     </div>
   )
 }

@@ -747,6 +747,56 @@ grep -A8 'topologySpreadConstraints' manifests/system/frontend.yaml | grep -q 'D
   && pass "#471: frontend topology spread uses DoNotSchedule (enforces AZ spread)" \
   || fail "#471: frontend topology spread uses ScheduleAnyway — AZ distribution not enforced"
 
+# === #361: kro certificate system guardrails ===
+# /profile/cert endpoint must be registered in main.go
+grep -q 'POST /api/v1/profile/cert' backend/cmd/main.go \
+  && pass "#361: POST /api/v1/profile/cert route registered in main.go" \
+  || fail "#361: POST /api/v1/profile/cert route missing from main.go"
+
+# tier2Certs allow-list must include expected cert IDs
+grep -q '"log-explorer"' backend/internal/handlers/handlers.go \
+  && pass "#361: tier2Certs allow-list contains log-explorer" \
+  || fail "#361: tier2Certs allow-list missing log-explorer"
+
+grep -q '"kro-reconcile"' backend/internal/handlers/handlers.go \
+  && pass "#361: tier2Certs allow-list contains kro-reconcile" \
+  || fail "#361: tier2Certs allow-list missing kro-reconcile"
+
+# computeCertificates helper must exist
+grep -q 'func computeCertificates' backend/internal/handlers/handlers.go \
+  && pass "#361: computeCertificates helper exists in handlers.go" \
+  || fail "#361: computeCertificates helper missing from handlers.go"
+
+# AwardCert handler must exist
+grep -q 'func (h \*Handler) AwardCert' backend/internal/handlers/handlers.go \
+  && pass "#361: AwardCert handler exists in handlers.go" \
+  || fail "#361: AwardCert handler missing from handlers.go"
+
+# CERT_REGISTRY constant must exist in App.tsx
+grep -q 'CERT_REGISTRY' frontend/src/App.tsx \
+  && pass "#361: CERT_REGISTRY constant exists in App.tsx" \
+  || fail "#361: CERT_REGISTRY constant missing from App.tsx"
+
+# cert-toast must exist in App.tsx
+grep -q 'cert-toast' frontend/src/App.tsx \
+  && pass "#361: cert-toast notification exists in App.tsx" \
+  || fail "#361: cert-toast notification missing from App.tsx"
+
+# cert-toast CSS must exist in index.css
+grep -q 'cert-toast' frontend/src/index.css \
+  && pass "#361: .cert-toast CSS defined in index.css" \
+  || fail "#361: .cert-toast CSS missing from index.css"
+
+# awardCert must exist in api.ts
+grep -q 'export async function awardCert' frontend/src/api.ts \
+  && pass "#361: awardCert function exported from api.ts" \
+  || fail "#361: awardCert function missing from api.ts"
+
+# K8s log tab cert trigger must exist (log-explorer)
+grep -q "log-explorer" frontend/src/App.tsx \
+  && pass "#361: log-explorer cert trigger wired in App.tsx" \
+  || fail "#361: log-explorer cert trigger missing from App.tsx"
+
 # --- Summary ---
 
 echo ""

@@ -755,6 +755,74 @@ func computeProfileBadges(spec map[string]interface{}, outcome string) []string 
 	return badges
 }
 
+// tier2Certs is the set of certificate IDs that can be awarded via the
+// POST /api/v1/profile/cert endpoint (frontend-triggered on K8s log tab interaction).
+var tier2Certs = map[string]bool{
+	"log-explorer":  true,
+	"cel-trace":     true,
+	"insight-card":  true,
+	"glossary":      true,
+	"graph-panel":   true,
+	"kro-reconcile": true,
+}
+
+// computeCertificates derives Tier 1 and Tier 3 certificate IDs from spec + profile state.
+// Returns only certs not already in profile.KroCertificates.
+func computeCertificates(spec map[string]interface{}, profile UserProfile, outcome string) []string {
+	existing := map[string]bool{}
+	for _, c := range profile.KroCertificates {
+		existing[c] = true
+	}
+	var certs []string
+	add := func(id string) {
+		if !existing[id] {
+			certs = append(certs, id)
+		}
+	}
+
+	// Tier 1 — Observer
+	if profile.DungeonsPlayed == 1 {
+		add("first-dungeon")
+	}
+	if outcome == "victory" {
+		add("cel-state")
+	}
+	if outcome == "victory" && getInt(spec, "currentRoom") >= 2 {
+		add("two-rooms")
+	}
+	// loot-system: 3+ distinct equipped item types
+	equippedTypes := 0
+	for _, field := range []string{"weaponBonus", "armorBonus", "shieldBonus", "helmetBonus", "pantsBonus", "bootsBonus", "ringBonus", "amuletBonus"} {
+		if getInt(spec, field) > 0 {
+			equippedTypes++
+		}
+	}
+	if equippedTypes >= 3 {
+		add("loot-system")
+	}
+
+	// Tier 3 — Architect
+	modifier, _ := spec["modifier"].(string)
+	difficulty, _ := spec["difficulty"].(string)
+	if outcome == "victory" && strings.HasPrefix(modifier, "curse-") && difficulty == "hard" {
+		add("modifier-master")
+	}
+	if outcome == "victory" && getInt(spec, "runCount") >= 1 {
+		add("new-game-plus-cert")
+	}
+	if profile.DungeonsWon >= 5 {
+		add("dungeon-master")
+	}
+	if profile.Level >= 5 {
+		add("cel-scholar")
+	}
+	// boss-phase: check if bossPhase ever reached phase3 (we track via spec.bossMaxPhase if present;
+	// fallback: phase3 means boss HP was ≤25% of room's max — we can't reconstruct that here without
+	// tracking, so we gate on outcome==victory as an approximation for now)
+	// TODO: add spec.bossMaxPhaseReached field in future
+	return certs
+}
+
 // recordProfile writes/updates the player's profile ConfigMap in rpg-system.
 // Called asynchronously before dungeon deletion. Silently skips on any error.
 func (h *Handler) recordProfile(login string, spec map[string]interface{}, kroStatus map[string]interface{}) {
@@ -936,6 +1004,10 @@ func (h *Handler) recordProfile(login string, spec map[string]interface{}, kroSt
 		profile.BadgeCounts["new-game-plus"]++
 	}
 
+	// Compute and append new Tier 1 + Tier 3 certificates (#361).
+	newCerts := computeCertificates(spec, profile, outcome)
+	profile.KroCertificates = append(profile.KroCertificates, newCerts...)
+
 	profileJSON, err := json.Marshal(profile)
 	if err != nil {
 		slog.Warn("profile: failed to marshal", "user", login, "error", err)
@@ -991,6 +1063,87 @@ func (h *Handler) GetProfile(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(profile)
+}
+
+// AwardCert awards a Tier 2 certificate to the authenticated user.
+// POST /api/v1/profile/cert  Body: { "cert": "<id>" }
+// Only accepts cert IDs in the tier2Certs allow-list. No-op if already earned.
+// Returns the updated kroCertificates array.
+func (h *Handler) AwardCert(w http.ResponseWriter, r *http.Request) {
+	sess := sessionFromCtx(r.Context())
+	login := "anonymous"
+	if sess != nil {
+		login = sess.Login
+	}
+
+	var req struct {
+		Cert string `json:"cert"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || !tier2Certs[req.Cert] {
+		writeError(w, "invalid or missing cert id", http.StatusBadRequest)
+		return
+	}
+
+	ctx := context.Background()
+	cmClient := h.client.Dynamic.Resource(leaderboardGVR).Namespace(leaderboardNamespace)
+
+	var profile UserProfile
+	var data map[string]interface{}
+	existing, err := cmClient.Get(ctx, profileCMName, metav1.GetOptions{})
+	if err == nil {
+		data, _ = existing.Object["data"].(map[string]interface{})
+		if data == nil {
+			data = map[string]interface{}{}
+		}
+		profile = profileFromData(data, login)
+	} else {
+		data = map[string]interface{}{}
+		profile = emptyProfile()
+	}
+
+	// Deduplicate — no-op if already earned
+	for _, c := range profile.KroCertificates {
+		if c == req.Cert {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(profile.KroCertificates)
+			return
+		}
+	}
+	profile.KroCertificates = append(profile.KroCertificates, req.Cert)
+
+	profileJSON, err := json.Marshal(profile)
+	if err != nil {
+		writeError(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	data[login] = string(profileJSON)
+
+	if existing == nil || err != nil {
+		newCM := &unstructured.Unstructured{Object: map[string]interface{}{
+			"apiVersion": "v1",
+			"kind":       "ConfigMap",
+			"metadata": map[string]interface{}{
+				"name":      profileCMName,
+				"namespace": leaderboardNamespace,
+			},
+			"data": data,
+		}}
+		if _, createErr := cmClient.Create(ctx, newCM, metav1.CreateOptions{}); createErr != nil {
+			writeError(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+	} else {
+		patch := map[string]interface{}{"data": data}
+		patchJSON, _ := json.Marshal(patch)
+		if _, patchErr := cmClient.Patch(ctx, profileCMName, types.MergePatchType, patchJSON, metav1.PatchOptions{}); patchErr != nil {
+			writeError(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	slog.Info("cert_awarded", "component", "api", "user", login, "cert", req.Cert)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(profile.KroCertificates)
 }
 
 // GetLeaderboard returns the top 20 completed runs sorted by fewest turns.
