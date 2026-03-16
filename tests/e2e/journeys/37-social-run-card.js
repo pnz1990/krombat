@@ -142,8 +142,19 @@ async function run() {
       await page.locator('[aria-label="Enter Room 2"]').count() === 0; // door gone = inside room 2
     inRoom2 ? ok('Entered room 2') : warn('Room 2 entry uncertain — continuing');
 
-    // Wait for room 2 to fully initialise (kro reconciles new monster/boss HP)
-    await page.waitForTimeout(4000);
+    // Wait for kro to set currentRoom:2 and populate room2BossHP/room2MonsterHP (kro reconcile ~1-4s)
+    // Poll until alive monsters appear (room 2 initialized) or timeout
+    let room2Ready = false;
+    for (let i = 0; i < 30; i++) {
+      const aliveNow = await aliveMonsterCount(page);
+      const doorGone = await page.locator('[aria-label="Enter Room 2"]').count() === 0;
+      if (aliveNow > 0 && doorGone) { room2Ready = true; break; }
+      // Also check: boss attack button visible (boss ready for room 2)
+      const bossReady = await page.locator('.arena-entity.boss-entity .arena-atk-btn.btn-primary').count() > 0;
+      if (bossReady && doorGone) { room2Ready = true; break; }
+      await page.waitForTimeout(1000);
+    }
+    room2Ready ? ok('Room 2 state initialized (kro reconciled)') : warn('Room 2 state uncertain after 30s wait');
 
     // === 3: Kill room 2 monsters and boss ===
     console.log('\n=== Step 3: Clear room 2 ===');
