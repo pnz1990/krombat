@@ -370,3 +370,21 @@ If anything outside the intended scope appears, do NOT open the PR — clean the
 - GitHub: `pnz1990/krombat`
 - 9 RGDs active, Argo CD syncing from `manifests/`
 - CI: `.github/workflows/build-images.yml` — builds on PR, pushes to ECR + rollout restart on main merge
+
+### Terraform
+
+- Working directory: `infra/`
+- AWS profile: `319279230668-Admin`
+- **Remote state**: S3 bucket `krombat-terraform-state-319279230668`, key `krombat/terraform.tfstate`, region `us-west-2`
+- **State locking**: DynamoDB table `krombat-terraform-locks` (issue #425)
+- The local `infra/terraform.tfstate` file is **not authoritative** — always use remote state via `terraform init` + `terraform plan/apply`
+- **CI does NOT run `terraform apply`** — infra changes require a manual `terraform apply` from `infra/` after merging to main
+- CloudWatch dashboards (`krombat-game`, `krombat-application`, `krombat-kubernetes`, `krombat-business`, `krombat-kro`) are all managed in `infra/observability.tf` and require `terraform apply` to take effect
+
+```bash
+# Standard terraform workflow
+cd infra/
+terraform init          # pulls remote state from S3
+terraform plan          # review changes
+terraform apply         # deploy — requires valid 319279230668-Admin AWS credentials
+```

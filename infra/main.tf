@@ -129,12 +129,8 @@ data "aws_identitystore_user" "admin" {
 
 # --- EKS Capabilities ---
 
-module "kro" {
-  source = "terraform-aws-modules/eks/aws//modules/capability"
-
-  type         = "KRO"
-  cluster_name = module.eks.cluster_name
-}
+# kro is installed manually via Helm (patched fork cel-writeback-d) — NOT via EKS capability.
+# Do NOT add module.kro here; it would replace the patched version with the upstream EKS-managed one.
 
 module "argocd" {
   source = "terraform-aws-modules/eks/aws//modules/capability"
