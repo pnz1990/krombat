@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, type MutableRefObject } from 'react'
+import { useState, useEffect, useCallback, useRef, type MutableRefObject, type ReactNode } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { DungeonSummary, DungeonCR, listDungeons, getDungeon, createDungeon, createNewGamePlus, submitAttack, deleteDungeon, ApiError, LeaderboardEntry, getLeaderboard, UserProfile, getProfile, awardCert, reportError, trackEvent, getMe, logout, AuthUser } from './api'
 import { useWebSocket, WSEvent } from './useWebSocket'
@@ -163,6 +163,7 @@ export default function App() {
   const [leaderboardLoading, setLeaderboardLoading] = useState(false)
   const [showHamburger, setShowHamburger] = useState(false)
   const [showProfile, setShowProfile] = useState(false)
+  const [showFaq, setShowFaq] = useState(false)
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [profileLoading, setProfileLoading] = useState(false)
   // kro Certificates (#361) — toast + Tier 2 trigger counters
@@ -870,6 +871,13 @@ export default function App() {
               Your dungeon data is kept for 30 days.
             </div>
           )}
+          <footer className="app-footer">
+            <button className="app-footer-link" onClick={() => setShowFaq(true)} data-testid="faq-link">FAQ</button>
+            <span className="app-footer-sep">·</span>
+            <a href="https://github.com/pnz1990/krombat" target="_blank" rel="noopener noreferrer" className="app-footer-link">GitHub</a>
+            <span className="app-footer-sep">·</span>
+            <a href="https://kro.run" target="_blank" rel="noopener noreferrer" className="app-footer-link">kro.run</a>
+          </footer>
         </>
       ) : loading ? (
         <div className="loading">Initializing dungeon</div>
@@ -953,10 +961,166 @@ export default function App() {
       {/* Help Modal — rendered globally so z-index is unaffected by DungeonView subtree (#495) */}
       {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
 
+      {/* FAQ Modal */}
+      {showFaq && <FaqModal onClose={() => setShowFaq(false)} />}
+
       {/* kro Concept Modal */}
       {kroConceptModal && (
         <KroConceptModal conceptId={kroConceptModal} onClose={() => setKroConceptModal(null)} />
       )}
+    </div>
+  )
+}
+
+// ─── FAQ Modal ────────────────────────────────────────────────────────────────
+const FAQ_ITEMS: { q: string; a: () => ReactNode }[] = [
+  {
+    q: 'What is this?',
+    a: () => (
+      <>
+        <p>Krombat is a turn-based dungeon RPG where the entire game state lives in a single Kubernetes Custom Resource on a real Amazon EKS cluster. There is no game database, no game server, and no custom controller — the game engine is <a href="https://github.com/kubernetes-sigs/kro" target="_blank" rel="noopener noreferrer" className="faq-link">kro (Kubernetes Resource Orchestrator)</a>, evaluating CEL expressions on every reconcile cycle.</p>
+        <p>Every attack, every item pickup, every boss phase transition is computed by a CEL expression inside a <code>dungeon-graph</code> ResourceGraphDefinition and written back into the Dungeon CR spec.</p>
+      </>
+    ),
+  },
+  {
+    q: 'What is kro?',
+    a: () => (
+      <>
+        <p><a href="https://kro.run" target="_blank" rel="noopener noreferrer" className="faq-link">kro</a> is a Kubernetes-native resource orchestrator from the <a href="https://github.com/kubernetes-sigs/kro" target="_blank" rel="noopener noreferrer" className="faq-link">kubernetes-sigs</a> organization. You write a ResourceGraphDefinition (RGD) — a single YAML file that declares a new CRD, the child resources it creates, and CEL expressions that derive values. kro watches instances of your CRD and reconciles the full resource graph on every change.</p>
+        <p>Think of it as <em>Helm but reactive</em>: your parameters can be derived from live Kubernetes state rather than being static values set at install time.</p>
+      </>
+    ),
+  },
+  {
+    q: 'Do I need a Kubernetes cluster to play?',
+    a: () => (
+      <>
+        <p>No. The cluster is already running — it is a managed EKS cluster in <code>us-west-2</code>. When you create a dungeon, a Dungeon CR is applied to that cluster on your behalf. You interact entirely through this browser UI.</p>
+        <p>If you want to explore the raw Kubernetes resources yourself, all nine RGD YAML files are open source at <a href="https://github.com/pnz1990/krombat" target="_blank" rel="noopener noreferrer" className="faq-link">github.com/pnz1990/krombat</a>.</p>
+      </>
+    ),
+  },
+  {
+    q: 'What is a forked version of kro? What patches does Krombat maintain?',
+    a: () => (
+      <>
+        <p>Krombat runs on a custom fork of kro called <code>cel-writeback-d</code>. Stock kro is a one-way projection engine: CEL reads from a CR and projects child resources. It has no mechanism for writing computed values back into the CR itself. Krombat's entire game engine depends on exactly that — the combat result, HP changes, and state transitions must be written back into <code>spec</code> on every reconcile.</p>
+        <p>The fork adds the following capabilities on top of upstream kro:</p>
+        <table className="help-table">
+          <thead><tr><th>Patch</th><th>What it adds</th><th>Status</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><code>specPatch</code> node type</td>
+              <td>A virtual RGD node that evaluates CEL expressions and writes results back into the instance CR's <code>spec</code> via Server-Side Apply. Powers all combat math, DoT ticks, room transitions, and ability resolution.</td>
+              <td>Upstream discussion open — pending design consensus with kro maintainers</td>
+            </tr>
+            <tr>
+              <td><code>stateWrite</code> node type</td>
+              <td>Like <code>specPatch</code> but writes to <code>status.kstate</code> — controller-private state that does not appear in the Git manifest and does not trigger Argo CD drift. Useful for counters and bookkeeping that should not be user-settable.</td>
+              <td>Upstream discussion open — paired with <code>specPatch</code></td>
+            </tr>
+            <tr>
+              <td><code>cel.bind()</code> support</td>
+              <td>Registers <code>ext.Bindings()</code> in the CEL environment and fixes the AST inspector so bound variable names are not misreported as unknown resource dependencies.</td>
+              <td><a href="https://github.com/kubernetes-sigs/kro/pull/1145" target="_blank" rel="noopener noreferrer" className="faq-link">Merged upstream (PR #1145)</a></td>
+            </tr>
+            <tr>
+              <td><code>lists.setIndex</code>, <code>lists.insertAt</code>, <code>lists.removeAt</code></td>
+              <td>Index-mutation functions for CEL lists. CEL has no built-in way to return a new list with a single element replaced — these fill that gap and are essential for updating per-monster HP arrays.</td>
+              <td><a href="https://github.com/kubernetes-sigs/kro/pull/1148" target="_blank" rel="noopener noreferrer" className="faq-link">In review upstream (PR #1148)</a>, expected to merge soon</td>
+            </tr>
+            <tr>
+              <td><code>random.seededInt</code>, <code>random.seededString</code></td>
+              <td>Deterministic pseudo-random CEL functions seeded by stable string identifiers. Required because kro reconciles continuously — a non-deterministic random call would recompute a different value on every reconcile cycle.</td>
+              <td>Merged upstream as part of earlier contributions</td>
+            </tr>
+            <tr>
+              <td><code>csv.add</code>, <code>csv.remove</code>, <code>csv.contains</code></td>
+              <td>CEL functions for manipulating comma-separated value strings — used for the inventory system, which stores item names as a CSV in a single Kubernetes string field.</td>
+              <td>Krombat-private; no upstream PR planned (game-specific pattern)</td>
+            </tr>
+          </tbody>
+        </table>
+        <p>The goal is to upstream <code>specPatch</code> and <code>stateWrite</code> once the design has been agreed with the kro maintainers. The CEL library additions (<code>cel.bind</code>, list mutations, seeded random) are already on their way — two are merged, one is in review.</p>
+      </>
+    ),
+  },
+  {
+    q: 'Why does the game engine live in YAML instead of Go code?',
+    a: () => (
+      <>
+        <p>That is the point. Every design decision in Krombat was made to prove that kro CEL is expressive enough to implement real stateful logic — not just templating. The entire combat engine (dice rolls, damage formulas, multi-phase boss, status effects, room transitions) is in <code>manifests/rgds/dungeon-graph.yaml</code>. The Go backend only writes trigger fields and reads the results.</p>
+        <p>If you can implement a turn-based dungeon RPG with multi-phase bosses and a loot system in pure Kubernetes YAML + CEL, the same approach works for CI/CD pipelines, approval workflows, quota systems, and any other stateful workflow you would normally write a custom controller for.</p>
+      </>
+    ),
+  },
+  {
+    q: 'What happens to my dungeons after I stop playing?',
+    a: () => (
+      <p>Dungeon CRs and all their child resources are deleted automatically after 4 hours of inactivity by a Kubernetes CronJob (the Dungeon Reaper). Your leaderboard entries and XP are retained indefinitely in a ConfigMap in the cluster.</p>
+    ),
+  },
+  {
+    q: 'Is the source code available?',
+    a: () => (
+      <>
+        <p>Yes. The full source — frontend, backend, RGD YAML files, infrastructure (Terraform, Helm), and test suites — is at <a href="https://github.com/pnz1990/krombat" target="_blank" rel="noopener noreferrer" className="faq-link">github.com/pnz1990/krombat</a>.</p>
+        <p>The kro fork is at <a href="https://github.com/pnz1990/kro" target="_blank" rel="noopener noreferrer" className="faq-link">github.com/pnz1990/kro</a> (branch <code>cel-writeback-d</code>). The patch documentation is in <code>kro-patched.md</code> in that repo.</p>
+      </>
+    ),
+  },
+  {
+    q: 'Can I run this myself?',
+    a: () => (
+      <>
+        <p>Yes. The Terraform in <code>infra/</code> provisions the full stack: EKS cluster, kro via Helm, Argo CD, ECR, CloudWatch dashboards, and OIDC for GitHub OAuth. The only prerequisites are an AWS account and a GitHub OAuth app.</p>
+        <p>See the workshop kit at <code>Docs/workshop/README.md</code> — it is a self-paced 3-day guide that walks through playing the game, reading the RGDs, and extending them with your own patches.</p>
+      </>
+    ),
+  },
+  {
+    q: 'How do I report a bug or request a feature?',
+    a: () => (
+      <p>Open an issue at <a href="https://github.com/pnz1990/krombat/issues" target="_blank" rel="noopener noreferrer" className="faq-link">github.com/pnz1990/krombat/issues</a>. For kro-specific questions or upstream feature discussions, use the <a href="https://github.com/kubernetes-sigs/kro/discussions" target="_blank" rel="noopener noreferrer" className="faq-link">kro Discussions</a> board.</p>
+    ),
+  },
+]
+
+function FaqModal({ onClose }: { onClose: () => void }) {
+  const [open, setOpen] = useState<number | null>(null)
+  return (
+    <div className="modal-overlay" onClick={onClose} data-testid="faq-modal">
+      <div className="modal faq-modal" role="dialog" aria-modal="true" aria-label="FAQ" onClick={e => e.stopPropagation()}>
+        <div className="faq-header">
+          <h2 className="faq-title">
+            <PixelIcon name="scroll" size={10} /> FAQ
+          </h2>
+          <button className="faq-close" aria-label="Close FAQ" onClick={onClose}>✕</button>
+        </div>
+        <div className="faq-list">
+          {FAQ_ITEMS.map((item, i) => (
+            <div key={i} className={`faq-item${open === i ? ' faq-item-open' : ''}`}>
+              <button
+                className="faq-question"
+                aria-expanded={open === i}
+                onClick={() => setOpen(open === i ? null : i)}
+              >
+                <span className="faq-q-text">{item.q}</span>
+                <span className="faq-chevron">{open === i ? '▲' : '▼'}</span>
+              </button>
+              {open === i && (
+                <div className="faq-answer">
+                  {item.a()}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+        <div className="faq-footer-nav">
+          <button className="btn btn-gold" onClick={onClose}>Close</button>
+        </div>
+      </div>
     </div>
   )
 }

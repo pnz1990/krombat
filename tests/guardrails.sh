@@ -1094,9 +1094,42 @@ grep -q "3-Day kro Workshop\|docs/workshop\|workshop" frontend/src/KroTeach.tsx 
   || fail "#461: KroTeach.tsx missing workshop intro slide"
 
 # Journey 41 must exist
-[ -f "tests/e2e/journeys/41-workshop-kit.js" ] \
+  [ -f "tests/e2e/journeys/41-workshop-kit.js" ] \
   && pass "#461: tests/e2e/journeys/41-workshop-kit.js exists" \
   || fail "#461: tests/e2e/journeys/41-workshop-kit.js missing"
+
+echo "=== FAQ guardrails"
+grep -q 'FaqModal\|faq-modal\|FAQ_ITEMS' frontend/src/App.tsx \
+  && pass "FAQ: FaqModal component exists in App.tsx" \
+  || fail "FAQ: FaqModal component missing from App.tsx"
+
+grep -q 'faq-link\|data-testid="faq-link"' frontend/src/App.tsx \
+  && pass "FAQ: footer FAQ link present in App.tsx" \
+  || fail "FAQ: footer FAQ link missing from App.tsx"
+
+grep -q 'showFaq' frontend/src/App.tsx \
+  && pass "FAQ: showFaq state in App.tsx" \
+  || fail "FAQ: showFaq state missing from App.tsx"
+
+grep -q '\.faq-modal' frontend/src/index.css \
+  && pass "FAQ: .faq-modal CSS defined in index.css" \
+  || fail "FAQ: .faq-modal CSS missing from index.css"
+
+grep -q '\.app-footer' frontend/src/index.css \
+  && pass "FAQ: .app-footer CSS defined in index.css" \
+  || fail "FAQ: .app-footer CSS missing from index.css"
+
+grep -q 'kro/pull/1145\|PR #1145\|1145' frontend/src/App.tsx \
+  && pass "FAQ: kro PR #1145 (cel.bind) referenced in FAQ" \
+  || fail "FAQ: kro PR #1145 (cel.bind) missing from FAQ"
+
+grep -q 'kro/pull/1148\|PR #1148\|1148' frontend/src/App.tsx \
+  && pass "FAQ: kro PR #1148 (lists.setIndex) referenced in FAQ" \
+  || fail "FAQ: kro PR #1148 (lists.setIndex) missing from FAQ"
+
+grep -q 'specPatch\|stateWrite' frontend/src/App.tsx \
+  && pass "FAQ: fork patches (specPatch/stateWrite) documented in FAQ" \
+  || fail "FAQ: fork patches (specPatch/stateWrite) missing from FAQ"
 
 # --- Summary ---
 
