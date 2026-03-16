@@ -264,6 +264,12 @@ async function run() {
 
     // ── Tests 14-15: Pause / Resume ─────────────────────────────────────────
     console.log('\n=== Pause / Resume ===');
+    // Close any open modal overlays before trying to click Pause
+    const openOverlay = page.locator('.modal-overlay');
+    if (await openOverlay.count() > 0) {
+      await openOverlay.first().click({ position: { x: 5, y: 5 }, force: true }).catch(() => {});
+      await page.waitForTimeout(400);
+    }
     const pauseBtnFresh = page.locator('button.reconcile-btn:has-text("Pause")');
     if (await pauseBtnFresh.count() > 0) {
       await pauseBtnFresh.click();
