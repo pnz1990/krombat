@@ -32,7 +32,7 @@ Each dungeon instance gets its own Namespace for isolation and clean teardown.
 
 1. **Create a Dungeon** — specify a name, monster count (1–10), difficulty (easy/normal/hard), and hero class (warrior/mage/rogue)
 2. **kro reconciles** — dungeon-graph creates a Namespace, Hero CR, Monster CRs (one per monster, via forEach), Boss CR, Treasure CR, Modifier CR, and a `gameConfig` ConfigMap — all wired together via CEL expressions. Virtual `specPatch` and `stateWrite` nodes in dungeon-graph write computed state back to the Dungeon CR spec.
-3. **Attack monsters** — the frontend submits a POST to the backend; the backend runs all combat math in Go (FNV-1a seeded dice, class abilities, modifiers, status effects), patches the Dungeon CR spec directly (new HP values, `attackSeq`, `lastAttackTarget`, loot), and upserts an Attack CR as a signal
+3. **Attack monsters** — the frontend submits a POST to the backend; the backend writes trigger fields (`attackSeq`, `lastAttackTarget`, `lastAttackSeed`, `lastAttackIndex`, `lastAttackIsBoss`, `lastAttackIsBackstab`) to the Dungeon CR and polls until kro's `combatResolve` specPatch fires — kro CEL is the authoritative combat engine. The backend then reads the result, computes loot drops and log text, and writes `lastLootDrop` and `xpEarned`.
 4. **Use items** — same pattern via Action CR; the backend runs item/equip/room logic and patches the spec directly
 5. **Boss unlocks** — when all monster HP = 0, kro's CEL in `boss-graph` transitions `bossState` to `ready`; the Dungeon CR status aggregates this via `dungeon-graph` CEL
 6. **Defeat the boss** — boss has three phases driven by HP thresholds in `boss-graph` CEL (Phase 1 → Phase 2 ENRAGED → Phase 3 BERSERK), each with higher counter damage and special attack chance
@@ -61,7 +61,7 @@ Each dungeon instance gets its own Namespace for isolation and clean teardown.
 ```
 
 - **Frontend** — 8-bit pixel art React SPA. All game state read from Dungeon CR `spec` (not `status`, which can be stale after room transitions). Nginx reverse-proxies `/api/` to the backend. Includes a kro teaching layer: InsightCards, KroGlossary, CelTrace, live resource graph (KroGraph), Inspector panel, and an in-browser CEL Playground.
-- **Backend** — Stateless Go service. Only touches Dungeon, Attack, and Action CRs — never reads Pods, Secrets, or Jobs directly. Routes non-combat actions to Action CR, combat to Attack CR. Runs all game math in Go. Includes rate limiting (300 ms/dungeon), Prometheus metrics on `/metrics`, and a CEL eval endpoint.
+- **Backend** — Stateless Go service. Only touches Dungeon, Attack, and Action CRs — never reads Pods, Secrets, or Jobs directly. Writes trigger fields to the Dungeon CR spec and polls for kro's CEL specPatch results; computes loot drops, log text, XP, leaderboard entries, and room-transition triggers. Includes rate limiting (300 ms/dungeon), Prometheus metrics on `/metrics`, and a CEL eval endpoint.
 - **Kubernetes + kro** — Sole source of truth. Nine RGDs orchestrate the game via CR chaining. kro is self-installed via Helm (patched fork `cel-writeback-d`).
 - **Argo CD** — Runs as an [EKS Managed Capability](https://docs.aws.amazon.com/eks/latest/userguide/argocd.html). Continuously syncs all cluster manifests from this repo. GitHub webhook provides ~6 s sync latency.
 - **Observability** — CloudWatch Container Insights, structured JSON logs from the backend, CloudWatch dashboard and alarms. Prometheus metrics scraped from `/metrics`.
@@ -123,7 +123,7 @@ All nine ResourceGraphDefinitions live in `manifests/rgds/`:
 │   ├── backend-api.sh       # REST API tests (21 tests)
 │   └── e2e/
 │       ├── smoke-test.js    # Playwright smoke tests (59 assertions)
-│       └── journeys/        # 32 gameplay journey tests
+│       └── journeys/        # 40 gameplay journey tests
 ├── scripts/
 │   ├── ui-test.sh           # Deploy-and-test script (push → sync → smoke test)
 │   └── watch-dungeon.sh     # tmux dashboard for watching game state live
@@ -140,13 +140,19 @@ All nine ResourceGraphDefinitions live in `manifests/rgds/`:
 
 ### Access the UI
 
+The game is live at **https://learn-kro.eks.aws.dev** — sign in with GitHub, create a dungeon, fight monsters, defeat the boss.
+
+For local development against your own cluster:
+
 ```bash
 kubectl port-forward svc/rpg-frontend -n rpg-system 3000:3000
 ```
 
-Open http://localhost:3000 — create a dungeon, fight monsters, defeat the boss.
+Open http://localhost:3000
 
 ### Access the backend API directly
+
+For local development:
 
 ```bash
 kubectl port-forward svc/rpg-backend -n rpg-system 8080:8080
@@ -426,13 +432,13 @@ tests/run-all.sh
 tests/run.sh            # Integration: core lifecycle, abilities, features, infra
 tests/guardrails.sh     # Architecture guardrails (~34 assertions)
 tests/backend-api.sh    # REST API (21 tests)
-BASE_URL=http://localhost:3000 node tests/e2e/smoke-test.js   # UI smoke (59 assertions)
+BASE_URL=https://learn-kro.eks.aws.dev node tests/e2e/smoke-test.js   # UI smoke (59 assertions)
 
 # Run a specific journey
-BASE_URL=http://localhost:3000 node tests/e2e/journeys/20-leaderboard.js
+BASE_URL=https://learn-kro.eks.aws.dev node tests/e2e/journeys/20-leaderboard.js
 ```
 
-### Journey tests (32 total)
+### Journey tests (40 total)
 
 | # | Journey | Focus |
 |---|---|---|
@@ -468,6 +474,14 @@ BASE_URL=http://localhost:3000 node tests/e2e/journeys/20-leaderboard.js
 | 30 | Room 2 Boss Phases | Bat-boss ENRAGED/BERSERK |
 | 31 | Inspector: specPatch nodes | KroGraph Inspector for combatResolve/actionResolve |
 | 32 | CEL Playground Live Eval | Round-trip through CelEvalHandler |
+| 33 | User Profile | Stats, XP, badges after dungeon delete |
+| 34 | XP Levelling | XP accumulation, level-up thresholds |
+| 35 | Certificates | kro Expert Certificate unlock |
+| 37 | Social Run Card | Shareable SVG run card |
+| 38 | Conference Demo | End-to-end demo flow |
+| 39 | Reconcile Stream | Field-diff stream in kro tab |
+| 40 | Blog Post Generator | AI narrative generation panel |
+| 41 | Workshop Kit | Workshop helper UI |
 
 ## License
 
