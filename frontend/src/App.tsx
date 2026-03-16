@@ -1086,7 +1086,16 @@ function LeaderboardPanel({ entries, loading, onClose }: {
               {entries.map((e, i) => (
                 <tr key={`${e.timestamp}-${e.dungeonName}`} className="lb-row lb-victory">
                   <td className="lb-rank">{i + 1}</td>
-                  <td className="lb-name">{e.dungeonName}</td>
+                  <td className="lb-name">
+                    {e.githubLogin ? (
+                      <a href={`https://github.com/${e.githubLogin}`} target="_blank" rel="noopener noreferrer"
+                        style={{ display: 'flex', alignItems: 'center', gap: 4, color: 'inherit', textDecoration: 'none' }}>
+                        <img src={`https://github.com/${e.githubLogin}.png?size=16`} alt="" width={16} height={16}
+                          style={{ borderRadius: 2, imageRendering: 'pixelated' }} />
+                        @{e.githubLogin}
+                      </a>
+                    ) : e.dungeonName}
+                  </td>
                   <td><PixelIcon name={CLASS_ICON[e.heroClass] ?? 'sword'} size={10} /></td>
                   <td><span className={`tag tag-${e.difficulty}`}>{e.difficulty}</span></td>
                   <td className="lb-turns">{e.totalTurns}</td>
