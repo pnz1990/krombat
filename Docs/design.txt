@@ -13,16 +13,17 @@ A turn-based dungeon RPG where the entire game state lives in Kubernetes, orches
 - **Treasure CR** → ConfigMap + Secret (opened/unopened state via CEL)
 - **Modifier CR** → ConfigMap (curse/blessing effects via CEL)
 - **Loot CR** → Secret (item data: type, rarity, stat via CEL)
-- **Attack CR** — CRD-only stub (attack-graph RGD); all combat logic in Go backend
+- **Attack CR** — CRD-only stub (attack-graph RGD); backend writes trigger fields, kro CEL computes all combat math via `combatResolve` specPatch
 - **Action CR** — CRD-only stub (action-graph RGD); all item/action logic in Go backend
 
 ### State Flow
 1. User creates Dungeon CR via backend API
 2. kro's dungeon-graph reconciles: creates Namespace, Hero, Monster, Boss, Treasure, Modifier CRs
 3. Each child RGD reconciles its CR into native K8s resources (ConfigMaps, Secrets)
-4. User submits Attack CR (combat) or Action CR (items) via backend API
-5. Go backend computes all game math and patches Dungeon CR spec directly
-6. Backend upserts Attack/Action CR (CRD-only stubs; no resources created by kro)
+    4. User submits Attack CR (combat) or Action CR (items) via backend API
+    5. Go backend writes trigger fields to Dungeon CR spec (`attackSeq`, `lastAttackTarget`, etc.) and polls until kro's `combatResolve` specPatch fires — kro CEL is the authoritative combat engine
+    6. Backend reads kro's result, computes loot drops and log text, writes `lastLootDrop` / `xpEarned`
+    7. Backend upserts Attack/Action CR (CRD-only stubs; no resources created by kro)
 7. kro re-reconciles child CRs based on updated Dungeon spec
 8. Frontend polls Dungeon CR for state changes
 
@@ -34,7 +35,7 @@ A turn-based dungeon RPG where the entire game state lives in Kubernetes, orches
 
 ### Combat System
 - D&D-style dice: Easy 1d20+3, Normal 2d12+6, Hard 3d20+8
-- All combat logic in Go backend (`handlers.go`)
+- All combat math computed by kro CEL (`combatResolve` specPatch in `dungeon-graph`)
 - attackSeq counter on Dungeon CR for reliable poll detection
 - Loot drops only on kill transition (OLD_HP > 0 && NEW_HP == 0)
 - Status effects: Poison (-5/turn), Burn (-8/turn), Stun (skip attack)
@@ -60,4 +61,4 @@ A turn-based dungeon RPG where the entire game state lives in Kubernetes, orches
 - EKS Auto Mode cluster (K8s 1.34) in us-west-2
 - kro self-installed via Helm (patched fork `cel-writeback-d`); Argo CD as EKS Managed Capability
 - CI: GitHub Actions builds images → ECR → rollout restart
-- Access: kubectl port-forward svc/rpg-frontend -n rpg-system 3000:3000
+- Access: https://learn-kro.eks.aws.dev (live, internet-facing ALB — no port-forward needed)

@@ -10,7 +10,7 @@
 
 ## Pre-demo checklist (do this 5 min before going on stage)
 
-1. Open `https://learn-kro.eks.aws.dev` in a browser tab and sign in (Google OAuth).
+1. Open `https://learn-kro.eks.aws.dev` in a browser tab and sign in with GitHub.
 2. Delete any leftover dungeons from prior runs so the UI is clean.
 3. Have a dungeon open and the K8s Logs tab visible so the audience can see reconcile events immediately.
 4. Increase browser font size to 125–150% for projector visibility.
@@ -111,7 +111,7 @@ Open the **K8s Logs tab** in the event log panel. You can see the creation event
 
 ## Audience call to action
 
-1. **Scan / type:** `https://learn-kro.eks.aws.dev` — play now, no account required for the tour
+1. **Scan / type:** `https://learn-kro.eks.aws.dev` — sign in with GitHub and play (free, no setup required)
 2. **Star:** `github.com/kubernetes-sigs/kro`
 3. **Read:** `kro.run/docs` — 5-minute quickstart
 4. **Watch:** The kro panel as you play — every concept has a glossary entry

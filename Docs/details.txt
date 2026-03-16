@@ -17,6 +17,11 @@ Every game instance is a Dungeon custom resource. All mutable game state lives i
 - `weaponBonus` (int), `weaponUses` (int) — equipped weapon
 - `armorBonus` (int) — equipped armor defense %
 - `shieldBonus` (int) — equipped shield block %
+- `helmetBonus` (int) — equipped helmet crit chance %
+- `pantsBonus` (int) — equipped pants dodge chance %
+- `bootsBonus` (int) — equipped boots status resist %
+- `ringBonus` (int) — equipped ring HP regen per turn
+- `amuletBonus` (int) — equipped amulet damage boost %
 - `poisonTurns` (int), `burnTurns` (int), `stunTurns` (int) — status effects
 - `treasureOpened` (int) — 0/1
 - `doorUnlocked` (int) — 0/1
@@ -26,7 +31,17 @@ Every game instance is a Dungeon custom resource. All mutable game state lives i
 - `lastEnemyAction` (string) — last enemy action text
 - `lastCombatLog` (string) — JSON with full combat details
 - `lastLootDrop` (string) — item ID of last loot drop (empty if none)
-- `attackSeq` (int) — monotonic counter incremented by each attack
+- `attackSeq` (int) — monotonic counter incremented by each attack (combat trigger)
+- `actionSeq` (int) — monotonic counter incremented by each action (item/equip trigger)
+- `lastAttackTarget` (string) — combat trigger: target name
+- `lastAttackSeed` (string) — combat trigger: FNV-1a seed for dice
+- `lastAttackIndex` (int) — combat trigger: monster array index
+- `lastAttackIsBoss` (bool) — combat trigger: targeting boss
+- `lastAttackIsBackstab` (bool) — combat trigger: rogue backstab
+- `xpEarned` (int) — XP accumulated this run (kill XP written after each kill)
+- `runCount` (int) — New Game+ run number (0 = first run)
+- `monsterTypes` ([]string) — per-monster type override array
+- `initProcessedSeq` (int) — set to 1 by `dungeonInit` specPatch after initial HP values are written
 
 ## Nine ResourceGraphDefinitions
 
@@ -53,15 +68,16 @@ Modifier CR → ConfigMap. 6 modifier types with effects computed via CEL.
 Loot CR → Secret. Item data: type, rarity, stat, description via CEL.
 
 ### attack-graph (CRD-only stub)
-Defines the Attack CRD (`resources: []`). All combat logic (monster attacks, boss attacks, mage heal, warrior taunt, rogue backstab, attackSeq increment, dead-target rejection) is handled by the Go backend in `handlers.go`.
+Defines the Attack CRD (`resources: []`). The Go backend writes trigger fields (`attackSeq`, `lastAttackTarget`, `lastAttackSeed`, `lastAttackIndex`, `lastAttackIsBoss`, `lastAttackIsBackstab`) to the Dungeon CR spec, then polls until kro's `combatResolve` specPatch fires. kro CEL is authoritative for all combat math (dice, damage, HP mutations, status effects, counter-attacks). The backend only reads kro's result and computes loot drops, log text, and XP delta.
 
 ### action-graph (CRD-only stub)
-Defines the Action CRD (`resources: []`). All non-combat logic (equip weapon/armor/shield, use HP/mana potions, open treasure, unlock door, enter room 2) is handled by the Go backend. All action patches clear `lastLootDrop`. Enter-room-2 deletes stale Attack CRs.
+Defines the Action CRD (`resources: []`). Non-combat actions (equip weapon/armor/shield/helmet/pants/boots/ring/amulet, use HP/mana potions, open treasure, unlock door, enter room 2) are handled by the Go backend via `actionResolve` specPatch. All action patches clear `lastLootDrop`. Enter-room-2 deletes stale Attack CRs and triggers kro's `enterRoom2Resolve` specPatch for HP scaling.
 
-## Go Backend Combat Logic
-- Reads Dungeon CR, computes dice roll, applies modifiers/equipment/class bonuses
-- Patches Dungeon CR with merge patch (monsterHP/bossHP, heroHP, status effects, loot, attackSeq)
-- Loot drops only on kill transition: OLD_HP > 0 && NEW_HP == 0
+## Go Backend Role
+- Writes trigger fields to Dungeon CR spec, polls for kro's `combatResolve`/`actionResolve` specPatch results
+- Computes loot drops (kill-transition detection: OLD_HP > 0 && NEW_HP == 0), drop chance, rarity roll, item selection
+- Generates log text by reading kro's pre/post spec diff — no game math
+- Computes XP delta and writes `xpEarned`; records leaderboard and profile on dungeon deletion
 - Boss target matching: `-boss$` suffix regex (not just "boss" anywhere in name)
 - Already-dead targets: patches lastHeroAction but does NOT increment attackSeq
 - Game-over check: rejects combat when heroHP ≤ 0 or (bossHP ≤ 0 && all monsters dead)
@@ -82,8 +98,4 @@ Defines the Action CRD (`resources: []`). All non-combat logic (equip weapon/arm
 - Guardrails: 34 tests (RBAC, no game logic leaks, loot guards, animation guards, combat/action separation)
 - Backend API: 21 tests (CRUD, validation, rate limiting, metrics)
 - UI Smoke: 59 Playwright tests (page load, forms, classes, routing, modals)
-- Journey 1: 17 tests (warrior full UI playthrough)
-- Journey 4: 25 tests (items & equipment)
-- Journey 7: 21 tests (dungeon management)
-- Journey 8: 25 tests (edge cases)
-- Journey 10: 17 tests (visual & animation consistency)
+- Journey tests: 40 files (01–41, skipping 36) covering full UI gameplay sessions

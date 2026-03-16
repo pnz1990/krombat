@@ -38,9 +38,9 @@ Use this as a Q&A cheat sheet after the 5-minute demo. Each entry has a short an
 
 ## Q5: How does the game engine work without backend logic?
 
-**Short:** The Go backend computes combat math (dice rolls, damage) and patches the Dungeon CR spec. kro picks up the patch, runs CEL specPatch nodes, and writes derived state (boss phase, entity states, loot) back into spec.
+**Short:** The Go backend writes trigger fields to the Dungeon CR spec and polls until kro's `combatResolve` specPatch fires. kro CEL is the authoritative combat engine. The backend then reads the result and computes loot drops and log text.
 
-**Long:** The architecture has a clear split: the Go backend is the game engine (dice, damage calculation, HP mutations, loot drops, room transitions). It patches `spec.heroHP`, `spec.bossHP`, etc. via the Kubernetes API. kro then reconciles: it evaluates CEL specPatch nodes (`combatResolve`, `actionResolve`) that compute derived state — `bossPhase`, `entityState` for each monster, `treasureState` — and writes those back into spec. The frontend reads only from `spec` (not `status`) because status can be stale after room transitions. This is a real kro limitation you'd encounter in production too, and the game surfaces it explicitly in the InsightCards.
+**Long:** The architecture has a clean split: the backend writes trigger fields (`attackSeq`, `lastAttackTarget`, `lastAttackSeed`, etc.) to the Dungeon CR spec, then polls for the `combatResolve` specPatch result. kro evaluates CEL expressions that compute all game math — dice rolls, damage calculations (weapon/helmet/amulet/class multipliers, backstab), counter-attack chains (armor/shield/class defense/pants dodge/taunt reduction), status effect infliction (poison/burn/stun), ring regen, and HP mutations. The backend reads back kro's post-state diff (pre/post heroHP, monsterHP, bossHP) and generates log text. It never does the math itself. The frontend reads only from `spec` (not `status`) because status can be stale after room transitions — a real kro limitation the game surfaces explicitly in InsightCards.
 
 ---
 
