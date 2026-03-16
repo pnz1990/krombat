@@ -146,8 +146,8 @@ resource "aws_cloudwatch_dashboard" "krombat" {
           period  = 60
           stat    = "Average"
           metrics = [
-            ["ContainerInsights", "replicas_ready", "ClusterName", var.cluster_name, "Namespace", "rpg-system", "Service", "rpg-backend", { label = "Backend replicas ready" }],
-            ["ContainerInsights", "replicas_ready", "ClusterName", var.cluster_name, "Namespace", "rpg-system", "Service", "rpg-frontend", { label = "Frontend replicas ready" }],
+            ["ContainerInsights", "replicas_ready", "ClusterName", var.cluster_name, "Namespace", "rpg-system", "Deployment", "rpg-backend", { label = "Backend replicas ready" }],
+            ["ContainerInsights", "replicas_ready", "ClusterName", var.cluster_name, "Namespace", "rpg-system", "Deployment", "rpg-frontend", { label = "Frontend replicas ready" }],
             ["ContainerInsights", "replicas_ready", "ClusterName", var.cluster_name, "Namespace", "kro", { label = "kro replicas ready", color = "#9467bd" }]
           ]
           annotations = {
@@ -235,7 +235,7 @@ resource "aws_cloudwatch_dashboard" "krombat" {
         properties = {
           title  = "Backend Errors (#474)"
           region = var.region
-          query  = "SOURCE '/eks/${var.cluster_name}/rpg-system' | fields @timestamp, level, msg, path, status | filter level = \"error\" or level = \"ERROR\" or msg like /error/i | sort @timestamp desc | limit 20"
+          query  = "SOURCE '/eks/${var.cluster_name}/rpg-system' | fields @timestamp, level, msg, path, status | filter level = \"error\" or level = \"ERROR\" or msg like /error/ or msg like /Error/ | sort @timestamp desc | limit 20"
         }
       },
       # Row 6: Reaper Activity (#474)
@@ -1115,6 +1115,22 @@ resource "aws_cloudwatch_log_metric_filter" "dungeon_abandoned" {
   }
 }
 
+# Counts dungeons deleted after clearing Room 1 (outcome = "room1-cleared").
+# These are also "abandoned" runs — combined with DungeonAbandoned they form the full abandoned funnel bucket.
+resource "aws_cloudwatch_log_metric_filter" "dungeon_room1_cleared_exit" {
+  name           = "${var.cluster_name}-dungeon-room1-cleared-exit"
+  log_group_name = aws_cloudwatch_log_group.rpg_system.name
+  pattern        = "{ $.msg = \"dungeon_ended\" && $.outcome = \"room1-cleared\" }"
+
+  metric_transformation {
+    name          = "DungeonRoom1ClearedExit"
+    namespace     = "Krombat/Business"
+    value         = "1"
+    default_value = "0"
+    unit          = "Count"
+  }
+}
+
 resource "aws_cloudwatch_log_metric_filter" "monster_kills" {
   name           = "${var.cluster_name}-monster-kills"
   log_group_name = aws_cloudwatch_log_group.rpg_system.name
@@ -1331,7 +1347,8 @@ resource "aws_cloudwatch_dashboard" "krombat_business" {
           metrics = [
             ["Krombat/Business", "DungeonVictory", { label = "Victory", color = "#2ca02c" }],
             ["Krombat/Business", "DungeonDefeat", { label = "Defeat", color = "#d62728" }],
-            ["Krombat/Business", "DungeonAbandoned", { label = "Abandoned", color = "#7f7f7f" }]
+            ["Krombat/Business", "DungeonAbandoned", { label = "Abandoned (in-progress)", color = "#7f7f7f" }],
+            ["Krombat/Business", "DungeonRoom1ClearedExit", { label = "Abandoned (room1-cleared)", color = "#bcbd22" }]
           ]
         }
       },
@@ -1590,7 +1607,7 @@ resource "aws_cloudwatch_dashboard" "krombat_kro" {
         properties = {
           title  = "kro Reconcile Errors"
           region = var.region
-          query  = "SOURCE '/eks/${var.cluster_name}/kro' | fields @timestamp, @message | filter @message like /error/i or @message like /failed/i | sort @timestamp desc | limit 50"
+          query  = "SOURCE '/eks/${var.cluster_name}/kro' | fields @timestamp, @message | filter @message like /error/ or @message like /Error/ or @message like /failed/ or @message like /Failed/ | sort @timestamp desc | limit 50"
         }
       },
       {
@@ -1602,7 +1619,7 @@ resource "aws_cloudwatch_dashboard" "krombat_kro" {
         properties = {
           title  = "kro CEL Evaluation Errors"
           region = var.region
-          query  = "SOURCE '/eks/${var.cluster_name}/kro' | fields @timestamp, @message | filter @message like /cel/i or @message like /expression/i or @message like /CEL/i | sort @timestamp desc | limit 50"
+          query  = "SOURCE '/eks/${var.cluster_name}/kro' | fields @timestamp, @message | filter @message like /cel/ or @message like /CEL/ or @message like /expression/ or @message like /Expression/ | sort @timestamp desc | limit 50"
         }
       },
       # Row 4: RGD Status events (acceptance, rejection, reconciliation)
@@ -1615,7 +1632,7 @@ resource "aws_cloudwatch_dashboard" "krombat_kro" {
         properties = {
           title  = "RGD Status (acceptance / rejection / reconcile events)"
           region = var.region
-          query  = "SOURCE '/eks/${var.cluster_name}/kro' | fields @timestamp, @message | filter @message like /ResourceGraphDefinition/i or @message like /rgd/i or @message like /reconcil/i | sort @timestamp desc | limit 50"
+          query  = "SOURCE '/eks/${var.cluster_name}/kro' | fields @timestamp, @message | filter @message like /ResourceGraphDefinition/ or @message like /rgd/ or @message like /reconcil/ or @message like /Reconcil/ | sort @timestamp desc | limit 50"
         }
       }
     ]
