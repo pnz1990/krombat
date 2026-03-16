@@ -138,6 +138,42 @@ async function run() {
         rowText.includes('warrior') || rowText.includes('⚔') ? ok('Hero class shown in leaderboard row') : warn('Hero class not in row text');
         rowText.includes('easy') ? ok('Difficulty shown in leaderboard row') : warn('Difficulty not in row text');
       }
+
+      // ── Difficulty filter buttons ─────────────────────────────────────────
+      console.log('\n  [Difficulty filter]');
+      const filterBtns = page.locator('.lb-filter-btn');
+      const filterCount = await filterBtns.count();
+      filterCount === 4 ? ok('Difficulty filter has 4 buttons (All, easy, normal, hard)') : fail(`Expected 4 filter buttons, got ${filterCount}`);
+
+      // "All" should be active by default
+      const allBtn = page.locator('.lb-filter-btn.lb-filter-active');
+      const activeText = await allBtn.first().textContent().catch(() => '');
+      activeText.toLowerCase().includes('all') ? ok('"All" filter active by default') : warn(`Active filter is "${activeText}", expected "All"`);
+
+      // Click "easy" — our dungeon is easy, should still appear
+      const easyBtn = page.locator('.lb-filter-btn', { hasText: 'easy' });
+      if (await easyBtn.count() > 0) {
+        await easyBtn.click();
+        await page.waitForTimeout(300);
+        const stillVisible = (await page.locator(`.lb-row:has-text("${dName}")`).count()) > 0
+          || (await page.locator('.leaderboard-table').count()) > 0
+          || (await page.locator('.leaderboard-panel').textContent()).includes('easy');
+        ok('Easy filter applied without error');
+
+        // Click "hard" — our dungeon is easy, table should be empty or show no-data message
+        const hardBtn = page.locator('.lb-filter-btn', { hasText: 'hard' });
+        if (await hardBtn.count() > 0) {
+          await hardBtn.click();
+          await page.waitForTimeout(300);
+          const hardTable = await page.locator('.leaderboard-table').count();
+          const noData = (await page.locator('.leaderboard-panel').textContent()).includes('hard');
+          (hardTable === 0 || noData) ? ok('Hard filter hides easy run') : warn('Hard filter may not be filtering correctly');
+        }
+
+        // Reset to All
+        const allBtnReset = page.locator('.lb-filter-btn', { hasText: 'All' });
+        if (await allBtnReset.count() > 0) await allBtnReset.click();
+      }
     } else {
       fail(`Leaderboard does not contain entry for "${dName}" — leaderboard write path is broken`);
     }

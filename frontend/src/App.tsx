@@ -1058,6 +1058,10 @@ const CLASS_ICON: Record<string, string> = { warrior: 'sword', mage: 'mana', rog
 function LeaderboardPanel({ entries, loading, onClose }: {
   entries: LeaderboardEntry[]; loading: boolean; onClose: () => void
 }) {
+  const [diffFilter, setDiffFilter] = useState<'all' | 'easy' | 'normal' | 'hard'>('all')
+
+  const filtered = diffFilter === 'all' ? entries : entries.filter(e => e.difficulty === diffFilter)
+
   return (
     <div className="leaderboard-overlay" role="dialog" aria-label="Leaderboard">
       <div className="leaderboard-panel">
@@ -1065,11 +1069,22 @@ function LeaderboardPanel({ entries, loading, onClose }: {
           <span className="leaderboard-title">Leaderboard — Top Runs</span>
           <button className="modal-close leaderboard-close" aria-label="Close leaderboard" onClick={onClose}>✕</button>
         </div>
+        <div className="lb-filters">
+          {(['all', 'easy', 'normal', 'hard'] as const).map(d => (
+            <button
+              key={d}
+              className={`lb-filter-btn${diffFilter === d ? ' lb-filter-active' : ''}`}
+              onClick={() => setDiffFilter(d)}
+            >
+              {d === 'all' ? 'All' : <span className={`tag tag-${d}`}>{d}</span>}
+            </button>
+          ))}
+        </div>
         {loading ? (
           <div style={{ textAlign: 'center', padding: 16, fontSize: '8px', color: 'var(--text-dim)' }}>Loading...</div>
-        ) : entries.length === 0 ? (
+        ) : filtered.length === 0 ? (
           <div style={{ textAlign: 'center', padding: 16, fontSize: '8px', color: 'var(--text-dim)' }}>
-            No runs recorded yet. Complete a dungeon to appear here!
+            {entries.length === 0 ? 'No runs recorded yet. Complete a dungeon to appear here!' : `No ${diffFilter} runs yet.`}
           </div>
         ) : (
           <table className="leaderboard-table">
@@ -1083,7 +1098,7 @@ function LeaderboardPanel({ entries, loading, onClose }: {
               </tr>
             </thead>
             <tbody>
-              {entries.map((e, i) => (
+              {filtered.map((e, i) => (
                 <tr key={`${e.timestamp}-${e.dungeonName}`} className="lb-row lb-victory">
                   <td className="lb-rank">{i + 1}</td>
                   <td className="lb-name">
