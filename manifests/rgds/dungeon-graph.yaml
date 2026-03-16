@@ -27,7 +27,7 @@ spec:
       shieldBonus: integer | default=0 minimum=0 maximum=50
       helmetBonus: integer | default=0 minimum=0 maximum=50
       pantsBonus: integer | default=0 minimum=0 maximum=50
-      bootsBonus: integer | default=0 minimum=0 maximum=50
+      bootsBonus: integer | default=0 minimum=0 maximum=60
       ringBonus: integer | default=0 minimum=0 maximum=50
       amuletBonus: integer | default=0 minimum=0 maximum=50
       poisonTurns: integer | default=0

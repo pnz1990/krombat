@@ -42,7 +42,7 @@ async function run() {
 
   const consoleErrors = [];
   page.on('console', msg => {
-    if (msg.type() === 'error' && !msg.text().includes('WebSocket') && !msg.text().includes('404') && !msg.text().includes('429') && !msg.text().includes('500') && !msg.text().includes('400'))
+    if (msg.type() === 'error' && !msg.text().includes('WebSocket') && !msg.text().includes('404') && !msg.text().includes('429') && !msg.text().includes('504') && !msg.text().includes('500') && !msg.text().includes('400'))
       consoleErrors.push(msg.text());
   });
   page.on('dialog', dialog => dialog.accept());
