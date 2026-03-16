@@ -701,24 +701,24 @@ stringData:
   'taunt-state-machine': {
     id: 'taunt-state-machine',
     title: 'specPatch Counter — Warrior Taunt Lifecycle',
-    tagline: 'CEL runs a 3-state counter in spec: 0 (idle) → 2 (queued) → 1 (active) → 0 (expired)',
-    body: `When you activate Taunt, the backend patches \`spec.tauntActive = 2\`. On every subsequent attack turn, the \`advanceTaunt\` specPatch node in dungeon-graph fires and decrements it:
+    tagline: 'CEL runs a 3-state counter in spec: 0 (idle) → 1 (queued) → 2 (active) → 0 (expired)',
+    body: `When you activate Taunt, \`abilityResolve\` sets \`spec.tauntActive = 1\`. On the next attack turn, the \`advanceTaunt\` specPatch node advances it to 2, and \`combatResolve\` applies the reduction. The turn after, \`advanceTaunt\` expires it back to 0:
 
-- **tauntActive = 2** — queued, damage reduction not yet applied
-- **tauntActive = 1** — active this combat turn (60% damage reduction applied in combatResolve)
+- **tauntActive = 1** — queued, set by abilityResolve, not yet protecting
+- **tauntActive = 2** — active this combat turn (60% damage reduction applied in combatResolve)
 - **tauntActive = 0** — expired, ability available again
 
 This is a **3-state CEL counter** implemented entirely in kro specPatch nodes. No backend code tracks the cooldown — kro reconciles it from spec on every attack. The Warrior's class identity is a state machine in YAML.`,
     snippet: `# dungeon-graph.yaml — advanceTaunt specPatch
-# Fires when tauntActive > 0, decrements counter each attack turn.
+# Fires when tauntActive > 0: advances 1→2 (active) or 2→0 (expired).
 - id: advanceTaunt
   type: specPatch
   includeWhen:
-    - "\${schema.spec.tauntActive > 0 && schema.spec.combatProcessedSeq > 0}"
+    - "\${schema.spec.tauntActive > 0 && schema.spec.attackSeq > schema.spec.tauntProcessedSeq}"
   patch:
-    tauntActive: "\${schema.spec.tauntActive - 1}"
-# combatResolve reads tauntActive == 1 to apply 50% damage reduction:
-# heroDmgTaken: "\${tauntActive == 1 ? int(baseDmg * 0.5) : int(baseDmg)}"`,
+    tauntActive: "\${schema.spec.tauntActive == 1 ? 2 : 0}"
+# combatResolve reads tauntActive == 2 to apply 60% damage reduction (2/5 of damage taken):
+# taunted: "\${tauntActive == 2 && pantsed > 0 ? pantsed * 2 / 5 : pantsed}"`,
     learnMore: 'manifests/rgds/dungeon-graph.yaml — advanceTaunt and combatResolve specPatch nodes',
   },
   'mana-lifecycle': {
