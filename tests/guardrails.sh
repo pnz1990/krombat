@@ -828,6 +828,48 @@ grep -q 'run-card-img' frontend/src/index.css \
   && pass "#456: .run-card-img CSS defined in index.css" \
   || fail "#456: .run-card-img CSS missing from index.css"
 
+# === #458: conference demo package guardrails ===
+# DEMO.md must exist
+[ -f "Docs/demo/DEMO.md" ] \
+  && pass "#458: Docs/demo/DEMO.md exists" \
+  || fail "#458: Docs/demo/DEMO.md missing"
+
+# dungeon-demo.yaml must exist
+[ -f "Docs/demo/dungeon-demo.yaml" ] \
+  && pass "#458: Docs/demo/dungeon-demo.yaml exists" \
+  || fail "#458: Docs/demo/dungeon-demo.yaml missing"
+
+# dungeon-demo.yaml must reference correct apiVersion
+grep -q 'game.k8s.example/v1alpha1' Docs/demo/dungeon-demo.yaml \
+  && pass "#458: dungeon-demo.yaml has correct apiVersion" \
+  || fail "#458: dungeon-demo.yaml missing game.k8s.example/v1alpha1 apiVersion"
+
+# dungeon-demo.yaml must be kind: Dungeon
+grep -q 'kind: Dungeon' Docs/demo/dungeon-demo.yaml \
+  && pass "#458: dungeon-demo.yaml is kind: Dungeon" \
+  || fail "#458: dungeon-demo.yaml is not kind: Dungeon"
+
+# speaker-notes.md must exist
+[ -f "Docs/demo/speaker-notes.md" ] \
+  && pass "#458: Docs/demo/speaker-notes.md exists" \
+  || fail "#458: Docs/demo/speaker-notes.md missing"
+
+# speaker-notes.md must have at least 10 Q&A entries
+QA_COUNT=$(grep -c '^## Q' Docs/demo/speaker-notes.md 2>/dev/null || echo 0)
+[ "$QA_COUNT" -ge 10 ] \
+  && pass "#458: speaker-notes.md has $QA_COUNT Q&A scenarios (>=10)" \
+  || fail "#458: speaker-notes.md has only $QA_COUNT Q&A scenarios (<10)"
+
+# DEMO.md must reference the kubectl terminal mode (#457)
+grep -q 'kubectl Terminal\|kubectl terminal' Docs/demo/DEMO.md \
+  && pass "#458: DEMO.md references kubectl terminal mode" \
+  || fail "#458: DEMO.md missing reference to kubectl terminal mode"
+
+# Intro modal must have Demo slide
+grep -q 'Running a Demo' frontend/src/KroTeach.tsx \
+  && pass "#458: intro modal has demo slide in KroTeach.tsx" \
+  || fail "#458: intro modal missing demo slide in KroTeach.tsx"
+
 # --- Summary ---
 
 echo ""
