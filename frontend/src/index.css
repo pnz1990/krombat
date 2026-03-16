@@ -817,6 +817,17 @@ body {
 /* Attack buttons on hover */
 .arena-actions { display: flex; gap: 3px; margin-top: 2px; }
 .arena-atk-btn { font-size: 7px !important; padding: 2px 6px !important; }
+/* Always-visible attack hint below attackable entities (#494) */
+.arena-atk-hint {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 6px;
+  color: var(--gold);
+  text-align: center;
+  margin-top: 2px;
+  opacity: 0.7;
+  letter-spacing: 0.05em;
+  pointer-events: none;
+}
 
 /* Victory glow overlay */
 /* Room 1 cleared celebration overlay */
@@ -2033,6 +2044,9 @@ body {
 }
 .hamburger-item:last-child { border-bottom: none; }
 .hamburger-item:hover { background: rgba(255,255,255,0.06); color: var(--gold); }
+/* Invisible backdrop to close hamburger on outside click (#491) */
+.hamburger-backdrop { position: fixed; inset: 0; z-index: 49; }
+.hamburger-menu { z-index: 50; }
 
 /* kro Certificate toast (#361) */
 .cert-toast {
