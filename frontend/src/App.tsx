@@ -1953,6 +1953,21 @@ function HelpModal({ onClose, onCheat }: { onClose: () => void; onCheat: () => v
         <p><b>Copy Markdown</b> copies the post to your clipboard. <b>Open in GitHub Discussions</b> opens a new tab pre-filled in the kro repo's show-and-tell category.</p>
       </>
     )},
+    { title: 'Workshop Kit', content: (
+      <>
+        <p>A self-paced 3-day workshop that teaches kro using Krombat as the teaching environment is available in <code>docs/workshop/</code> in this repo.</p>
+        <table className="help-table">
+          <thead><tr><th>Day</th><th>Title</th><th>Goal</th></tr></thead>
+          <tbody>
+            <tr><td>1</td><td>Explore</td><td>Understand what kro is doing by playing the game</td></tr>
+            <tr><td>2</td><td>Read the RGDs</td><td>Read all 9 RGDs and understand every CEL expression</td></tr>
+            <tr><td>3</td><td>Extend</td><td>Write your first kro RGD — add a new modifier type</td></tr>
+          </tbody>
+        </table>
+        <p>No local cluster required for Day 1 or Day 2. Day 3 requires forking the repo and deploying via ArgoCD.</p>
+        <p>Find the workshop at: <code>github.com/pnz1990/krombat/tree/main/docs/workshop/</code></p>
+      </>
+    )},
   ]
   return (
     <div className="modal-overlay" onClick={onClose}>

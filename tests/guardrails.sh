@@ -1001,6 +1001,104 @@ grep -q "30 days" frontend/src/App.tsx \
   && pass "#477: UI says dungeon data kept for 30 days" \
   || fail "#477: UI still says '4 hours' instead of '30 days' — update App.tsx retention string"
 
+# --- Workshop kit (#461) ---
+echo "=== Workshop kit (#461)"
+
+# Docs/workshop/README.md must exist
+[ -f "Docs/workshop/README.md" ] \
+  && pass "#461: Docs/workshop/README.md exists" \
+  || fail "#461: Docs/workshop/README.md missing"
+
+# Docs/workshop/day-1-explore.md must exist
+[ -f "Docs/workshop/day-1-explore.md" ] \
+  && pass "#461: Docs/workshop/day-1-explore.md exists" \
+  || fail "#461: Docs/workshop/day-1-explore.md missing"
+
+# Docs/workshop/day-2-read-the-rgds.md must exist
+[ -f "Docs/workshop/day-2-read-the-rgds.md" ] \
+  && pass "#461: Docs/workshop/day-2-read-the-rgds.md exists" \
+  || fail "#461: Docs/workshop/day-2-read-the-rgds.md missing"
+
+# Docs/workshop/day-3-extend.md must exist
+[ -f "Docs/workshop/day-3-extend.md" ] \
+  && pass "#461: Docs/workshop/day-3-extend.md exists" \
+  || fail "#461: Docs/workshop/day-3-extend.md missing"
+
+# exercises must exist
+[ -f "Docs/workshop/exercises/day-1-exercises.md" ] \
+  && pass "#461: Docs/workshop/exercises/day-1-exercises.md exists" \
+  || fail "#461: Docs/workshop/exercises/day-1-exercises.md missing"
+
+[ -f "Docs/workshop/exercises/day-2-exercises.md" ] \
+  && pass "#461: Docs/workshop/exercises/day-2-exercises.md exists" \
+  || fail "#461: Docs/workshop/exercises/day-2-exercises.md missing"
+
+[ -f "Docs/workshop/exercises/day-3-exercises.md" ] \
+  && pass "#461: Docs/workshop/exercises/day-3-exercises.md exists" \
+  || fail "#461: Docs/workshop/exercises/day-3-exercises.md missing"
+
+# solutions/day-3-solution.yaml must exist
+[ -f "Docs/workshop/solutions/day-3-solution.yaml" ] \
+  && pass "#461: Docs/workshop/solutions/day-3-solution.yaml exists" \
+  || fail "#461: Docs/workshop/solutions/day-3-solution.yaml missing"
+
+# day-3-solution.yaml must be a valid kro RGD (has required fields)
+grep -q "kind: ResourceGraphDefinition" Docs/workshop/solutions/day-3-solution.yaml \
+  && pass "#461: day-3-solution.yaml is a ResourceGraphDefinition" \
+  || fail "#461: day-3-solution.yaml missing kind: ResourceGraphDefinition"
+
+grep -q "kind: Modifier" Docs/workshop/solutions/day-3-solution.yaml \
+  && pass "#461: day-3-solution.yaml schema is kind: Modifier" \
+  || fail "#461: day-3-solution.yaml schema missing kind: Modifier"
+
+grep -q "modifier-graph" Docs/workshop/solutions/day-3-solution.yaml \
+  && pass "#461: day-3-solution.yaml references modifier-graph" \
+  || fail "#461: day-3-solution.yaml missing modifier-graph name"
+
+# day-3-solution.yaml must contain the blessing-agility branch
+grep -q "blessing-agility" Docs/workshop/solutions/day-3-solution.yaml \
+  && pass "#461: day-3-solution.yaml contains blessing-agility" \
+  || fail "#461: day-3-solution.yaml missing blessing-agility modifier"
+
+# day-3-solution.yaml must contain the correct effect string
+grep -q "Blessing of Agility" Docs/workshop/solutions/day-3-solution.yaml \
+  && pass "#461: day-3-solution.yaml has correct Blessing of Agility effect string" \
+  || fail "#461: day-3-solution.yaml missing 'Blessing of Agility' effect string"
+
+# Workshop README must reference learn-kro.eks.aws.dev
+grep -q "learn-kro.eks.aws.dev" Docs/workshop/README.md \
+  && pass "#461: workshop README references learn-kro.eks.aws.dev" \
+  || fail "#461: workshop README missing learn-kro.eks.aws.dev reference"
+
+# Workshop day guides must not require local cluster for Day 1 and Day 2
+grep -q "No local cluster required" Docs/workshop/day-1-explore.md \
+  && pass "#461: day-1-explore.md says no local cluster required" \
+  || fail "#461: day-1-explore.md missing 'No local cluster required' statement"
+
+grep -q "No local cluster required" Docs/workshop/day-2-read-the-rgds.md \
+  && pass "#461: day-2-read-the-rgds.md says no local cluster required" \
+  || fail "#461: day-2-read-the-rgds.md missing 'No local cluster required' statement"
+
+# Day 3 must reference ArgoCD (no direct kubectl apply)
+grep -q "ArgoCD\|Argo CD\|argocd" Docs/workshop/day-3-extend.md \
+  && pass "#461: day-3-extend.md references ArgoCD deployment" \
+  || fail "#461: day-3-extend.md missing ArgoCD deployment instructions"
+
+# Help modal must document Workshop Kit
+grep -q "Workshop Kit\|workshop kit\|docs/workshop" frontend/src/App.tsx \
+  && pass "#461: Help modal documents Workshop Kit" \
+  || fail "#461: Help modal missing Workshop Kit page"
+
+# Intro tour must have Take the 3-Day workshop slide
+grep -q "3-Day kro Workshop\|docs/workshop\|workshop" frontend/src/KroTeach.tsx \
+  && pass "#461: KroTeach.tsx intro tour has workshop slide" \
+  || fail "#461: KroTeach.tsx missing workshop intro slide"
+
+# Journey 41 must exist
+[ -f "tests/e2e/journeys/41-workshop-kit.js" ] \
+  && pass "#461: tests/e2e/journeys/41-workshop-kit.js exists" \
+  || fail "#461: tests/e2e/journeys/41-workshop-kit.js missing"
+
 # --- Summary ---
 
 echo ""

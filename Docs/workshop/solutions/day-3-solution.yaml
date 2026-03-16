@@ -1,0 +1,37 @@
+apiVersion: kro.run/v1alpha1
+kind: ResourceGraphDefinition
+metadata:
+  name: modifier-graph
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  schema:
+    apiVersion: v1alpha1
+    kind: Modifier
+    group: game.k8s.example
+    spec:
+      dungeonName: string | required=true
+      modifierType: string | default="none"
+      multiplier: string | default="1.0"
+    status:
+      effect: "${modifierState.data.effect}"
+      modifierType: "${modifierState.data.modifierType}"
+      multiplier: "${modifierState.data.multiplier}"
+
+  resources:
+    - id: modifierState
+      readyWhen:
+        - "${modifierState.data.modifierType != ''}"
+      template:
+        apiVersion: v1
+        kind: ConfigMap
+        metadata:
+          name: "${schema.spec.dungeonName + '-modifier'}"
+          namespace: ${schema.metadata.namespace}
+          labels:
+            game.k8s.example/dungeon: ${schema.spec.dungeonName}
+            game.k8s.example/entity: modifier
+        data:
+          modifierType: ${schema.spec.modifierType}
+          multiplier: ${schema.spec.multiplier}
+          effect: "${schema.spec.modifierType == 'curse-fortitude' ? 'Curse of Fortitude: All monsters have 50% more HP, making them harder to kill.' : schema.spec.modifierType == 'curse-fury' ? 'Curse of Fury: The boss deals double damage on counter-attacks. Be careful!' : schema.spec.modifierType == 'curse-darkness' ? 'Curse of Darkness: Your attacks deal 25% less damage to all enemies.' : schema.spec.modifierType == 'blessing-strength' ? 'Blessing of Strength: Your attacks deal 50% more damage to all enemies!' : schema.spec.modifierType == 'blessing-resilience' ? 'Blessing of Resilience: All counter-attack damage against you is halved.' : schema.spec.modifierType == 'blessing-fortune' ? 'Blessing of Fortune: 20% chance to land a critical hit for double damage!' : schema.spec.modifierType == 'blessing-agility' ? 'Blessing of Agility: 10% chance to dodge counter-attacks.' : 'No modifier'}"
