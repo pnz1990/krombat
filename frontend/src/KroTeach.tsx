@@ -1466,7 +1466,7 @@ Spec:
 
 [kro] What just happened? ▼
   RGD: dungeon-graph (read)
-  CEL: status.bossPhase = bossHP <= maxBossHP*0.5 ? "phase2" : "phase1"`,
+  CEL: status.bossPhase = hp*100/maxHP > 50 ? "phase1" : hp*100/maxHP > 25 ? "phase2" : "phase3"`,
   },
   {
     title: 'Share Your Run',
