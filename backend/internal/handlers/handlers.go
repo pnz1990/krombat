@@ -412,11 +412,11 @@ func (h *Handler) DeleteDungeon(w http.ResponseWriter, r *http.Request) {
 		spec, _ := dungeon.Object["spec"].(map[string]interface{})
 		kroStatus, _ := dungeon.Object["status"].(map[string]interface{})
 		if spec != nil {
-			go h.recordLeaderboard(spec, kroStatus, name)
 			login := ""
 			if sess2 := sessionFromCtx(r.Context()); sess2 != nil {
 				login = sess2.Login
 			}
+			go h.recordLeaderboard(spec, kroStatus, name, login)
 			go h.recordProfile(login, spec, kroStatus)
 		}
 	}
@@ -436,6 +436,7 @@ func (h *Handler) DeleteDungeon(w http.ResponseWriter, r *http.Request) {
 // LeaderboardEntry represents a single completed dungeon run.
 type LeaderboardEntry struct {
 	DungeonName string `json:"dungeonName"`
+	GitHubLogin string `json:"githubLogin,omitempty"`
 	HeroClass   string `json:"heroClass"`
 	Difficulty  string `json:"difficulty"`
 	Outcome     string `json:"outcome"`
@@ -455,7 +456,7 @@ var leaderboardGVR = schema.GroupVersionResource{Group: "", Version: "v1", Resou
 // recordLeaderboard writes a run completion entry to the krombat-leaderboard ConfigMap.
 // Called asynchronously before dungeon deletion. Silently skips on any error.
 // kroStatus is the kro-derived dungeon status (may be nil if kro hasn't reconciled yet).
-func (h *Handler) recordLeaderboard(spec map[string]interface{}, kroStatus map[string]interface{}, dungeonName string) {
+func (h *Handler) recordLeaderboard(spec map[string]interface{}, kroStatus map[string]interface{}, dungeonName string, githubLogin string) {
 	heroClass, _ := spec["heroClass"].(string)
 	difficulty, _ := spec["difficulty"].(string)
 	currentRoom := getInt(spec, "currentRoom")
@@ -518,6 +519,7 @@ func (h *Handler) recordLeaderboard(spec map[string]interface{}, kroStatus map[s
 	}
 	entry := LeaderboardEntry{
 		DungeonName: dungeonName,
+		GitHubLogin: githubLogin,
 		HeroClass:   heroClass,
 		Difficulty:  difficulty,
 		Outcome:     outcome,
@@ -1164,7 +1166,7 @@ func (h *Handler) GetLeaderboard(w http.ResponseWriter, r *http.Request) {
 	for _, v := range data {
 		raw, _ := v.(string)
 		var e LeaderboardEntry
-		if json.Unmarshal([]byte(raw), &e) == nil {
+		if json.Unmarshal([]byte(raw), &e) == nil && e.Outcome == "victory" {
 			entries = append(entries, e)
 		}
 	}

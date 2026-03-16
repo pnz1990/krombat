@@ -117,6 +117,7 @@ export async function deleteDungeon(ns: string, name: string) {
 
 export interface LeaderboardEntry {
   dungeonName: string
+  githubLogin?: string
   heroClass: string
   difficulty: string
   outcome: string  // 'victory' | 'defeat' | 'room1-cleared' | 'in-progress'
