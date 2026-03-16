@@ -806,6 +806,9 @@ export default function App() {
             Login with GitHub
           </a>
         </div>
+        {showOnboarding && (
+          <KroOnboardingOverlay onDismiss={() => setShowOnboarding(false)} isAuthenticated={false} />
+        )}
       </div>
     )
   }
