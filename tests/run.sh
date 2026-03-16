@@ -54,10 +54,18 @@ wait_group "Abilities"      $PID_ABILITIES /tmp/test-abilities.log
 wait_group "Features"       $PID_FEATURES /tmp/test-features.log
 wait_group "Infra"          $PID_INFRA /tmp/test-infra.log
 
-# Cleanup all test dungeons
+# Cleanup test dungeons only — scope to the test user's owner label.
+# NEVER delete user dungeons owned by real GitHub logins.
 echo "=== Cleanup ==="
 kctl delete attacks --all --ignore-not-found --wait=false 2>/dev/null || true
-kctl delete dungeons --all --ignore-not-found --wait=false 2>/dev/null || true
+_CLEANUP_USER="$(kubectl --context "${KUBECTL_CONTEXT:-arn:aws:eks:us-west-2:319279230668:cluster/krombat}" \
+  get secret krombat-test-auth -n rpg-system \
+  -o jsonpath='{.data.KROMBAT_TEST_USER}' 2>/dev/null | base64 -d || true)"
+if [ -n "$_CLEANUP_USER" ]; then
+  kctl delete dungeons -l "krombat.io/owner=${_CLEANUP_USER}" --ignore-not-found --wait=false 2>/dev/null || true
+else
+  echo "  Warning: could not resolve test user — skipping dungeon cleanup to protect user data"
+fi
 
 # Count totals
 TOTAL_PASS=$(grep -rh "^  PASS:" /tmp/test-*.log 2>/dev/null | wc -l | tr -d ' ')
