@@ -47,6 +47,7 @@ func main() {
 	hub := ws.NewHub()
 	go hub.Run()
 	go k8s.StartWatchers(client, hub)
+	go k8s.StartReconcileDiffWatcher(client, hub)
 
 	mux := http.NewServeMux()
 	h := handlers.New(client, hub)

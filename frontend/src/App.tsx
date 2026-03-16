@@ -14,6 +14,27 @@ import {
 import { KroGraphPanel } from './KroGraph'
 import { KubectlTerminal } from './KubectlTerminal'
 
+// ─── Reconcile Stream types (#462) ───────────────────────────────────────────
+interface FieldDiff {
+  path: string
+  old: string
+  new: string
+  cel?: string
+  rgd?: string
+  concept?: string
+}
+
+interface ReconcileDiffEvent {
+  resource: string
+  kind: string
+  resourceVersion: string
+  action: string
+  fields: FieldDiff[]
+  dungeonName: string
+  dungeonNamespace: string
+  ts: string  // wall-clock timestamp added by frontend on receipt
+}
+
 // 8-bit styled text icons (consistent cross-platform, matches pixel font)
 const ICO = {
   attack: '⚔', dice: '⊞', damage: '✦', shield: '◆', heal: '+', dagger: '†',
@@ -89,6 +110,9 @@ export default function App() {
     const ts = new Date().toLocaleTimeString()
     setK8sLog(prev => [{ ts, cmd, res, yaml }, ...prev].slice(0, 50))
   }
+  // #462: Reconcile stream — accumulates RECONCILE_DIFF WebSocket events
+  const [reconcileStream, setReconcileStream] = useState<ReconcileDiffEvent[]>([])
+  const seenResourceKindsRef = useRef<Set<string>>(new Set())
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [apiError, setApiError] = useState<string | null>(null)
@@ -227,6 +251,23 @@ export default function App() {
   // the payload already contains the full CR. Only fall back to refresh() when WS is
   // disconnected (connected===false) or the event is not a DUNGEON_UPDATE.
   useEffect(() => {
+    // #462: Accumulate reconcile-diff events into the stream
+    if (lastEvent?.type === 'RECONCILE_DIFF' && lastEvent.payload) {
+      const diff = lastEvent.payload as Omit<ReconcileDiffEvent, 'ts'>
+      const entry: ReconcileDiffEvent = { ...diff, ts: new Date().toLocaleTimeString() }
+      setReconcileStream(prev => [entry, ...prev].slice(0, 200))
+      // Auto-trigger InsightCard on first appearance of each new resource kind
+      const kind = diff.kind?.toLowerCase() ?? ''
+      if (kind && !seenResourceKindsRef.current.has(kind)) {
+        seenResourceKindsRef.current.add(kind)
+        if (kind === 'configmap') triggerInsight('reconcile-loop')
+        else if (kind === 'hero') triggerInsight('resource-chaining')
+        else if (kind === 'boss') triggerInsight('boss-phase')
+        else if (kind === 'loot') triggerInsight('loot-system')
+        else if (kind === 'modifier') triggerInsight('modifier-present')
+      }
+      return
+    }
     if (lastEvent?.type === 'DUNGEON_UPDATE' && lastEvent.payload && selected) {
       const cr = lastEvent.payload as DungeonCR
       if (cr?.metadata?.name === selected.name) {
@@ -244,6 +285,8 @@ export default function App() {
     if (selected) {
       setLoading(true)
       setEvents([])
+      setReconcileStream([])
+      seenResourceKindsRef.current = new Set()
       setError('')
       // Poll until dungeon is available (kro may still be reconciling)
       let cancelled = false
@@ -846,6 +889,7 @@ export default function App() {
           onDismissLoot={() => setLootDrop(null)}
           events={events}
           k8sLog={k8sLog}
+          reconcileStream={reconcileStream}
           showLoot={showLoot}
           onOpenLoot={() => setShowLoot(true)}
           onCloseLoot={() => setShowLoot(false)}
@@ -1328,9 +1372,10 @@ function FlyingBat({ startX, startY, endX, endY, dur, onDone }: { startX: number
       style={{ left: `${pos.x}%`, top: `${pos.y}%`, transform: `translate(-50%,-50%) scaleX(${endX > startX ? 1 : -1})` }} />
   )
 }
-function EventLogTabs({ events, k8sLog, kroUnlocked, onViewKroConcept, dungeonNs, dungeonName, showPlayground, onOpenPlayground, onClosePlayground, onCertTrigger, glossaryOpenCountRef }: {
+function EventLogTabs({ events, k8sLog, reconcileStream, kroUnlocked, onViewKroConcept, dungeonNs, dungeonName, showPlayground, onOpenPlayground, onClosePlayground, onCertTrigger, glossaryOpenCountRef }: {
   events: WSEvent[]
   k8sLog: { ts: string; cmd: string; res: string; yaml?: string }[]
+  reconcileStream: ReconcileDiffEvent[]
   kroUnlocked: Set<KroConceptId>
   onViewKroConcept: (id: KroConceptId) => void
   dungeonNs?: string
@@ -1341,24 +1386,55 @@ function EventLogTabs({ events, k8sLog, kroUnlocked, onViewKroConcept, dungeonNs
   onCertTrigger?: (certId: string) => void  // Tier 2 cert callbacks (#361)
   glossaryOpenCountRef?: MutableRefObject<number>
 }) {
-  const [tab, setTab] = useState<'game' | 'k8s' | 'kro'>('game')
+  const [tab, setTab] = useState<'game' | 'k8s' | 'reconcile' | 'kro'>('game')
   const [yamlModal, setYamlModal] = useState<{ yaml: string; cmd: string } | null>(null)
   const [kroConceptModal, setKroConceptModal] = useState<KroConceptId | null>(null)
   const k8sTabOpenedRef = useRef(false)
+  // #462: Reconcile Stream — pause + expanded "Why?" per entry
+  const [paused, setPaused] = useState(false)
+  const [pausedSnapshot, setPausedSnapshot] = useState<ReconcileDiffEvent[]>([])
+  const [expandedWhy, setExpandedWhy] = useState<string | null>(null) // key = `${ts}-${resource}`
 
-  const handleTabChange = (newTab: 'game' | 'k8s' | 'kro') => {
+  const handleTabChange = (newTab: 'game' | 'k8s' | 'reconcile' | 'kro') => {
     setTab(newTab)
     // Tier 2 cert: first time K8s log tab is opened (#361)
     if (newTab === 'k8s' && !k8sTabOpenedRef.current) {
       k8sTabOpenedRef.current = true
       onCertTrigger?.('log-explorer')
     }
+    // Reconcile stream: pause/resume when switching away/to
+    if (newTab === 'reconcile') {
+      setPaused(false)
+      setPausedSnapshot([])
+    }
   }
+
+  // When paused, freeze the displayed list
+  const displayedStream = paused ? pausedSnapshot : reconcileStream
+
+  const handlePause = () => {
+    if (paused) {
+      setPaused(false)
+      setPausedSnapshot([])
+    } else {
+      setPausedSnapshot(reconcileStream)
+      setPaused(true)
+    }
+  }
+
+  const handleCopyJson = () => {
+    const data = JSON.stringify(displayedStream, null, 2)
+    navigator.clipboard.writeText(data).catch(() => {})
+  }
+
   return (
     <div style={{ marginTop: 16 }}>
       <div className="log-tabs">
         <button className={`log-tab${tab === 'game' ? ' active' : ''}`} onClick={() => handleTabChange('game')}>Game Log</button>
         <button className={`log-tab${tab === 'k8s' ? ' active' : ''}`} onClick={() => handleTabChange('k8s')}>K8s Log</button>
+        <button className={`log-tab reconcile-tab${tab === 'reconcile' ? ' active' : ''}`} onClick={() => handleTabChange('reconcile')}>
+          Reconcile Stream{reconcileStream.length > 0 ? ` (${reconcileStream.length})` : ''}
+        </button>
         <button className={`log-tab kro-tab${tab === 'kro' ? ' active' : ''}`} onClick={() => handleTabChange('kro')}>
           kro ({kroUnlocked.size}/{Object.keys(KRO_CONCEPTS).length})
         </button>
@@ -1424,6 +1500,81 @@ function EventLogTabs({ events, k8sLog, kroUnlocked, onViewKroConcept, dungeonNs
               <span className="k8s-res">{e.res}</span>
             </div>
           ))}
+        </div>
+      ) : tab === 'reconcile' ? (
+        <div className="reconcile-stream-panel">
+          <div className="reconcile-stream-controls">
+            <button className={`reconcile-btn${paused ? ' paused' : ''}`} onClick={handlePause}>
+              {paused ? 'Resume' : 'Pause'}
+            </button>
+            <button className="reconcile-btn" onClick={handleCopyJson} title="Copy full stream as JSON">
+              Copy JSON
+            </button>
+            {paused && <span className="reconcile-paused-label">Paused</span>}
+          </div>
+          <div className="event-log reconcile-log" aria-live="polite" aria-label="Reconcile stream">
+            {displayedStream.length === 0 && (
+              <div className="event-entry reconcile-empty">
+                No reconcile events yet — play a combat turn to see kro in action.
+              </div>
+            )}
+            {displayedStream.map((entry, i) => {
+              const entryKey = `${entry.ts}-${entry.resource}-${i}`
+              const isExpanded = expandedWhy === entryKey
+              // Only show diffs that have actual changes (exclude tombstone ~ entries with no useful info)
+              const meaningfulFields = entry.fields.filter(f => f.path !== '~' || entry.action === 'DELETED')
+              if (meaningfulFields.length === 0 && entry.action !== 'DELETED') return null
+              return (
+                <div key={entryKey} className="reconcile-entry">
+                  <div className="reconcile-header">
+                    <span className="reconcile-ts">{entry.ts}</span>
+                    <span className={`reconcile-action reconcile-action-${entry.action.toLowerCase()}`}>{entry.action}</span>
+                    <span className="reconcile-resource">{entry.resource}</span>
+                    <span className="reconcile-rv">rv:{entry.resourceVersion}</span>
+                  </div>
+                  {meaningfulFields.map((fd, fi) => {
+                    const color = fd.new === '' ? '#e74c3c'  // deleted/cleared
+                      : fd.old === '' ? '#2ecc71'            // added
+                      : fd.new > fd.old ? '#2ecc71'          // increased (numeric-ish)
+                      : fd.new < fd.old ? '#e74c3c'          // decreased
+                      : '#f1c40f'                            // changed (non-numeric)
+                    return (
+                      <div key={fi} className="reconcile-field" style={{ borderLeft: `2px solid ${color}` }}>
+                        <span className="reconcile-path">{fd.path}:</span>
+                        {fd.old !== '' && <span className="reconcile-old">{fd.old}</span>}
+                        {fd.old !== '' && <span className="reconcile-arrow"> → </span>}
+                        <span className="reconcile-new" style={{ color }}>{fd.new !== '' ? fd.new : '(removed)'}</span>
+                        {(fd.cel || fd.rgd) && (
+                          <button
+                            className="reconcile-why-btn"
+                            onClick={() => setExpandedWhy(isExpanded ? null : entryKey)}
+                            title="Why? — see the kro CEL expression"
+                          >Why?</button>
+                        )}
+                        {isExpanded && fi === 0 && (fd.cel || fd.rgd) && (
+                          <div className="reconcile-why-panel">
+                            {fd.rgd && <div className="reconcile-why-rgd">RGD: {fd.rgd}</div>}
+                            {fd.cel && <pre className="reconcile-why-cel">{fd.cel}</pre>}
+                            {fd.concept && (
+                              <button
+                                className="k8s-annotation-learn"
+                                onClick={() => {
+                                  setExpandedWhy(null)
+                                  onViewKroConcept(fd.concept as KroConceptId)
+                                }}
+                              >
+                                Learn: {fd.concept} →
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )
+            })}
+          </div>
         </div>
       ) : (
         <div>
@@ -1759,6 +1910,22 @@ function HelpModal({ onClose, onCheat }: { onClose: () => void; onCheat: () => v
         <p>This is one of many ways kro drives awareness: every win becomes a shareable kro impression.</p>
       </>
     )},
+    { title: 'Reconcile Stream', content: (
+      <>
+        <p>The <b>Reconcile Stream</b> tab shows raw Kubernetes watch events as a live diff view — every field kro changes during a combat turn, in real time.</p>
+        <p>Each entry shows the resource that changed (e.g. <code>configmap/my-dungeon-monster-0</code>), its new resource version, and a field-level diff:</p>
+        <table className="help-table">
+          <thead><tr><th>Color</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td style={{color:'#2ecc71'}}>Green</td><td>Field added or value increased</td></tr>
+            <tr><td style={{color:'#e74c3c'}}>Red</td><td>Field removed or value decreased</td></tr>
+            <tr><td style={{color:'#f1c40f'}}>Yellow</td><td>Field changed (non-numeric)</td></tr>
+          </tbody>
+        </table>
+        <p>Click <b>Why?</b> on any field to expand the kro CEL expression responsible for that change, which RGD it lives in, and a link to the full concept card.</p>
+        <p>Use <b>Pause</b> to freeze the stream while reading. Use <b>Copy JSON</b> to export the full event log for debugging.</p>
+      </>
+    )},
   ]
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -1794,8 +1961,8 @@ function getModifierArenaStyle(modifier: string | undefined): React.CSSPropertie
   }
 }
 
-function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sLog, showLoot, onOpenLoot, onCloseLoot, attackPhase, roomLoading, animPhase, attackTarget, showHelp, onToggleHelp, showCheat, onToggleCheat, floatingDmg, bossPhaseFlash, combatModal, onDismissCombat, lootDrop, onDismissLoot, wsConnected, apiError, kroUnlocked, onViewKroConcept, reconciling, onOpenLeaderboard, onCertTrigger, glossaryOpenCountRef, celTraceSeenRef }: {
-  cr: DungeonCR; prevCr?: DungeonCR | null; onBack: () => void; onNewGamePlus?: () => void; onAttack: (t: string, d: number) => void; events: WSEvent[]; k8sLog: { ts: string; cmd: string; res: string; yaml?: string }[]
+function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sLog, reconcileStream, showLoot, onOpenLoot, onCloseLoot, attackPhase, roomLoading, animPhase, attackTarget, showHelp, onToggleHelp, showCheat, onToggleCheat, floatingDmg, bossPhaseFlash, combatModal, onDismissCombat, lootDrop, onDismissLoot, wsConnected, apiError, kroUnlocked, onViewKroConcept, reconciling, onOpenLeaderboard, onCertTrigger, glossaryOpenCountRef, celTraceSeenRef }: {
+  cr: DungeonCR; prevCr?: DungeonCR | null; onBack: () => void; onNewGamePlus?: () => void; onAttack: (t: string, d: number) => void; events: WSEvent[]; k8sLog: { ts: string; cmd: string; res: string; yaml?: string }[]; reconcileStream: ReconcileDiffEvent[]
   showLoot: boolean; onOpenLoot: () => void; onCloseLoot: () => void
   attackPhase: string | null; roomLoading: boolean
   animPhase: string; attackTarget: string | null
@@ -2606,7 +2773,7 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
       <KroGraphPanel cr={cr} prevCr={prevCr} reconciling={reconciling} onViewConcept={onViewKroConcept}
         onExpand={() => onCertTrigger?.('graph-panel')} />
 
-      <EventLogTabs events={events} k8sLog={k8sLog} kroUnlocked={kroUnlocked} onViewKroConcept={onViewKroConcept}
+      <EventLogTabs events={events} k8sLog={k8sLog} reconcileStream={reconcileStream} kroUnlocked={kroUnlocked} onViewKroConcept={onViewKroConcept}
         dungeonNs={cr.metadata.namespace} dungeonName={cr.metadata.name}
         showPlayground={showPlayground} onOpenPlayground={() => setShowPlayground(true)} onClosePlayground={() => setShowPlayground(false)}
         onCertTrigger={onCertTrigger}
