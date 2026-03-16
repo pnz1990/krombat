@@ -976,7 +976,7 @@ function CreateForm({ onCreate }: { onCreate: (n: string, m: number, d: string, 
           onChange={e => setName(e.target.value)}
           placeholder="my-dungeon"
           maxLength={63}
-          pattern="[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?"
+          pattern="[a-z0-9]([a-z0-9\-]{0,61}[a-z0-9])?"
         />
         {!nameValid && <div className="input-error">Name: lowercase letters, numbers, hyphens only. Max 63 chars. Must start and end with alphanumeric.</div>}
       </div>
