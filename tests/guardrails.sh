@@ -995,6 +995,12 @@ grep -q 'Tell the story\|Tell the Story\|blog.*post\|Blog Post' frontend/src/Kro
   && pass "#460: tests/e2e/journeys/40-blog-post-generator.js exists" \
   || fail "#460: tests/e2e/journeys/40-blog-post-generator.js missing"
 
+# --- Data retention UI text (#477) ---
+echo "=== Data retention UI text"
+grep -q "30 days" frontend/src/App.tsx \
+  && pass "#477: UI says dungeon data kept for 30 days" \
+  || fail "#477: UI still says '4 hours' instead of '30 days' — update App.tsx retention string"
+
 # --- Summary ---
 
 echo ""
