@@ -1454,19 +1454,21 @@ client.Resource(dungeonGVR).Namespace(ns).Patch(ctx,
   },
   {
     title: 'kubectl Terminal Mode',
-    body: "Inside any dungeon, open ☰ → kubectl Terminal for a real CLI experience. Type kubectl commands — they call the actual backend API. Every command shows a [kro] annotation explaining which RGD fired and which CEL expression ran.",
-    snippet: `$ kubectl get dungeons
-NAME           HERO-CLASS  DIFFICULTY  HP    BOSS-HP  ROOM
-my-dungeon     warrior     normal      163   400      1
+    body: "Inside any dungeon, open ☰ → kubectl Terminal for a read-only CLI that covers all 9 kro CRDs. Type kubectl get/describe for any resource — hero, boss, monsters, treasure, modifier, loot. Add -o yaml to see the full CR. Every command shows a [kro] annotation explaining which RGD fired and which CEL expression ran.",
+    snippet: `$ kubectl get monsters my-dungeon
+NAME                     INDEX   HP    STATE
+my-dungeon-monster-0     0       50    alive
+my-dungeon-monster-1     1       0     dead
 
-$ kubectl describe dungeon my-dungeon
-Spec:
-  heroHP: 163  difficulty: normal
-  bossHP: 400  currentRoom: 1
-
-[kro] What just happened? ▼
-  RGD: dungeon-graph (read)
-  CEL: status.bossPhase = hp*100/maxHP > 50 ? "phase1" : hp*100/maxHP > 25 ? "phase2" : "phase3"`,
+$ kubectl get boss my-dungeon -o yaml
+apiVersion: game.k8s.example/v1alpha1
+kind: Boss
+spec:
+  hp: 280
+  maxHP: 400
+status:
+  phase: phase2
+  damageMultiplier: "13"   # 1.3x — kro boss-graph CEL`,
   },
   {
     title: 'Share Your Run',

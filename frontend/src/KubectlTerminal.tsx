@@ -1,17 +1,13 @@
 /**
- * KubectlTerminal — fake CLI experience with real backend calls (#457)
+ * KubectlTerminal — read-only CLI experience with real backend calls (#457)
  *
- * Renders a styled terminal panel that accepts kubectl-style commands,
- * maps them to the existing backend REST API, and prints kubectl-format output.
- * Every command response includes a collapsible "[kro] What just happened?" block
- * that explains which RGD was involved and the relevant CEL expression.
- *
- * No real kubectl binary runs. No cluster access is granted.
- * All security: auth, ownership checks, rate limiting — unchanged from REST API.
+ * Read-only: get, describe, -o yaml for all 9 kro CRDs.
+ * No write commands (apply, delete, patch removed — use the game UI).
+ * All security: auth, ownership checks — unchanged from REST API.
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { listDungeons, getDungeon, createDungeon, deleteDungeon, DungeonCR } from './api'
+import { listDungeons, getDungeon, getDungeonResource, DungeonCR } from './api'
 
 // ─── kro annotations per command ─────────────────────────────────────────────
 interface KroAnnotation {
@@ -23,55 +19,54 @@ interface KroAnnotation {
 
 function kroAnnotationForCommand(cmd: string): KroAnnotation | null {
   const c = cmd.trim().toLowerCase()
-  if (c.includes('apply') || c.includes('create')) {
-    return {
-      what: 'kro received the new Dungeon CR. dungeon-graph RGD reconciled: created Namespace, Hero CR, Monster CR ×N, Boss CR, Treasure CR, Modifier CR, GameConfig CM.',
-      rgd: 'dungeon-graph',
-      cel: `schema.spec.monsters > 0 ? schema.spec.monsters : 1   // forEach count\nstatus.heroMaxHP = heroClass == "warrior" ? 200 : heroClass == "mage" ? 120 : 150`,
-      concept: 'resource-graph',
-    }
-  }
-  if (c.includes('patch') && c.includes('attack')) {
-    return {
-      what: 'Attack CR created → kro reconciled dungeon-graph → combatResult specPatch CEL computed damage, wrote spec.heroHP / spec.monsterHP back.',
-      rgd: 'dungeon-graph → combatResolve specPatch',
-      cel: `heroDamage = int(baseDamage * classMultiplier) + weaponBonus\nnewMonsterHP = target.hp - heroDamage`,
-      concept: 'spec-patch',
-    }
-  }
   if (c.includes('get') || c.includes('describe')) {
     return {
-      what: 'kro continuously reconciles the Dungeon CR spec against the ResourceGraphDefinition schema. Every field you see was written by kro CEL or by the Go backend via spec-patch.',
+      what: 'kro continuously reconciles the Dungeon CR spec against the ResourceGraphDefinition schema. Every field you see was written by a kro CEL expression or by the Go backend via specPatch.',
       rgd: 'dungeon-graph (read)',
       cel: `status.bossPhase = bossHP <= maxBossHP * 0.25 ? "phase3" : bossHP <= maxBossHP * 0.5 ? "phase2" : "phase1"`,
       concept: 'reconcile-loop',
     }
   }
-  if (c.includes('delete')) {
-    return {
-      what: 'Deleting the Dungeon CR cascades via ownerReferences: kro deletes all 9 child resources (Namespace, Hero CR, Monster CRs, Boss CR, Treasure CR, Modifier CR, ConfigMaps).',
-      rgd: 'dungeon-graph (cleanup)',
-      cel: `// kro sets ownerReference.blockOwnerDeletion=true on all children\n// K8s garbage collector cascades deletion automatically`,
-      concept: 'owner-references',
-    }
-  }
   return null
 }
 
-// ─── YAML template for apply ──────────────────────────────────────────────────
-function dungeonYAML(name: string, monsters: number, difficulty: string, heroClass: string): string {
-  return `apiVersion: game.k8s.example/v1alpha1
-kind: Dungeon
-metadata:
-  name: ${name}
-  namespace: default
-spec:
-  monsters: ${monsters}
-  difficulty: ${difficulty}
-  heroClass: ${heroClass}
-  # kro dungeon-graph RGD will reconcile this CR and create:
-  #   Namespace, Hero CR, Monster CR ×${monsters}, Boss CR,
-  #   Treasure CR, Modifier CR, GameConfig CM`
+// ─── Minimal YAML serialiser for display (no dependency) ─────────────────────
+function toYAML(obj: unknown, indent = 0): string {
+  const pad = '  '.repeat(indent)
+  if (obj === null || obj === undefined) return 'null'
+  if (typeof obj === 'boolean' || typeof obj === 'number') return String(obj)
+  if (typeof obj === 'string') {
+    // Quote strings that look like they need it
+    if (/[:{}\[\],&*#?|<>=!%@`]/.test(obj) || obj.includes('\n') || obj.trim() !== obj || obj === '') {
+      return JSON.stringify(obj)
+    }
+    return obj
+  }
+  if (Array.isArray(obj)) {
+    if (obj.length === 0) return '[]'
+    return obj.map(item => `\n${pad}- ${toYAML(item, indent + 1).replace(/^\n/, '')}`).join('')
+  }
+  if (typeof obj === 'object') {
+    const entries = Object.entries(obj as Record<string, unknown>)
+    if (entries.length === 0) return '{}'
+    return entries
+      .map(([k, v]) => {
+        const val = toYAML(v, indent + 1)
+        if (val.startsWith('\n') || (typeof v === 'object' && v !== null && !Array.isArray(v))) {
+          return `\n${pad}${k}:${val.startsWith('\n') ? val : ' ' + val}`
+        }
+        if (Array.isArray(v) && v.length > 0) {
+          return `\n${pad}${k}:${val}`
+        }
+        return `\n${pad}${k}: ${val}`
+      })
+      .join('')
+  }
+  return String(obj)
+}
+
+function objToYAML(obj: Record<string, unknown>): string {
+  return toYAML(obj, 0).replace(/^\n/, '')
 }
 
 // ─── Output line types ────────────────────────────────────────────────────────
@@ -84,11 +79,54 @@ interface OutputLine {
   annotationOpen?: boolean
 }
 
+// ─── Resource type registry ───────────────────────────────────────────────────
+// Maps singular/plural/shorthand kubectl names to our internal kind + fetch strategy
+interface ResourceSpec {
+  singular: string   // canonical singular name shown in output
+  plural: string     // plural form (shown in table header, 'get <plural>')
+  apiVersion: string
+  kind: string       // K8s Kind
+  fetchKind: string  // kind param for getDungeonResource
+  indexed: boolean   // requires ?index=N (monsters, loots)
+  countFromSpec?: (spec: DungeonCR['spec']) => number // how many exist
+}
+
+const RESOURCE_REGISTRY: Record<string, ResourceSpec> = {
+  // Dungeon (special — uses getDungeon, not getDungeonResource)
+  dungeon:   { singular: 'dungeon',  plural: 'dungeons',  apiVersion: 'game.k8s.example/v1alpha1', kind: 'Dungeon',   fetchKind: 'dungeon',  indexed: false },
+  dungeons:  { singular: 'dungeon',  plural: 'dungeons',  apiVersion: 'game.k8s.example/v1alpha1', kind: 'Dungeon',   fetchKind: 'dungeon',  indexed: false },
+
+  // Hero
+  hero:      { singular: 'hero',     plural: 'heroes',    apiVersion: 'game.k8s.example/v1alpha1', kind: 'Hero',      fetchKind: 'hero',     indexed: false },
+  heroes:    { singular: 'hero',     plural: 'heroes',    apiVersion: 'game.k8s.example/v1alpha1', kind: 'Hero',      fetchKind: 'hero',     indexed: false },
+
+  // Boss
+  boss:      { singular: 'boss',     plural: 'bosses',    apiVersion: 'game.k8s.example/v1alpha1', kind: 'Boss',      fetchKind: 'boss',     indexed: false },
+  bosses:    { singular: 'boss',     plural: 'bosses',    apiVersion: 'game.k8s.example/v1alpha1', kind: 'Boss',      fetchKind: 'boss',     indexed: false },
+
+  // Monster
+  monster:   { singular: 'monster',  plural: 'monsters',  apiVersion: 'game.k8s.example/v1alpha1', kind: 'Monster',   fetchKind: 'monster',  indexed: true,  countFromSpec: s => s.monsterHP?.length ?? 0 },
+  monsters:  { singular: 'monster',  plural: 'monsters',  apiVersion: 'game.k8s.example/v1alpha1', kind: 'Monster',   fetchKind: 'monster',  indexed: true,  countFromSpec: s => s.monsterHP?.length ?? 0 },
+
+  // Treasure
+  treasure:  { singular: 'treasure', plural: 'treasures', apiVersion: 'game.k8s.example/v1alpha1', kind: 'Treasure',  fetchKind: 'treasure', indexed: false },
+  treasures: { singular: 'treasure', plural: 'treasures', apiVersion: 'game.k8s.example/v1alpha1', kind: 'Treasure',  fetchKind: 'treasure', indexed: false },
+
+  // Modifier
+  modifier:  { singular: 'modifier', plural: 'modifiers', apiVersion: 'game.k8s.example/v1alpha1', kind: 'Modifier',  fetchKind: 'modifier', indexed: false },
+  modifiers: { singular: 'modifier', plural: 'modifiers', apiVersion: 'game.k8s.example/v1alpha1', kind: 'Modifier',  fetchKind: 'modifier', indexed: false },
+
+  // Loot
+  loot:      { singular: 'loot',     plural: 'loots',     apiVersion: 'game.k8s.example/v1alpha1', kind: 'Loot',      fetchKind: 'loot',     indexed: true,  countFromSpec: s => s.monsterHP?.length ?? 0 },
+  loots:     { singular: 'loot',     plural: 'loots',     apiVersion: 'game.k8s.example/v1alpha1', kind: 'Loot',      fetchKind: 'loot',     indexed: true,  countFromSpec: s => s.monsterHP?.length ?? 0 },
+}
+
 // ─── Command parser ───────────────────────────────────────────────────────────
 interface ParsedCmd {
-  verb: 'apply' | 'get' | 'describe' | 'patch' | 'delete' | 'cat' | 'help' | 'clear' | 'unknown'
+  verb: 'get' | 'describe' | 'cat' | 'help' | 'clear' | 'unknown'
   resourceType?: string
   resourceName?: string
+  outputFormat?: 'yaml' | 'table'  // -o yaml / --output=yaml
   flags: Record<string, string>
   raw: string
 }
@@ -99,43 +137,38 @@ function parseKubectl(raw: string): ParsedCmd {
   const positional: string[] = []
   let i = 0
 
-  // skip 'kubectl' if present
   if (parts[0] === 'kubectl') i = 1
 
-  const verb = (parts[i++] || 'help').toLowerCase() as ParsedCmd['verb']
+  const verb = (parts[i++] || 'help').toLowerCase()
 
   for (; i < parts.length; i++) {
     if (parts[i].startsWith('--')) {
       const [k, ...v] = parts[i].slice(2).split('=')
       flags[k] = v.join('=') || parts[++i] || ''
-    } else if (parts[i] === '-p' || parts[i] === '-f') {
-      flags[parts[i].slice(1)] = parts[++i] || ''
+    } else if (parts[i] === '-o' || parts[i] === '--output') {
+      flags['o'] = parts[++i] || ''
+    } else if (parts[i].startsWith('-o')) {
+      flags['o'] = parts[i].slice(2) || ''
+    } else if (parts[i] === '-f') {
+      flags['f'] = parts[++i] || ''
     } else if (!parts[i].startsWith('-')) {
       positional.push(parts[i])
     }
   }
 
-  // 'cat dungeon.yaml' special case
-  if ((verb as string) === 'cat') {
-    return { verb: 'cat', flags, raw }
-  }
-
-  // handle 'help' / 'clear'
-  if ((verb as string) === 'help' || (verb as string) === '--help' || (verb as string) === '-h') {
-    return { verb: 'help', flags, raw }
-  }
-  if ((verb as string) === 'clear') {
-    return { verb: 'clear', flags, raw }
-  }
+  if (verb === 'cat') return { verb: 'cat', flags, raw }
+  if (verb === 'help' || verb === '--help' || verb === '-h') return { verb: 'help', flags, raw }
+  if (verb === 'clear') return { verb: 'clear', flags, raw }
 
   const resourceType = positional[0]?.toLowerCase()
   const resourceName = positional[1]
+  const outputFormat = (flags['o'] || flags['output'] || '') === 'yaml' ? 'yaml' : 'table'
 
-  if (!['apply', 'get', 'describe', 'patch', 'delete'].includes(verb)) {
+  if (!['get', 'describe'].includes(verb)) {
     return { verb: 'unknown', resourceType, resourceName, flags, raw }
   }
 
-  return { verb: verb as ParsedCmd['verb'], resourceType, resourceName, flags, raw }
+  return { verb: verb as ParsedCmd['verb'], resourceType, resourceName, outputFormat, flags, raw }
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
@@ -150,24 +183,40 @@ export interface KubectlTerminalProps {
 let lineId = 0
 const nextId = () => ++lineId
 
-const HELP_TEXT = `Available commands:
-  kubectl apply -f dungeon.yaml         Create a new dungeon
-  kubectl get dungeons                  List your dungeons
-  kubectl get dungeon <name>            Show dungeon spec
-  kubectl describe dungeon <name>       Verbose dungeon info
-  kubectl patch dungeon <name> \\
-    -p '{"spec":{"attackTarget":"..."}}'  Attack (simplified)
-  kubectl delete dungeon <name>         Delete a dungeon
-  cat dungeon.yaml                      Show dungeon YAML template
-  clear                                 Clear terminal
-  help                                  Show this help
+const RESOURCE_TYPES = 'dungeons, heroes, monsters, bosses, treasures, modifiers, loots'
 
+const HELP_TEXT = `Read-only kubectl terminal. Supports all kro CRDs.
+
+  kubectl get dungeons                     List your dungeons
+  kubectl get dungeon <name>               Show dungeon spec fields
+  kubectl get dungeon <name> -o yaml       Full dungeon CR as YAML
+  kubectl get hero <dungeon>               Hero CR for a dungeon
+  kubectl get hero <dungeon> -o yaml       Full hero CR as YAML
+  kubectl get monsters <dungeon>           List all monster CRs
+  kubectl get monster <dungeon> <idx>      One monster CR (index 0..N)
+  kubectl get monster <dungeon> <idx> -o yaml
+  kubectl get boss <dungeon>               Boss CR
+  kubectl get boss <dungeon> -o yaml       Full boss CR as YAML
+  kubectl get treasure <dungeon>           Treasure CR
+  kubectl get modifier <dungeon>           Modifier CR
+  kubectl get loot <dungeon>               List loot CRs
+  kubectl get loot <dungeon> <idx> -o yaml One loot CR as YAML
+  kubectl describe dungeon <name>          Verbose dungeon info + kro status
+  kubectl describe hero <dungeon>          Verbose hero info
+  kubectl describe boss <dungeon>          Boss phases, HP, kro-derived state
+  kubectl describe monster <dungeon> <idx> Monster HP + entityState
+  cat dungeon.yaml                         Show dungeon YAML template
+  clear                                    Clear terminal
+  help                                     Show this help
+
+Resource types: ${RESOURCE_TYPES}
+Write operations (apply, delete, patch) are disabled — use the game UI.
 Every command shows a [kro] annotation explaining what happened.`
 
 export function KubectlTerminal({ dungeonNs, dungeonName, dungeonCR, onClose }: KubectlTerminalProps) {
   const [lines, setLines] = useState<OutputLine[]>([
-    { id: nextId(), kind: 'output', text: `# kubectl terminal — dungeon/${dungeonName} (#457)` },
-    { id: nextId(), kind: 'output', text: `# Type 'help' for available commands. Real API calls, kubectl-format output.` },
+    { id: nextId(), kind: 'output', text: `# kubectl terminal — ${dungeonName}  (read-only)` },
+    { id: nextId(), kind: 'output', text: `# Type 'help' for all commands. Covers all 9 kro CRDs.` },
     { id: nextId(), kind: 'output', text: '' },
   ])
   const [input, setInput] = useState('')
@@ -177,40 +226,56 @@ export function KubectlTerminal({ dungeonNs, dungeonName, dungeonCR, onClose }: 
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  // Scroll to bottom on new output
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [lines])
-
-  // Focus input on mount
-  useEffect(() => {
-    inputRef.current?.focus()
-  }, [])
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [lines])
+  useEffect(() => { inputRef.current?.focus() }, [])
 
   const addLine = useCallback((kind: LineKind, text: string, annotation?: KroAnnotation) => {
     setLines(prev => [...prev, { id: nextId(), kind, text, annotation, annotationOpen: false }])
+  }, [])
+
+  const addLineWithAnn = useCallback((text: string, annotation: KroAnnotation | null) => {
+    setLines(prev => [...prev, { id: nextId(), kind: 'output', text, annotation: annotation ?? undefined, annotationOpen: false }])
   }, [])
 
   const toggleAnnotation = useCallback((id: number) => {
     setLines(prev => prev.map(l => l.id === id ? { ...l, annotationOpen: !l.annotationOpen } : l))
   }, [])
 
-  const formatSpec = (spec: any): string => {
-    if (!spec) return '(no spec)'
-    const fields = [
-      `heroClass: ${spec.heroClass ?? '?'}`, `difficulty: ${spec.difficulty ?? '?'}`,
-      `heroHP: ${spec.heroHP ?? '?'} / ${spec.heroMana !== undefined ? `mana: ${spec.heroMana}` : ''}`,
-      `monsters: ${spec.monsters ?? '?'}  bossHP: ${spec.bossHP ?? '?'}`,
-      `currentRoom: ${spec.currentRoom ?? 1}`,
-    ]
-    return fields.join('\n  ')
+  // ─── YAML output helper ───────────────────────────────────────────────────
+  const showYAML = useCallback((obj: Record<string, unknown>, annotation: KroAnnotation | null) => {
+    // Strip managedFields and noisy metadata sub-fields for readability
+    const cleaned: Record<string, unknown> = { ...obj }
+    if (cleaned.metadata && typeof cleaned.metadata === 'object') {
+      const m = { ...(cleaned.metadata as Record<string, unknown>) }
+      delete m.managedFields
+      delete m.resourceVersion
+      delete m.uid
+      delete m.generation
+      delete m.creationTimestamp
+      cleaned.metadata = m
+    }
+    const yaml = objToYAML(cleaned)
+    setLines(prev => [
+      ...prev,
+      { id: nextId(), kind: 'yaml', text: yaml, annotation: annotation ?? undefined, annotationOpen: false },
+    ])
+  }, [])
+
+  // ─── Describe helpers ─────────────────────────────────────────────────────
+  function describeFields(fields: [string, unknown][], label?: string) {
+    if (label) addLine('output', `${label}:`)
+    for (const [k, v] of fields) {
+      if (v === undefined || v === null || v === '') continue
+      const val = typeof v === 'object' ? JSON.stringify(v) : String(v)
+      addLine('output', `  ${k}: ${val}`)
+    }
   }
 
+  // ─── Command execution ────────────────────────────────────────────────────
   const executeCommand = useCallback(async (raw: string) => {
     if (!raw.trim()) return
     setHistory(h => [raw, ...h.slice(0, 49)])
     setHistIdx(-1)
-
     addLine('prompt', `$ ${raw}`)
 
     const cmd = parseKubectl(raw)
@@ -219,180 +284,323 @@ export function KubectlTerminal({ dungeonNs, dungeonName, dungeonCR, onClose }: 
 
     try {
       // ── clear ──────────────────────────────────────────────────────────────
-      if (cmd.verb === 'clear') {
-        setLines([])
-        setBusy(false)
-        return
-      }
+      if (cmd.verb === 'clear') { setLines([]); setBusy(false); return }
 
       // ── help ──────────────────────────────────────────────────────────────
-      if (cmd.verb === 'help') {
-        HELP_TEXT.split('\n').forEach(l => addLine('output', l))
-        setBusy(false)
-        return
-      }
+      if (cmd.verb === 'help') { HELP_TEXT.split('\n').forEach(l => addLine('output', l)); setBusy(false); return }
 
       // ── cat dungeon.yaml ──────────────────────────────────────────────────
       if (cmd.verb === 'cat') {
-        const yaml = dungeonYAML(dungeonName, dungeonCR.spec?.monsters ?? 3, dungeonCR.spec?.difficulty ?? 'normal', dungeonCR.spec?.heroClass ?? 'warrior')
+        const spec = dungeonCR.spec
+        const yaml = `apiVersion: game.k8s.example/v1alpha1
+kind: Dungeon
+metadata:
+  name: ${dungeonName}
+  namespace: ${dungeonNs}
+spec:
+  monsters: ${spec?.monsters ?? 3}
+  difficulty: ${spec?.difficulty ?? 'normal'}
+  heroClass: ${spec?.heroClass ?? 'warrior'}
+  # kro dungeon-graph RGD will reconcile this CR and create:
+  #   Namespace, Hero CR, Monster CR ×${spec?.monsters ?? 3}, Boss CR,
+  #   Treasure CR, Modifier CR, GameConfig CM, specPatch nodes`
         addLine('yaml', yaml)
         setBusy(false)
         return
       }
 
-      // ── unknown ───────────────────────────────────────────────────────────
+      // ── write commands ────────────────────────────────────────────────────
       if (cmd.verb === 'unknown') {
-        addLine('error', `error: unknown command "${raw.split(' ')[0]}" — type 'help' to see available commands`)
-        setBusy(false)
-        return
-      }
-
-      // ── kubectl apply -f dungeon.yaml ─────────────────────────────────────
-      if (cmd.verb === 'apply') {
-        const fFlag = cmd.flags['f'] || ''
-        if (!fFlag.includes('dungeon')) {
-          addLine('error', `error: -f flag must reference dungeon.yaml`)
-          setBusy(false)
-          return
-        }
-        // Extract name from YAML flag or use current dungeon name variant
-        const newName = `${dungeonName}-t${Date.now() % 10000}`
-        try {
-          await createDungeon(newName, 3, 'normal', 'warrior', dungeonNs)
-          const line: OutputLine = {
-            id: nextId(), kind: 'output',
-            text: `dungeon.game.k8s.example/${newName} created`,
-            annotation: ann ?? undefined, annotationOpen: false,
-          }
-          setLines(prev => [...prev, line])
-        } catch (e: any) {
-          addLine('error', `Error from server: ${e.message}`)
-          setBusy(false)
-          return
+        const v = raw.trim().split(/\s+/)[cmd.raw.startsWith('kubectl') ? 1 : 0] ?? raw.split(' ')[0]
+        if (['apply', 'create', 'delete', 'patch', 'edit', 'replace'].includes(v)) {
+          addLine('error', `error: "${v}" is not supported — this terminal is read-only.`)
+          addLine('output', `Use the game UI to create and manage dungeons.`)
+        } else {
+          addLine('error', `error: unknown command "${v}" — type 'help' to see available commands`)
         }
         setBusy(false)
         return
       }
 
-      // ── kubectl get dungeons ──────────────────────────────────────────────
-      if (cmd.verb === 'get' && (!cmd.resourceType || cmd.resourceType === 'dungeons' || cmd.resourceType === 'dungeon') && !cmd.resourceName) {
-        try {
-          const list = await listDungeons()
-          if (list.length === 0) {
-            addLine('output', 'No resources found in default namespace.')
-            setBusy(false)
-            return
-          }
-          const header = 'NAME                          DIFFICULTY   BOSS-STATE    MONSTERS   MOD'
-          addLine('output', header)
-          addLine('output', '─'.repeat(header.length))
-          for (const d of list) {
-            const name = d.name.padEnd(30)
-            const diff = (d.difficulty ?? '?').padEnd(12)
-            const boss = (d.bossState ?? '?').padEnd(13)
-            const mons = String(d.livingMonsters ?? '?').padEnd(10)
-            const mod = d.modifier ?? 'none'
-            addLine('output', `${name} ${diff} ${boss} ${mons} ${mod}`)
-          }
-          const lineWithAnn: OutputLine = { id: nextId(), kind: 'output', text: '', annotation: ann ?? undefined, annotationOpen: false }
-          setLines(prev => [...prev, lineWithAnn])
-        } catch (e: any) {
-          addLine('error', `Error from server: ${e.message}`)
+      // ── kubectl get / describe ─────────────────────────────────────────────
+      if (cmd.verb !== 'get' && cmd.verb !== 'describe') {
+        addLine('error', `error: unknown verb "${cmd.verb}"`)
+        setBusy(false)
+        return
+      }
+
+      const rt = cmd.resourceType
+      const rn = cmd.resourceName   // could be index for monsters
+      const yaml = cmd.outputFormat === 'yaml'
+
+      if (!rt) {
+        addLine('error', `error: must specify the type of resource to get`)
+        addLine('output', `Resource types: ${RESOURCE_TYPES}`)
+        setBusy(false)
+        return
+      }
+
+      const spec = RESOURCE_REGISTRY[rt]
+
+      // ── kubectl get dungeons (list) ───────────────────────────────────────
+      if ((rt === 'dungeons' || rt === 'dungeon') && !rn && cmd.verb === 'get') {
+        const list = await listDungeons()
+        if (list.length === 0) { addLine('output', 'No resources found.'); addLineWithAnn('', ann); setBusy(false); return }
+        const header = 'NAME                          DIFFICULTY   BOSS-STATE    MONSTERS   ROOM   MOD'
+        addLine('output', header)
+        addLine('output', '─'.repeat(header.length))
+        for (const d of list) {
+          addLine('output',
+            `${d.name.padEnd(30)} ${(d.difficulty ?? '?').padEnd(12)} ${(d.bossState ?? '?').padEnd(13)} ${String(d.livingMonsters ?? '?').padEnd(6)} ?      ${d.modifier ?? 'none'}`
+          )
         }
+        addLineWithAnn('', ann)
         setBusy(false)
         return
       }
 
       // ── kubectl get/describe dungeon <name> ───────────────────────────────
-      if ((cmd.verb === 'get' || cmd.verb === 'describe') && cmd.resourceName) {
-        try {
-          const d = await getDungeon(dungeonNs, cmd.resourceName)
-          const spec = d.spec || {}
-          if (cmd.verb === 'describe') {
-            addLine('output', `Name:         ${d.metadata.name}`)
-            addLine('output', `Namespace:    ${d.metadata.namespace}`)
-            addLine('output', `API Version:  game.k8s.example/v1alpha1`)
-            addLine('output', `Kind:         Dungeon`)
-            addLine('output', ``)
-            addLine('output', `Spec:`)
-            addLine('output', `  ${formatSpec(spec)}`)
-            addLine('output', ``)
-            addLine('output', `Status (kro-derived):`)
-            if (d.status) {
-              for (const [k, v] of Object.entries(d.status)) {
-                addLine('output', `  ${k}: ${v}`)
-              }
-            }
-          } else {
-            const name = (d.metadata.name ?? '').padEnd(30)
-            const cls = (spec.heroClass ?? '?').padEnd(12)
-            const diff = (spec.difficulty ?? '?').padEnd(12)
-            const hp = String(spec.heroHP ?? '?').padEnd(6)
-            const bossHp = String(spec.bossHP ?? '?').padEnd(9)
-            const room = String(spec.currentRoom ?? 1)
-            addLine('output', 'NAME                          HERO-CLASS   DIFFICULTY   HP     BOSS-HP   ROOM')
-            addLine('output', `${name} ${cls} ${diff} ${hp} ${bossHp} ${room}`)
+      if ((rt === 'dungeon' || rt === 'dungeons') && rn) {
+        const d = await getDungeon(dungeonNs, rn)
+        const s = d.spec || {}
+        if (yaml || cmd.verb === 'get' && yaml) {
+          showYAML(d as unknown as Record<string, unknown>, ann)
+        } else if (cmd.verb === 'describe') {
+          addLine('output', `Name:         ${d.metadata.name}`)
+          addLine('output', `Namespace:    ${d.metadata.namespace}`)
+          addLine('output', `APIVersion:   game.k8s.example/v1alpha1`)
+          addLine('output', `Kind:         Dungeon`)
+          addLine('output', '')
+          describeFields([
+            ['heroClass', s.heroClass], ['difficulty', s.difficulty],
+            ['heroHP', s.heroHP], ['heroMana', s.heroMana],
+            ['monsters', s.monsters], ['bossHP', s.bossHP],
+            ['currentRoom', s.currentRoom ?? 1],
+            ['modifier', s.modifier], ['inventory', s.inventory || '(empty)'],
+            ['poisonTurns', s.poisonTurns], ['burnTurns', s.burnTurns], ['stunTurns', s.stunTurns],
+            ['xpEarned', s.xpEarned],
+          ], 'Spec')
+          addLine('output', '')
+          if (d.status) {
+            describeFields(Object.entries(d.status), 'Status (kro-derived)')
           }
-          const lineWithAnn: OutputLine = { id: nextId(), kind: 'output', text: '', annotation: ann ?? undefined, annotationOpen: false }
-          setLines(prev => [...prev, lineWithAnn])
-        } catch (e: any) {
-          const msg = e.message || ''
-          if (msg.includes('404') || msg.includes('not found')) {
-            addLine('error', `Error from server (NotFound): dungeons "${cmd.resourceName}" not found`)
-          } else if (msg.includes('403') || msg.includes('forbidden')) {
-            addLine('error', `Error from server (Forbidden): dungeons "${cmd.resourceName}" is forbidden: user does not own this resource`)
-          } else {
-            addLine('error', `Error from server: ${e.message}`)
-          }
+          addLineWithAnn('', ann)
+        } else {
+          // get (table row)
+          addLine('output', 'NAME                          HERO-CLASS   DIFFICULTY   HP     BOSS-HP   ROOM')
+          addLine('output',
+            `${(d.metadata.name ?? '').padEnd(30)} ${(s.heroClass ?? '?').padEnd(12)} ${(s.difficulty ?? '?').padEnd(12)} ${String(s.heroHP ?? '?').padEnd(6)} ${String(s.bossHP ?? '?').padEnd(9)} ${s.currentRoom ?? 1}`
+          )
+          addLineWithAnn('', ann)
         }
         setBusy(false)
         return
       }
 
-      // ── kubectl patch dungeon <name> ... ──────────────────────────────────
-      if (cmd.verb === 'patch' && cmd.resourceName) {
-        // For demo purposes patch = describe current state (real attack goes through UI)
-        addLine('output', `dungeon.game.k8s.example/${cmd.resourceName} patched`)
-        addLine('output', `# Note: use the game UI to submit attacks — spec mutations flow through`)
-        addLine('output', `# the backend → kro reconcile loop → specPatch CEL writes the result.`)
-        const lineWithAnn: OutputLine = { id: nextId(), kind: 'output', text: '', annotation: ann ?? undefined, annotationOpen: false }
-        setLines(prev => [...prev, lineWithAnn])
+      // ── monsters list ─────────────────────────────────────────────────────
+      if ((rt === 'monsters' || rt === 'monster') && !rn && cmd.verb === 'get') {
+        const count = dungeonCR.spec?.monsterHP?.length ?? 0
+        if (count === 0) { addLine('output', 'No monster CRs found.'); addLineWithAnn('', ann); setBusy(false); return }
+        const header = 'NAME                               INDEX   HP    STATE'
+        addLine('output', header)
+        addLine('output', '─'.repeat(header.length))
+        const hps = dungeonCR.spec?.monsterHP ?? []
+        for (let idx = 0; idx < count; idx++) {
+          const name = `${dungeonName}-monster-${idx}`
+          const hp = hps[idx] ?? '?'
+          const state = (typeof hp === 'number' && hp > 0) ? 'alive' : 'dead'
+          addLine('output', `${name.padEnd(35)} ${String(idx).padEnd(7)} ${String(hp).padEnd(5)} ${state}`)
+        }
+        addLineWithAnn('', ann)
         setBusy(false)
         return
       }
 
-      // ── kubectl delete dungeon <name> ─────────────────────────────────────
-      if (cmd.verb === 'delete' && cmd.resourceName) {
-        try {
-          await deleteDungeon(dungeonNs, cmd.resourceName)
-          const lineWithAnn: OutputLine = {
-            id: nextId(), kind: 'output',
-            text: `dungeon.game.k8s.example "${cmd.resourceName}" deleted`,
-            annotation: ann ?? undefined, annotationOpen: false,
-          }
-          setLines(prev => [...prev, lineWithAnn])
-        } catch (e: any) {
-          const msg = e.message || ''
-          if (msg.includes('404') || msg.includes('not found')) {
-            addLine('error', `Error from server (NotFound): dungeons "${cmd.resourceName}" not found`)
-          } else if (msg.includes('403') || msg.includes('forbidden')) {
-            addLine('error', `Error from server (Forbidden): dungeons "${cmd.resourceName}" is forbidden`)
-          } else {
-            addLine('error', `Error from server: ${e.message}`)
+      // ── loot list ─────────────────────────────────────────────────────────
+      if ((rt === 'loot' || rt === 'loots') && !rn && cmd.verb === 'get') {
+        const count = dungeonCR.spec?.monsterHP?.length ?? 0
+        const header = 'NAME                                    TYPE'
+        addLine('output', header)
+        addLine('output', '─'.repeat(header.length))
+        let found = 0
+        for (let idx = 0; idx < count; idx++) {
+          const res = await getDungeonResource(dungeonNs, dungeonName, 'lootinfo', idx) as any
+          if (res) {
+            found++
+            const lootName = `${dungeonName}-monster-${idx}-loot`
+            const typeStr = res.data?.type ?? res.data?.itemType ?? '?'
+            addLine('output', `${lootName.padEnd(40)} ${typeStr}`)
           }
         }
+        // Boss loot
+        const bossLoot = await getDungeonResource(dungeonNs, dungeonName, 'bosslootinfo') as any
+        if (bossLoot) {
+          found++
+          const lootName = `${dungeonName}-boss-loot`
+          const typeStr = bossLoot.data?.type ?? bossLoot.data?.itemType ?? '?'
+          addLine('output', `${lootName.padEnd(40)} ${typeStr}`)
+        }
+        if (found === 0) addLine('output', 'No loot CRs found (monsters not yet killed).')
+        addLineWithAnn('', ann)
         setBusy(false)
         return
       }
 
-      // Fallthrough — unknown resource type
-      addLine('error', `error: the server doesn't have a resource type "${cmd.resourceType || cmd.verb}"`)
+      // ── single-resource get/describe (hero, boss, treasure, modifier) ─────
+      if (!spec) {
+        addLine('error', `error: the server doesn't have a resource type "${rt}"`)
+        addLine('output', `Resource types: ${RESOURCE_TYPES}`)
+        setBusy(false)
+        return
+      }
+
+      // Determine dungeon name and index from arguments
+      // Pattern: kubectl get monster <dungeon-name> <index>
+      //          kubectl get hero <dungeon-name>
+      // rn = first positional after resource type = dungeon name OR index if already in current dungeon
+      let targetDungeon = dungeonName
+      let targetIdx: number | undefined
+
+      if (spec.indexed) {
+        // kubectl get monster <dungeon-name> <idx>  OR  kubectl get monster <idx>  (uses current dungeon)
+        if (rn !== undefined) {
+          const maybeIdx = parseInt(rn, 10)
+          if (!isNaN(maybeIdx)) {
+            // rn is an index — use current dungeon
+            targetIdx = maybeIdx
+          } else {
+            // rn is a dungeon name, next positional (if any) from raw
+            targetDungeon = rn
+            // extract the index from the raw parts: kubectl get monster <dungeon> <idx>
+            const rawParts = raw.trim().split(/\s+/)
+            const startIdx = rawParts[0] === 'kubectl' ? 3 : 2
+            const third = rawParts[startIdx]
+            if (third && !third.startsWith('-')) targetIdx = parseInt(third, 10) || 0
+            else targetIdx = 0
+          }
+        } else {
+          targetIdx = 0
+        }
+      } else {
+        if (rn) targetDungeon = rn
+      }
+
+      let resource: Record<string, unknown> | null = null
+      try {
+        resource = await getDungeonResource(
+          dungeonNs, targetDungeon,
+          spec.fetchKind as any,
+          spec.indexed ? targetIdx : undefined
+        ) as Record<string, unknown> | null
+      } catch {
+        resource = null
+      }
+
+      if (!resource) {
+        const qualifier = spec.indexed ? ` (index ${targetIdx})` : ''
+        addLine('error', `Error from server (NotFound): ${spec.singular} "${targetDungeon}"${qualifier} not found`)
+        setBusy(false)
+        return
+      }
+
+      if (yaml) {
+        showYAML(resource, ann)
+        setBusy(false)
+        return
+      }
+
+      if (cmd.verb === 'describe') {
+        const meta = resource.metadata as any ?? {}
+        const rSpec = resource.spec as any ?? {}
+        const rStatus = resource.status as any ?? {}
+        const rData = resource.data as any // for ConfigMap-backed resources
+
+        addLine('output', `Name:         ${meta.name ?? '?'}`)
+        addLine('output', `Namespace:    ${meta.namespace ?? '?'}`)
+        addLine('output', `APIVersion:   ${spec.apiVersion}`)
+        addLine('output', `Kind:         ${spec.kind}`)
+        addLine('output', '')
+
+        if (Object.keys(rSpec).length > 0) {
+          describeFields(Object.entries(rSpec), 'Spec')
+          addLine('output', '')
+        } else if (rData) {
+          describeFields(Object.entries(rData), 'Data (kro-computed ConfigMap)')
+          addLine('output', '')
+        }
+        if (Object.keys(rStatus).length > 0) {
+          describeFields(Object.entries(rStatus), 'Status (kro-derived)')
+        }
+        addLineWithAnn('', ann)
+      } else {
+        // table row for single resource
+        const meta = resource.metadata as any ?? {}
+        const rSpec = resource.spec as any ?? {}
+        const rStatus = resource.status as any ?? resource.data as any ?? {}
+        const name = meta.name ?? '?'
+
+        switch (rt) {
+          case 'hero': case 'heroes': {
+            addLine('output', 'NAME                               CLASS        HP     MANA   MAX-HP')
+            addLine('output',
+              `${name.padEnd(35)} ${(rSpec.heroClass ?? '?').padEnd(12)} ${String(rSpec.hp ?? '?').padEnd(6)} ${String(rSpec.mana ?? '?').padEnd(6)} ${rStatus.maxHP ?? '?'}`
+            )
+            break
+          }
+          case 'boss': case 'bosses': {
+            addLine('output', 'NAME                               HP     MAX-HP   STATE     PHASE    MULT')
+            addLine('output',
+              `${name.padEnd(35)} ${String(rSpec.hp ?? '?').padEnd(6)} ${String(rSpec.maxHP ?? '?').padEnd(8)} ${(rStatus.entityState ?? '?').padEnd(9)} ${(rStatus.phase ?? rStatus.bossPhase ?? '?').padEnd(8)} ${rStatus.damageMultiplier ?? '?'}`
+            )
+            break
+          }
+          case 'monster': case 'monsters': {
+            const idx = spec.indexed ? (targetIdx ?? 0) : 0
+            addLine('output', 'NAME                               INDEX   HP    STATE')
+            addLine('output',
+              `${name.padEnd(35)} ${String(idx).padEnd(7)} ${String(rSpec.hp ?? '?').padEnd(5)} ${rStatus.entityState ?? '?'}`
+            )
+            break
+          }
+          case 'treasure': case 'treasures': {
+            addLine('output', 'NAME                               STATE')
+            addLine('output', `${name.padEnd(35)} ${rStatus.state ?? '?'}`)
+            break
+          }
+          case 'modifier': case 'modifiers': {
+            addLine('output', 'NAME                               TYPE                   EFFECT')
+            const effect = (rStatus.effect ?? '?').slice(0, 50)
+            addLine('output', `${name.padEnd(35)} ${(rSpec.modifierType ?? '?').padEnd(22)} ${effect}`)
+            break
+          }
+          case 'loot': case 'loots': {
+            addLine('output', 'NAME                               TYPE         RARITY')
+            const lootSpec = rSpec as any
+            addLine('output',
+              `${name.padEnd(35)} ${(lootSpec.itemType ?? '?').padEnd(12)} ${lootSpec.rarity ?? '?'}`
+            )
+            break
+          }
+          default: {
+            addLine('output', `${name}`)
+          }
+        }
+        addLineWithAnn('', ann)
+      }
 
     } catch (e: any) {
-      addLine('error', `error: ${e.message}`)
+      const msg = e.message || ''
+      if (msg.includes('404') || msg.includes('not found')) {
+        addLine('error', `Error from server (NotFound): resource not found`)
+      } else if (msg.includes('403') || msg.includes('forbidden')) {
+        addLine('error', `Error from server (Forbidden): you do not own this resource`)
+      } else {
+        addLine('error', `error: ${msg}`)
+      }
     }
     setBusy(false)
-  }, [addLine, dungeonNs, dungeonName, dungeonCR])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [addLine, addLineWithAnn, showYAML, dungeonNs, dungeonName, dungeonCR])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
@@ -415,9 +623,8 @@ export function KubectlTerminal({ dungeonNs, dungeonName, dungeonCR, onClose }: 
       })
     } else if (e.key === 'Tab') {
       e.preventDefault()
-      // Basic autocomplete: if starts with 'kubectl ', suggest dungeon name
-      if (input.includes('<name>') || (input.endsWith(' ') && input.includes('dungeon '))) {
-        setInput(input.replace('<name>', dungeonName))
+      if (input.includes('<name>') || input.includes('<dungeon>')) {
+        setInput(input.replace('<name>', dungeonName).replace('<dungeon>', dungeonName))
       } else if (input === '' || input === 'k') {
         setInput('kubectl ')
       }
@@ -430,6 +637,7 @@ export function KubectlTerminal({ dungeonNs, dungeonName, dungeonCR, onClose }: 
         <span className="kubectl-terminal-title">
           <span className="kro-insight-badge" style={{ fontSize: 5 }}>kro</span>
           {' '}kubectl terminal — {dungeonName}
+          <span style={{ opacity: 0.5, fontSize: 8, marginLeft: 6 }}>(read-only)</span>
         </span>
         <button className="modal-close" aria-label="Close terminal" onClick={onClose}>✕</button>
       </div>
