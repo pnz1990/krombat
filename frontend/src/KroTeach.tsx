@@ -1487,6 +1487,19 @@ GET /api/v1/run-card/<ns>/<dungeon-name>?concepts=N
 # To open the demo script:
 # github.com/pnz1990/krombat/blob/main/Docs/demo/DEMO.md`,
   },
+  {
+    title: 'Reconcile Stream — See kro Live',
+    body: "Open the Reconcile Stream tab in the event log while playing. Every combat turn triggers a kro reconcile. The stream shows each resource that changed, its new resource version, and the exact CEL expression that drove the change — field by field, in real time.",
+    snippet: `[14:22:01] configmap/my-dungeon-monster-0  MODIFIED  rv:1847
+  data.entityState: alive → dead
+    RGD: monster-graph
+    CEL: schema.spec.hp > 0 ? "alive" : "dead"
+
+[14:22:01] boss/my-dungeon-boss  MODIFIED  rv:1848
+  spec.monstersAlive: 1 → 0
+    RGD: dungeon-graph (bossCR template)
+    CEL: size(schema.spec.monsterHP.filter(hp, hp > 0))`,
+  },
 ]
 
 export function KroOnboardingOverlay({ onDismiss, isAuthenticated }: { onDismiss: () => void; isAuthenticated: boolean }) {

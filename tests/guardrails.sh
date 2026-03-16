@@ -47,16 +47,17 @@ grep -rq '\.Pods(\|\.Secrets(\|\.Jobs(\|\.Namespaces(\|\.ConfigMaps(' "$BACKEND_
   && fail "Backend directly accesses Pods/Secrets/Jobs/Namespaces" \
   || pass "No direct native resource access"
 
-# Only game.k8s.example GVRs defined
-# The check looks for GroupVersionResource literals where Group is not game.k8s.example.
-# Whitelisted exceptions (both intentional and covered by dedicated RBAC):
-#   leaderboardGVR — core group configmap for leaderboard, protected by rpg-backend-leaderboard Role
-#   coreGrp/coreVer GVRs — read-only K8s log viewer in the kro teaching layer
-# Lines using the 'grp' variable are game.k8s.example GVRs (grp := "game.k8s.example").
-NON_GAME_GVR=$(grep -rn "GroupVersionResource{" "$BACKEND_DIR/internal/" 2>/dev/null \
-  | grep -v "game.k8s.example" \
-  | grep -v 'Group: grp\|Group: coreGrp\|leaderboardGVR' \
-  || true)
+ # Only game.k8s.example GVRs defined
+ # The check looks for GroupVersionResource literals where Group is not game.k8s.example.
+ # Whitelisted exceptions (both intentional and covered by dedicated RBAC):
+ #   leaderboardGVR — core group configmap for leaderboard, protected by rpg-backend-leaderboard Role
+ #   coreGrp/coreVer GVRs — read-only K8s log viewer in the kro teaching layer
+ #   reconcile_diff.go — watches core ConfigMaps in dungeon namespaces for the reconcile stream (#462)
+ # Lines using the 'grp' variable are game.k8s.example GVRs (grp := "game.k8s.example").
+ NON_GAME_GVR=$(grep -rn "GroupVersionResource{" "$BACKEND_DIR/internal/" 2>/dev/null \
+   | grep -v "game.k8s.example" \
+   | grep -v 'Group: grp\|Group: coreGrp\|leaderboardGVR\|reconcile_diff.go' \
+   || true)
 [ -z "$NON_GAME_GVR" ] \
   && pass "All GVR definitions are game.k8s.example (leaderboard and kro-inspector CMs whitelisted)" \
   || fail "Non-game GVR found: $NON_GAME_GVR"
@@ -869,6 +870,73 @@ grep -q 'kubectl Terminal\|kubectl terminal' Docs/demo/DEMO.md \
 grep -q 'Running a Demo' frontend/src/KroTeach.tsx \
   && pass "#458: intro modal has demo slide in KroTeach.tsx" \
   || fail "#458: intro modal missing demo slide in KroTeach.tsx"
+
+# ─── #462 Reconcile Stream guardrails ────────────────────────────────────────
+
+# Backend must have reconcile_diff.go watcher
+[ -f "backend/internal/k8s/reconcile_diff.go" ] \
+  && pass "#462: reconcile_diff.go exists in backend/internal/k8s/" \
+  || fail "#462: reconcile_diff.go missing from backend/internal/k8s/"
+
+# Backend must export StartReconcileDiffWatcher
+grep -q 'StartReconcileDiffWatcher' backend/internal/k8s/reconcile_diff.go \
+  && pass "#462: StartReconcileDiffWatcher exported from reconcile_diff.go" \
+  || fail "#462: StartReconcileDiffWatcher missing from reconcile_diff.go"
+
+# main.go must call StartReconcileDiffWatcher
+grep -q 'StartReconcileDiffWatcher' backend/cmd/main.go \
+  && pass "#462: main.go calls StartReconcileDiffWatcher" \
+  || fail "#462: main.go missing StartReconcileDiffWatcher call"
+
+# Backend must broadcast RECONCILE_DIFF event type
+grep -q 'RECONCILE_DIFF' backend/internal/k8s/reconcile_diff.go \
+  && pass "#462: RECONCILE_DIFF event type used in reconcile_diff.go" \
+  || fail "#462: RECONCILE_DIFF event type missing from reconcile_diff.go"
+
+# Frontend must accumulate reconcile stream state
+grep -q 'reconcileStream' frontend/src/App.tsx \
+  && pass "#462: reconcileStream state in App.tsx" \
+  || fail "#462: reconcileStream state missing from App.tsx"
+
+# Frontend must have Reconcile Stream tab button
+grep -q 'reconcile-tab' frontend/src/App.tsx \
+  && pass "#462: reconcile-tab button in App.tsx" \
+  || fail "#462: reconcile-tab button missing from App.tsx"
+
+# Frontend must render field diffs with color coding
+grep -q 'reconcile-field' frontend/src/App.tsx \
+  && pass "#462: reconcile-field elements rendered in App.tsx" \
+  || fail "#462: reconcile-field rendering missing from App.tsx"
+
+# Frontend must have Why? expand button
+grep -q 'reconcile-why-btn' frontend/src/App.tsx \
+  && pass "#462: Why? button (.reconcile-why-btn) in App.tsx" \
+  || fail "#462: Why? button missing from App.tsx"
+
+# Frontend must have Pause / Copy JSON controls
+grep -q 'reconcile-btn' frontend/src/App.tsx \
+  && pass "#462: Pause/Copy controls (.reconcile-btn) in App.tsx" \
+  || fail "#462: Pause/Copy controls missing from App.tsx"
+
+# CSS must have reconcile-stream styles
+grep -q 'reconcile-stream-panel\|reconcile-entry\|reconcile-why-panel' frontend/src/index.css \
+  && pass "#462: Reconcile Stream CSS styles in index.css" \
+  || fail "#462: Reconcile Stream CSS styles missing from index.css"
+
+# Help modal must document Reconcile Stream
+grep -q 'Reconcile Stream' frontend/src/App.tsx \
+  && pass "#462: Help modal documents Reconcile Stream" \
+  || fail "#462: Help modal missing Reconcile Stream documentation"
+
+# Intro tour must have Reconcile Stream slide
+grep -q 'Reconcile Stream' frontend/src/KroTeach.tsx \
+  && pass "#462: KroTeach.tsx intro tour has Reconcile Stream slide" \
+  || fail "#462: KroTeach.tsx missing Reconcile Stream intro slide"
+
+# Journey 39 must exist
+[ -f "tests/e2e/journeys/39-reconcile-stream.js" ] \
+  && pass "#462: tests/e2e/journeys/39-reconcile-stream.js exists" \
+  || fail "#462: tests/e2e/journeys/39-reconcile-stream.js missing"
 
 # --- Summary ---
 

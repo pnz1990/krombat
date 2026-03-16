@@ -2198,3 +2198,99 @@ body {
 }
 .run-card-share-btn:hover { background: rgba(91,140,245,0.18); }
 .run-card-share-btn:active { background: rgba(91,140,245,0.25); }
+
+/* ── #462 Reconcile Stream tab ──────────────────────────────────────────── */
+.log-tab.reconcile-tab { color: #5dade2; }
+.log-tab.reconcile-tab.active { color: #00d4ff; }
+.reconcile-stream-panel { display: flex; flex-direction: column; gap: 4px; }
+.reconcile-stream-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  background: #0a0a1a;
+  border: 1px solid #1a1a2e;
+  border-top: none;
+}
+.reconcile-btn {
+  font-size: 7px;
+  padding: 3px 8px;
+  background: #0a0a1a;
+  border: 1px solid #333;
+  color: #888;
+  cursor: pointer;
+  font-family: inherit;
+  border-radius: 3px;
+}
+.reconcile-btn:hover { border-color: #00d4ff; color: #00d4ff; }
+.reconcile-btn.paused { border-color: #f1c40f; color: #f1c40f; }
+.reconcile-paused-label { font-size: 7px; color: #f1c40f; font-family: 'Press Start 2P', monospace; }
+.reconcile-log { font-family: 'Courier New', monospace; }
+.reconcile-empty { color: var(--text-dim); font-style: italic; }
+.reconcile-entry {
+  padding: 4px 6px;
+  border-bottom: 1px solid #111;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.reconcile-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.reconcile-ts { font-size: 8px; color: #555; }
+.reconcile-action { font-size: 7px; padding: 1px 4px; border-radius: 2px; font-weight: bold; }
+.reconcile-action-added { background: rgba(46,204,113,0.15); color: #2ecc71; }
+.reconcile-action-modified { background: rgba(241,196,15,0.15); color: #f1c40f; }
+.reconcile-action-deleted { background: rgba(231,76,60,0.15); color: #e74c3c; }
+.reconcile-resource { font-size: 8px; color: #5b8cf5; font-family: 'Courier New', monospace; }
+.reconcile-rv { font-size: 7px; color: #555; }
+.reconcile-field {
+  padding: 1px 0 1px 6px;
+  font-size: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 3px;
+}
+.reconcile-path { color: #8b949e; }
+.reconcile-old { color: #e74c3c; text-decoration: line-through; opacity: 0.7; }
+.reconcile-arrow { color: #555; }
+.reconcile-new { font-weight: bold; }
+.reconcile-why-btn {
+  font-size: 6px;
+  padding: 1px 5px;
+  background: rgba(0,212,255,0.08);
+  border: 1px solid #00d4ff;
+  color: #00d4ff;
+  cursor: pointer;
+  font-family: inherit;
+  border-radius: 3px;
+  margin-left: 4px;
+}
+.reconcile-why-btn:hover { background: rgba(0,212,255,0.18); }
+.reconcile-why-panel {
+  width: 100%;
+  margin-top: 4px;
+  padding: 6px 8px;
+  background: #0d1117;
+  border: 1px solid #21262d;
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.reconcile-why-rgd { font-size: 7px; color: #8b949e; }
+.reconcile-why-cel {
+  font-family: 'Courier New', monospace;
+  font-size: 8px;
+  color: #e8c46a;
+  background: #0a0e17;
+  padding: 4px 6px;
+  border-radius: 3px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+}
