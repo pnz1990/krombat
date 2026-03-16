@@ -38,6 +38,9 @@ export type KroConceptId =
   | 'cel-filter'
   | 'cel-string-ops'
   | 'spec-patch'
+  | 'taunt-state-machine'
+  | 'mana-lifecycle'
+  | 'cel-probability'
 
 export interface KroConcept {
   id: KroConceptId
@@ -695,6 +698,78 @@ stringData:
     burnTurns:   "\${schema.spec.burnTurns > 0   ? schema.spec.burnTurns - 1   : 0}"`,
     learnMore: 'manifests/rgds/dungeon-graph.yaml — all 9 specPatch nodes',
   },
+  'taunt-state-machine': {
+    id: 'taunt-state-machine',
+    title: 'specPatch Counter — Warrior Taunt Lifecycle',
+    tagline: 'CEL runs a 3-state counter in spec: 0 (idle) → 2 (queued) → 1 (active) → 0 (expired)',
+    body: `When you activate Taunt, the backend patches \`spec.tauntActive = 2\`. On every subsequent attack turn, the \`advanceTaunt\` specPatch node in dungeon-graph fires and decrements it:
+
+- **tauntActive = 2** — queued, damage reduction not yet applied
+- **tauntActive = 1** — active this combat turn (60% damage reduction applied in combatResolve)
+- **tauntActive = 0** — expired, ability available again
+
+This is a **3-state CEL counter** implemented entirely in kro specPatch nodes. No backend code tracks the cooldown — kro reconciles it from spec on every attack. The Warrior's class identity is a state machine in YAML.`,
+    snippet: `# dungeon-graph.yaml — advanceTaunt specPatch
+# Fires when tauntActive > 0, decrements counter each attack turn.
+- id: advanceTaunt
+  type: specPatch
+  includeWhen:
+    - "\${schema.spec.tauntActive > 0 && schema.spec.combatProcessedSeq > 0}"
+  patch:
+    tauntActive: "\${schema.spec.tauntActive - 1}"
+# combatResolve reads tauntActive == 1 to apply 50% damage reduction:
+# heroDmgTaken: "\${tauntActive == 1 ? int(baseDmg * 0.5) : int(baseDmg)}"`,
+    learnMore: 'manifests/rgds/dungeon-graph.yaml — advanceTaunt and combatResolve specPatch nodes',
+  },
+  'mana-lifecycle': {
+    id: 'mana-lifecycle',
+    title: 'CEL bind() — Mage Mana as a Bounded Counter',
+    tagline: 'cel.bind() eliminates repeated sub-expressions and makes CEL readable at scale',
+    body: `The Mage's heal ability must clamp the result to \`maxMana\` — a value read from \`hero-graph\` status via resource chaining. Without \`cel.bind()\`, the expression repeats the same sub-expressions multiple times. With bind:
+
+\`\`\`
+cel.bind(newMana, schema.spec.heroMana + 2,
+  newMana > int(heroCR.status.maxMana)
+    ? int(heroCR.status.maxMana)
+    : newMana)
+\`\`\`
+
+\`cel.bind(var, expr, body)\` evaluates \`expr\` once, binds it to \`var\`, then evaluates \`body\` with \`var\` in scope. It reads like a \`let\` binding. This pattern appears throughout dungeon-graph wherever a computed intermediate value is needed more than once — boss HP percentages, damage clamps, room-2 scaling.`,
+    snippet: `# dungeon-graph.yaml — abilityResolve specPatch (mage heal)
+- id: abilityResolve
+  type: specPatch
+  includeWhen:
+    - "\${schema.spec.lastAbility == 'heal' && schema.spec.heroMana >= 2}"
+  patch:
+    # cel.bind avoids computing (heroMana+2) twice
+    heroMana: "\${cel.bind(m, schema.spec.heroMana - 2 + 1,
+      m > int(heroCR.status.?maxMana.orValue('8')) ? int(heroCR.status.?maxMana.orValue('8')) : m)}"
+    heroHP:   "\${cel.bind(h, schema.spec.heroHP + 40,
+      h > int(heroCR.status.?maxHP.orValue('120')) ? int(heroCR.status.?maxHP.orValue('120')) : h)}"`,
+    learnMore: 'manifests/rgds/dungeon-graph.yaml — abilityResolve specPatch, hero-graph RGD',
+  },
+  'cel-probability': {
+    id: 'cel-probability',
+    title: 'Seeded Probability — Rogue Dodge in CEL',
+    tagline: 'A deterministic random value modulo 100 gives a percentage chance in pure CEL',
+    body: `The Rogue has a 25% chance to dodge counter-attacks. This is implemented in the \`combatResolve\` specPatch using \`random.seededInt()\`:
+
+\`\`\`
+cel.bind(dodgeRoll, random.seededInt(0, 99, attackUID + "dodge"),
+  dodgeRoll < 25 ? 0 : baseDmg)  // 0-24 = dodge (25%), 25-99 = hit
+\`\`\`
+
+The seed is the Attack CR UID concatenated with \`"dodge"\` — making every dodge roll **deterministic and reproducible** for a given attack. Re-running the same Attack CR with the same UID always produces the same dodge outcome. This is how kro implements game-quality randomness: seeded random, not cryptographic, but deterministic and auditable.
+
+The same pattern applies to backstab critical hits, boss status effect chances (poison/burn/stun), and loot rarity rolls throughout the RGDs.`,
+    snippet: `# dungeon-graph.yaml — combatResolve specPatch (rogue dodge)
+cel.bind(isRogue, schema.spec.heroClass == 'rogue',
+  cel.bind(dodgeRoll, random.seededInt(0, 99, attackCR.metadata.uid + "dodge"),
+    cel.bind(dodged, isRogue && dodgeRoll < 25,
+      # dodged == true: hero takes 0 damage from this counter-attack
+      dodged ? int(0) : int(baseDmg))))`,
+    learnMore: 'manifests/rgds/dungeon-graph.yaml — combatResolve specPatch, kro random.seededInt extension',
+  },
 }
 // ─── end KRO_CONCEPTS ────────────────────────────────────────────────────────
 
@@ -725,6 +800,10 @@ export function getInsightForEvent(event: string): InsightTrigger | null {
   if (event === 'cel-playground-unlocked') return { conceptId: 'cel-playground', headline: 'Open the CEL Playground to write and evaluate live kro expressions against your dungeon' }
   // #450: spec-patch concept fires on first DoT tick — most visible specPatch in action
   if (event === 'dot-applied') return { conceptId: 'spec-patch', headline: 'tickDoT specPatch fired: CEL decremented heroHP and poisonTurns/burnTurns directly in spec' }
+  // #459: class-specific kro deep dives
+  if (event === 'warrior-taunt-used') return { conceptId: 'taunt-state-machine', headline: 'Taunt activated — advanceTaunt specPatch will count down tauntActive from 2→1→0 each turn' }
+  if (event === 'mage-heal-used') return { conceptId: 'mana-lifecycle', headline: 'Heal used — cel.bind() clamps heroMana and heroHP to their maxima in abilityResolve specPatch' }
+  if (event === 'rogue-dodge-fired') return { conceptId: 'cel-probability', headline: 'Dodge fired — random.seededInt(0,99,uid+"dodge") < 25: a 25% chance gate in pure CEL' }
   return null
 }
 
@@ -836,6 +915,8 @@ const CONCEPT_ORDER: KroConceptId[] = [
   'externalRef', 'status-conditions', 'reconcile-loop',
   'resourceGroup-api', 'cel-has-macro', 'ownerReferences', 'cel-playground',
   'cel-filter', 'cel-string-ops', 'spec-patch',
+  // #459: class-specific deep dives (Warrior, Mage, Rogue)
+  'taunt-state-machine', 'mana-lifecycle', 'cel-probability',
 ]
 
 interface KroGlossaryProps {
