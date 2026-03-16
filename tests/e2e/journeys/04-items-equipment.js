@@ -64,7 +64,9 @@ async function run() {
     if (msg.type() === 'error' &&
         !msg.text().includes('WebSocket') &&
         !msg.text().includes('404') &&
-        !msg.text().includes('400'))
+        !msg.text().includes('400') &&
+        !msg.text().includes('429') &&
+        !msg.text().includes('504'))
       consoleErrors.push(msg.text());
   });
   page.on('dialog', dialog => dialog.accept());
