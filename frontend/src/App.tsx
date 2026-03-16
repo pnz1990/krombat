@@ -123,7 +123,7 @@ export default function App() {
   const [roomLoading, setRoomLoading] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
   const [showOnboarding, setShowOnboarding] = useState(() => !localStorage.getItem('kroOnboardingDone'))
-  const [showCheat, setShowCheat] = useState(false)
+
   const [deleting, setDeleting] = useState<Set<string>>(new Set())
   const [resumePrompt, setResumePrompt] = useState<{ ns: string; name: string } | null>(null)
   const resumeCheckedRef = useRef(false)
@@ -901,8 +901,6 @@ export default function App() {
           onCloseLoot={() => setShowLoot(false)}
           showHelp={showHelp}
           onToggleHelp={() => setShowHelp(h => !h)}
-          showCheat={showCheat}
-          onToggleCheat={() => setShowCheat(c => !c)}
           wsConnected={connected}
           apiError={apiError}
           kroUnlocked={unlocked}
@@ -954,7 +952,7 @@ export default function App() {
       )}
 
       {/* Help Modal — rendered globally so z-index is unaffected by DungeonView subtree (#495) */}
-      {showHelp && <HelpModal onClose={() => setShowHelp(false)} onCheat={() => { setShowHelp(false); setTimeout(() => setShowCheat(true), 100) }} />}
+      {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
 
       {/* kro Concept Modal */}
       {kroConceptModal && (
@@ -1625,84 +1623,6 @@ function EventLogTabs({ events, k8sLog, reconcileStream, kroUnlocked, onViewKroC
   )
 }
 
-function CheatModal({ onClose, onAction }: { onClose: () => void; onAction: (target: string) => void }) {
-  const sections = [
-    { title: 'Weapons', items: [
-      { id: 'equip-weapon-common', label: 'Common Sword', sprite: 'weapon-common' },
-      { id: 'equip-weapon-rare', label: 'Rare Sword', sprite: 'weapon-rare' },
-      { id: 'equip-weapon-epic', label: 'Epic Sword', sprite: 'weapon-epic' },
-    ]},
-    { title: 'Armor', items: [
-      { id: 'equip-armor-common', label: 'Common Armor', sprite: 'armor-common' },
-      { id: 'equip-armor-rare', label: 'Rare Armor', sprite: 'armor-rare' },
-      { id: 'equip-armor-epic', label: 'Epic Armor', sprite: 'armor-epic' },
-    ]},
-    { title: 'Shields', items: [
-      { id: 'equip-shield-common', label: 'Common Shield', sprite: 'shield-common' },
-      { id: 'equip-shield-rare', label: 'Rare Shield', sprite: 'shield-rare' },
-      { id: 'equip-shield-epic', label: 'Epic Shield', sprite: 'shield-epic' },
-    ]},
-    { title: 'Helmets', items: [
-      { id: 'equip-helmet-common', label: 'Common Helmet', sprite: 'helmet-common' },
-      { id: 'equip-helmet-rare', label: 'Rare Helmet', sprite: 'helmet-rare' },
-      { id: 'equip-helmet-epic', label: 'Epic Helmet', sprite: 'helmet-epic' },
-    ]},
-    { title: 'Pants', items: [
-      { id: 'equip-pants-common', label: 'Common Pants', sprite: 'pants-common' },
-      { id: 'equip-pants-rare', label: 'Rare Pants', sprite: 'pants-rare' },
-      { id: 'equip-pants-epic', label: 'Epic Pants', sprite: 'pants-epic' },
-    ]},
-    { title: 'Boots', items: [
-      { id: 'equip-boots-common', label: 'Common Boots', sprite: 'boots-common' },
-      { id: 'equip-boots-rare', label: 'Rare Boots', sprite: 'boots-rare' },
-      { id: 'equip-boots-epic', label: 'Epic Boots', sprite: 'boots-epic' },
-    ]},
-    { title: 'Rings', items: [
-      { id: 'equip-ring-common', label: 'Common Ring', sprite: 'ring-common' },
-      { id: 'equip-ring-rare', label: 'Rare Ring', sprite: 'ring-rare' },
-      { id: 'equip-ring-epic', label: 'Epic Ring', sprite: 'ring-epic' },
-    ]},
-    { title: 'Amulets', items: [
-      { id: 'equip-amulet-common', label: 'Common Amulet', sprite: 'amulet-common' },
-      { id: 'equip-amulet-rare', label: 'Rare Amulet', sprite: 'amulet-rare' },
-      { id: 'equip-amulet-epic', label: 'Epic Amulet', sprite: 'amulet-epic' },
-    ]},
-    { title: 'HP Potions', items: [
-      { id: 'use-hppotion-common', label: '+20 HP', sprite: 'hppotion-common' },
-      { id: 'use-hppotion-rare', label: '+40 HP', sprite: 'hppotion-rare' },
-      { id: 'use-hppotion-epic', label: 'Full HP', sprite: 'hppotion-epic' },
-    ]},
-    { title: 'Mana Potions', items: [
-      { id: 'use-manapotion-common', label: '+2 Mana', sprite: 'manapotion-common' },
-      { id: 'use-manapotion-rare', label: '+3 Mana', sprite: 'manapotion-rare' },
-      { id: 'use-manapotion-epic', label: '+8 Mana', sprite: 'manapotion-epic' },
-    ]},
-  ]
-  return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal help-modal" role="dialog" aria-modal="true" aria-label="Cheat mode" onClick={e => e.stopPropagation()} style={{ maxWidth: 500 }}>
-        <h2 style={{ color: '#e94560', fontSize: 12, marginBottom: 8 }}><PixelIcon name="damage" size={10} /> CHEAT MODE</h2>
-        <p style={{ fontSize: 7, color: '#666', marginBottom: 12 }}>Items are added to inventory then used/equipped via Attack CR pipeline.</p>
-        {sections.map(s => (
-          <div key={s.title} style={{ marginBottom: 8 }}>
-            <div style={{ fontSize: 8, color: '#888', marginBottom: 4 }}>{s.title}</div>
-            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-              {s.items.map(item => (
-                <button key={item.id} className="backpack-slot" style={{ borderColor: item.sprite.includes('epic') ? '#9b59b6' : item.sprite.includes('rare') ? '#5dade2' : '#aaa', width: 48, height: 48 }}
-                  title={item.label}
-                  onClick={() => { onAction(item.id); }}>
-                  <ItemSprite id={item.sprite} size={32} />
-                </button>
-              ))}
-            </div>
-          </div>
-        ))}
-        <button className="btn btn-gold" style={{ marginTop: 8 }} onClick={onClose}>Close</button>
-       </div>
-    </div>
-  )
-}
-
 // ── DungeonMiniMap ────────────────────────────────────────────────────────────
 // Shows a compact 2-room progress strip: Room 1 → Room 2
 // Room states: 'current' (gold) | 'cleared' (green) | 'locked' (gray) | 'active-boss' (red pulse)
@@ -1764,18 +1684,8 @@ function DungeonMiniMap({ spec }: { spec: any }) {
   )
 }
 
-function HelpModal({ onClose, onCheat }: { onClose: () => void; onCheat: () => void }) {
+function HelpModal({ onClose }: { onClose: () => void }) {
   const [page, setPage] = useState(0)
-  const bufRef = useRef('')
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      bufRef.current += e.key
-      if (bufRef.current.includes('999')) { bufRef.current = ''; onClose(); setTimeout(onCheat, 100) }
-      if (bufRef.current.length > 10) bufRef.current = bufRef.current.slice(-5)
-    }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [onClose, onCheat])
   const pages = [
     { title: 'Combat Basics', content: (
       <>
@@ -2024,13 +1934,12 @@ function getModifierArenaStyle(modifier: string | undefined): React.CSSPropertie
   }
 }
 
-function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sLog, reconcileStream, showLoot, onOpenLoot, onCloseLoot, attackPhase, roomLoading, animPhase, attackTarget, showHelp, onToggleHelp, showCheat, onToggleCheat, floatingDmg, bossPhaseFlash, combatModal, onDismissCombat, lootDrop, onDismissLoot, wsConnected, apiError, kroUnlocked, onViewKroConcept, reconciling, onOpenLeaderboard, onCertTrigger, glossaryOpenCountRef, celTraceSeenRef }: {
+function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sLog, reconcileStream, showLoot, onOpenLoot, onCloseLoot, attackPhase, roomLoading, animPhase, attackTarget, showHelp, onToggleHelp, floatingDmg, bossPhaseFlash, combatModal, onDismissCombat, lootDrop, onDismissLoot, wsConnected, apiError, kroUnlocked, onViewKroConcept, reconciling, onOpenLeaderboard, onCertTrigger, glossaryOpenCountRef, celTraceSeenRef }: {
   cr: DungeonCR; prevCr?: DungeonCR | null; onBack: () => void; onNewGamePlus?: () => void; onAttack: (t: string, d: number) => void; events: WSEvent[]; k8sLog: { ts: string; cmd: string; res: string; yaml?: string }[]; reconcileStream: ReconcileDiffEvent[]
   showLoot: boolean; onOpenLoot: () => void; onCloseLoot: () => void
   attackPhase: string | null; roomLoading: boolean
   animPhase: string; attackTarget: string | null
   showHelp: boolean; onToggleHelp: () => void
-  showCheat: boolean; onToggleCheat: () => void
   floatingDmg: { target: string; amount: string; color: string } | null
   bossPhaseFlash: 'enraged' | 'berserk' | null
   combatModal: { phase: string; formula: string; heroAction: string; enemyAction: string; spec: any; oldHP: number } | null
@@ -2236,7 +2145,7 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
        {/* ── Mini-map ─────────────────────────────────────────────────── */}
        <DungeonMiniMap spec={spec} />
 
-      {showCheat && <CheatModal onClose={onToggleCheat} onAction={(target: string) => onAttack(target, 0)} />}
+
 
       {!wsConnected && (
         <div className="ws-reconnecting-banner">
