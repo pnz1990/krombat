@@ -29,7 +29,7 @@ spec:
         - name: frontend
           # #415: nginxinc/nginx-unprivileged runs as UID 101 (non-root).
           # Listens on port 8080 instead of privileged 80.
-          image: 319279230668.dkr.ecr.us-west-2.amazonaws.com/krombat/frontend:867add8868ee4474542c4945300725c8e59fc321
+          image: 319279230668.dkr.ecr.us-west-2.amazonaws.com/krombat/frontend:46c378bad83707ee91451e77e8f618e05388a354
           ports:
             - containerPort: 3000
           securityContext:
