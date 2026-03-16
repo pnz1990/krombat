@@ -309,6 +309,8 @@ body {
 }
 .help-btn:hover { background: var(--gold); color: #000; }
 .help-modal { max-width: 500px; text-align: left; max-height: 80vh; overflow-y: auto; }
+/* Ensure help modal overlay renders above combat overlay (2000), kro concept modal (2100), etc. */
+.help-modal-portal .modal-overlay { z-index: 3000; }
 .help-section { margin-bottom: 12px; }
 .help-section h3 { font-size: 9px; color: var(--gold); margin-bottom: 6px; }
 .help-section p { font-size: 7px; color: var(--text-dim); margin-bottom: 4px; line-height: 1.8; }

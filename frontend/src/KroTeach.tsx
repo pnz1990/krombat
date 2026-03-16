@@ -719,6 +719,7 @@ export function getInsightForEvent(event: string): InsightTrigger | null {
   if (event === 'externalRef') return { conceptId: 'externalRef', headline: 'Your attack created an Attack CR — kro watched it and re-reconciled the dungeon graph' }
   if (event === 'status-conditions') return { conceptId: 'status-conditions', headline: 'kro is reporting its reconcile status via status.conditions — the Kubernetes health contract' }
   if (event === 'second-attack') return { conceptId: 'reconcile-loop', headline: 'The ~1s pause after every action is the kro reconcile loop: watch → CEL eval → write' }
+  if (event === 'third-attack') return { conceptId: 'spec-patch', headline: 'combatResolve fired a specPatch — CEL wrote hero HP, monster HP, and combat seq directly into spec' }
   if (event === 'dungeon-created-2nd') return { conceptId: 'resourceGroup-api', headline: 'kro registered Dungeon as a real Kubernetes API — kubectl get dungeon works natively' }
    if (event === 'boots-equipped') return { conceptId: 'cel-has-macro', headline: 'has() lets CEL safely access optional spec fields — used throughout dungeon-graph readyWhen' }
   if (event === 'dungeon-deleted') return { conceptId: 'ownerReferences', headline: 'Deleting the Dungeon CR triggered cascading deletion of all 9 child resources via ownerReferences' }

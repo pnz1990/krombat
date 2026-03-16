@@ -587,6 +587,8 @@ export default function App() {
         if ((detail?.spec.attackSeq ?? 0) === 0 && (updated.spec.attackSeq ?? 0) > 0) triggerInsight('first-attack')
         // Second attack — teach the reconcile loop concept
         if ((detail?.spec.attackSeq ?? 0) === 1 && (updated.spec.attackSeq ?? 0) > 1) triggerInsight('second-attack')
+        // Third attack — teach specPatch (combatResolve fires a specPatch every turn; DoT also fires specPatch but is RNG-gated)
+        if ((detail?.spec.attackSeq ?? 0) === 2 && (updated.spec.attackSeq ?? 0) > 2) triggerInsight('third-attack')
       }
 
       // Don't clear attackPhase/attackTarget — user must dismiss combat modal
