@@ -1517,6 +1517,19 @@ CEL: size(schema.spec.monsterHP.filter(hp, hp > 0))
 
 Built with kro — https://github.com/kubernetes-sigs/kro`,
   },
+  {
+    title: 'Take the 3-Day kro Workshop',
+    body: "A self-paced workshop in docs/workshop/ teaches kro using this game as the environment. Day 1: play and observe the resource graph. Day 2: read all 9 production RGDs and understand every CEL expression. Day 3: fork the repo and add a new modifier type — your first real kro RGD. No local cluster needed for Day 1 or Day 2.",
+    snippet: `# docs/workshop/
+  README.md               ← overview and prerequisites
+  day-1-explore.md        ← play and observe the kro graph
+  day-2-read-the-rgds.md  ← read all 9 RGDs, CEL expressions
+  day-3-extend.md         ← write your first RGD (blessing-agility)
+  exercises/              ← 5 questions per day
+  solutions/              ← day-3-solution.yaml reference
+
+# github.com/pnz1990/krombat/tree/main/docs/workshop/`,
+  },
 ]
 
 export function KroOnboardingOverlay({ onDismiss, isAuthenticated }: { onDismiss: () => void; isAuthenticated: boolean }) {
