@@ -731,6 +731,20 @@ export default function App() {
     } catch (e: any) { reportError('delete-dungeon', e); setError(e.message); setDeleting(prev => { const s = new Set(prev); s.delete(delName); return s }) }
   }
 
+  // Called from defeat/victory "← New Dungeon" button.
+  // Deletes the finished dungeon (triggering recordProfile + XP commit) then navigates home.
+  const handleGameOverDelete = async () => {
+    const delNs = selected?.ns
+    const delName = selected?.name
+    if (!delNs || !delName) { navigate('/'); refresh(); return }
+    try {
+      await deleteDungeon(delNs, delName)
+      trackEvent('dungeon_deleted', { outcome: detail?.status?.victory ? 'victory' : detail?.status?.defeated ? 'defeat' : 'in-progress', totalTurns: (detail?.spec.attackSeq ?? 0) + (detail?.spec.actionSeq ?? 0) })
+    } catch { /* best-effort — navigate regardless */ }
+    navigate('/')
+    refresh()
+  }
+
   const handleOpenLeaderboard = async () => {
     setShowLeaderboard(true)
     setLeaderboardLoading(true)
@@ -888,6 +902,7 @@ export default function App() {
           cr={detail}
           prevCr={prevDetailRef.current}
           onBack={() => { navigate('/'); refresh() }}
+          onGameOverBack={handleGameOverDelete}
           onNewGamePlus={handleNewGamePlus}
           onAttack={handleAttack}
           attackPhase={attackPhase}
@@ -2074,8 +2089,8 @@ function getModifierArenaStyle(modifier: string | undefined): React.CSSPropertie
   }
 }
 
-function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sLog, reconcileStream, showLoot, onOpenLoot, onCloseLoot, attackPhase, roomLoading, animPhase, attackTarget, showHelp, onToggleHelp, floatingDmg, bossPhaseFlash, combatModal, onDismissCombat, lootDrop, onDismissLoot, wsConnected, apiError, kroUnlocked, onViewKroConcept, reconciling, onOpenLeaderboard, onCertTrigger, glossaryOpenCountRef, celTraceSeenRef }: {
-  cr: DungeonCR; prevCr?: DungeonCR | null; onBack: () => void; onNewGamePlus?: () => void; onAttack: (t: string, d: number) => void; events: WSEvent[]; k8sLog: { ts: string; cmd: string; res: string; yaml?: string }[]; reconcileStream: ReconcileDiffEvent[]
+function DungeonView({ cr, prevCr, onBack, onGameOverBack, onNewGamePlus, onAttack, events, k8sLog, reconcileStream, showLoot, onOpenLoot, onCloseLoot, attackPhase, roomLoading, animPhase, attackTarget, showHelp, onToggleHelp, floatingDmg, bossPhaseFlash, combatModal, onDismissCombat, lootDrop, onDismissLoot, wsConnected, apiError, kroUnlocked, onViewKroConcept, reconciling, onOpenLeaderboard, onCertTrigger, glossaryOpenCountRef, celTraceSeenRef }: {
+  cr: DungeonCR; prevCr?: DungeonCR | null; onBack: () => void; onGameOverBack?: () => void; onNewGamePlus?: () => void; onAttack: (t: string, d: number) => void; events: WSEvent[]; k8sLog: { ts: string; cmd: string; res: string; yaml?: string }[]; reconcileStream: ReconcileDiffEvent[]
   showLoot: boolean; onOpenLoot: () => void; onCloseLoot: () => void
   attackPhase: string | null; roomLoading: boolean
   animPhase: string; attackTarget: string | null
@@ -2384,7 +2399,7 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
             </div>
           )}
           <div style={{ marginTop: 8 }}>
-            <button className="btn" style={{ fontSize: 7 }} onClick={onBack}>← New Dungeon</button>
+            <button className="btn" style={{ fontSize: 7 }} onClick={onGameOverBack ?? onBack}>← New Dungeon</button>
           </div>
         </div>
       )}
@@ -2485,7 +2500,7 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
                 <PixelIcon name="star" size={10} /> New Game+
               </button>
             )}
-            <button className="btn" style={{ fontSize: 7 }} onClick={onBack}>
+            <button className="btn" style={{ fontSize: 7 }} onClick={onGameOverBack ?? onBack}>
               ← New Dungeon
             </button>
           </div>
@@ -2603,7 +2618,7 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
         <div className="left-panel">
           <div className={`dungeon-arena${spec.modifier === 'blessing-fortune' ? ' arena-blessing-fortune' : ''}`} style={getModifierArenaStyle(spec.modifier)}>
             {/* Stone floor texture layers */}
-            <div className="arena-floor" style={{ backgroundImage: `url('/sprites/dungeon/floor-${currentRoom === 2 ? 2 : 1}.png')` }} />
+            <div className="arena-floor" style={{ backgroundImage: `url('/sprites/dungeon/floor-${currentRoom === 2 ? 2 : 1}.png')`, ...(currentRoom === 2 ? { backgroundSize: '80px' } : {}) }} />
             <div className="arena-glow" />
 
             {/* Dungeon props — scattered decorations */}
@@ -2700,10 +2715,7 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
                   )}
                    <Sprite spriteType={(spec.currentRoom || 1) === 2 ? 'bat-boss' : 'dragon'} action={bAction} size={144} />
                    <div className="arena-shadow" style={{ width: 120 }} />
-                   {bossState === 'ready' && !gameOver && !attackPhase && (
-                     <div className="arena-atk-hint">ATK</div>
-                   )}
-                  <div className="arena-hover-ui">
+                   <div className="arena-hover-ui">
                     <div className="arena-hp-bar"><div className={`arena-hp-fill ${spec.bossHP > 0 ? 'high' : 'low'}`} style={{ width: `${Math.min((spec.bossHP / maxBossHP) * 100, 100)}%` }} /></div>
                     <div className="arena-name">Boss · {spec.bossHP}/{maxBossHP}</div>
                     {bossState === 'ready' && !gameOver && !attackPhase && (
@@ -2722,14 +2734,14 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
             {/* Monsters in semicircle */}
             {(spec.monsterHP || []).map((hp, idx) => {
               const count = spec.monsterHP.length
-              if (hp <= 0) return null // hide dead monsters from arena (#498)
               const mName = `${dungeonName}-monster-${idx}`
               const mSprite = getMonsterSprite(idx, spec.currentRoom || 1, spec.monsterTypes)
               const mDisplayName = getMonsterName(idx, spec.currentRoom || 1, spec.monsterTypes)
-              let mAction: SpriteAction = 'idle'
+              const isDead = hp <= 0
+              let mAction: SpriteAction = isDead ? 'dead' : 'idle'
               const inCombat = combatModal && (combatModal.phase === 'rolling' || combatModal.phase === 'resolved')
-              if (inCombat) mAction = 'attack'
-              if (inCombat && attackTarget === mName) mAction = 'attack'
+              if (!isDead && inCombat) mAction = 'attack'
+              if (!isDead && inCombat && attackTarget === mName) mAction = 'attack'
 
               // Position in semicircle (top arc around hero)
               const angle = count === 1 ? Math.PI / 2 : (Math.PI * 0.2) + (Math.PI * 0.6 / (count - 1)) * idx
@@ -2740,30 +2752,29 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
               const facingRight = cx < 50
 
               return (
-                <div key={mName} className="arena-entity monster-entity alive"
+                <div key={mName} className={`arena-entity monster-entity ${isDead ? 'dead' : 'alive'}`}
                   style={{ left: `${cx}%`, top: `${cy}%` }}
-                  role={!gameOver && !attackPhase ? 'button' : undefined}
-                  tabIndex={!gameOver && !attackPhase ? 0 : undefined}
-                  aria-label={`${mDisplayName} · HP: ${hp}/${maxMonsterHP}`}
-                  onKeyDown={!gameOver && !attackPhase ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onAttack(mName, 0) } } : undefined}>
+                  role={!isDead && !gameOver && !attackPhase ? 'button' : undefined}
+                  tabIndex={!isDead && !gameOver && !attackPhase ? 0 : undefined}
+                  aria-label={`${mDisplayName} · HP: ${hp}/${maxMonsterHP}${isDead ? ' (defeated)' : ''}`}
+                  onKeyDown={!isDead && !gameOver && !attackPhase ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onAttack(mName, 0) } } : undefined}>
                    {floatingDmg?.target === mName && <div className="floating-dmg" style={{ color: '#e94560' }}>{floatingDmg.amount}</div>}
                    <Sprite spriteType={mSprite} action={mAction} size={72} flip={!facingRight} />
                    <div className="arena-shadow" />
-                   {!gameOver && !attackPhase && (
-                     <div className="arena-atk-hint">ATK</div>
+                   {!isDead && (
+                     <div className="arena-hover-ui">
+                       <div className="arena-hp-bar"><div className={`arena-hp-fill ${hp > maxMonsterHP * 0.6 ? 'high' : hp > maxMonsterHP * 0.3 ? 'mid' : 'low'}`} style={{ width: `${Math.min((hp / maxMonsterHP) * 100, 100)}%` }} /></div>
+                       <div className="arena-name">{mDisplayName} · {hp}/{maxMonsterHP}</div>
+                       {!gameOver && !attackPhase && (
+                         <div className="arena-actions">
+                           <button className="btn btn-primary arena-atk-btn" onClick={() => onAttack(mName, 0)}><PixelIcon name="dice" size={8} /> {status?.diceFormula || '2d12+6'}</button>
+                           {spec.heroClass === 'rogue' && (spec.backstabCooldown ?? 0) === 0 && (
+                             <button className="btn btn-ability arena-atk-btn" onClick={() => onAttack(mName + '-backstab', 0)}>Backstab</button>
+                           )}
+                         </div>
+                       )}
+                     </div>
                    )}
-                   <div className="arena-hover-ui">
-                     <div className="arena-hp-bar"><div className={`arena-hp-fill ${hp > maxMonsterHP * 0.6 ? 'high' : hp > maxMonsterHP * 0.3 ? 'mid' : 'low'}`} style={{ width: `${Math.min((hp / maxMonsterHP) * 100, 100)}%` }} /></div>
-                     <div className="arena-name">{mDisplayName} · {hp}/{maxMonsterHP}</div>
-                     {!gameOver && !attackPhase && (
-                       <div className="arena-actions">
-                         <button className="btn btn-primary arena-atk-btn" onClick={() => onAttack(mName, 0)}><PixelIcon name="dice" size={8} /> {status?.diceFormula || '2d12+6'}</button>
-                         {spec.heroClass === 'rogue' && (spec.backstabCooldown ?? 0) === 0 && (
-                           <button className="btn btn-ability arena-atk-btn" onClick={() => onAttack(mName + '-backstab', 0)}>Backstab</button>
-                         )}
-                       </div>
-                     )}
-                   </div>
                  </div>
                )
             })}
