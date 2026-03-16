@@ -2004,8 +2004,9 @@ func (h *Handler) processAction(ctx context.Context, r *http.Request, ns, name, 
 	}
 
 	patchSpec := map[string]interface{}{
-		"actionSeq":  newSeq,
-		"lastAction": action, // trigger field for kro's actionResolve specPatch
+		"actionSeq":    newSeq,
+		"lastAction":   action, // trigger field for kro's actionResolve specPatch
+		"lastLootDrop": "",     // clear stale loot from previous combat turn (#AGENTS rule)
 	}
 
 	// MIGRATION: state mutations (inventory, heroHP, heroMana, equipment bonuses,
@@ -2186,6 +2187,10 @@ func (h *Handler) processAction(ctx context.Context, r *http.Request, ns, name, 
 		patchSpec["lastEnemyAction"] = ""
 		// Award XP for entering room 2 (#360)
 		patchSpec["xpEarned"] = getInt(spec, "xpEarned") + int64(10)
+		// Delete stale Room 1 Attack CR so it cannot be re-processed in Room 2 (#AGENTS rule)
+		attackCRName := name + "-latest-attack"
+		_ = h.client.Dynamic.Resource(k8s.AttackGVR).Namespace("default").Delete(
+			ctx, attackCRName, metav1.DeleteOptions{})
 		// Business metric: room 2 entered (Issue #358)
 		attackSeqAction := getInt(spec, "attackSeq")
 		slog.Info("room2_entered",
@@ -2770,8 +2775,8 @@ func (h *Handler) RunCard(w http.ResponseWriter, r *http.Request) {
 	if conceptsUnlocked < 0 {
 		conceptsUnlocked = 0
 	}
-	if conceptsUnlocked > 24 {
-		conceptsUnlocked = 24
+	if conceptsUnlocked > 27 {
+		conceptsUnlocked = 27
 	}
 
 	// Sanitise name for display (truncate at 28 chars)
@@ -2807,7 +2812,7 @@ func (h *Handler) RunCard(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// kro concept bar (0-24)
-	const totalConcepts = 24
+	const totalConcepts = 27
 	conceptBarWidth := int(float64(conceptsUnlocked) / float64(totalConcepts) * 220)
 
 	svg := fmt.Sprintf(`<svg xmlns="http://www.w3.org/2000/svg" width="480" height="270" viewBox="0 0 480 270">

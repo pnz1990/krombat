@@ -862,7 +862,7 @@ export default function App() {
           <DungeonList dungeons={dungeons} onSelect={handleSelect} onDelete={handleDelete} deleting={deleting} lastDungeon={resumePrompt ?? undefined} />
           {authUser && (
             <div style={{ textAlign: 'center', marginTop: 8, fontSize: '7px', color: 'var(--text-dim)' }}>
-              Your dungeon data is kept for 4 hours.
+              Your dungeon data is kept for 30 days.
             </div>
           )}
         </>
@@ -2328,7 +2328,7 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
             const ns = cr.metadata.namespace ?? 'default'
             const cardUrl = `/api/v1/run-card/${ns}/${dungeonName}?concepts=${kroUnlocked.size}`
             const absoluteCardUrl = `https://learn-kro.eks.aws.dev${cardUrl}`
-            const tweetText = `I just conquered a dungeon in @kroio powered by kro on Kubernetes! 🗡️ Hero: ${spec.heroClass ?? 'warrior'} | Difficulty: ${spec.difficulty ?? 'normal'} | Turns: ${spec.attackSeq ?? 0} | kro concepts unlocked: ${kroUnlocked.size}/24\n\nPlay it yourself: https://learn-kro.eks.aws.dev`
+            const tweetText = `I just conquered a dungeon in @kroio powered by kro on Kubernetes! 🗡️ Hero: ${spec.heroClass ?? 'warrior'} | Difficulty: ${spec.difficulty ?? 'normal'} | Turns: ${spec.attackSeq ?? 0} | kro concepts unlocked: ${kroUnlocked.size}/27\n\nPlay it yourself: https://learn-kro.eks.aws.dev`
             const handleShare = async () => {
               try {
                 await navigator.clipboard.writeText(`${tweetText}\n\n${absoluteCardUrl}`)
