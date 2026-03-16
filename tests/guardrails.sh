@@ -797,6 +797,37 @@ grep -q "log-explorer" frontend/src/App.tsx \
   && pass "#361: log-explorer cert trigger wired in App.tsx" \
   || fail "#361: log-explorer cert trigger missing from App.tsx"
 
+# === #456: social run cards guardrails ===
+# RunCard handler must exist in handlers.go
+grep -q 'func (h \*Handler) RunCard' backend/internal/handlers/handlers.go \
+  && pass "#456: RunCard handler exists in handlers.go" \
+  || fail "#456: RunCard handler missing from handlers.go"
+
+# run-card route must be registered in main.go
+grep -q 'GET /api/v1/run-card/' backend/cmd/main.go \
+  && pass "#456: GET /api/v1/run-card route registered in main.go" \
+  || fail "#456: GET /api/v1/run-card route missing from main.go"
+
+# RunCard must return image/svg+xml Content-Type
+grep -q 'image/svg+xml' backend/internal/handlers/handlers.go \
+  && pass "#456: RunCard returns image/svg+xml content type" \
+  || fail "#456: RunCard missing image/svg+xml content type"
+
+# run-card-section CSS must exist in index.css
+grep -q 'run-card-section' frontend/src/index.css \
+  && pass "#456: .run-card-section CSS defined in index.css" \
+  || fail "#456: .run-card-section CSS missing from index.css"
+
+# Share Run button must exist in App.tsx
+grep -q 'Share Run' frontend/src/App.tsx \
+  && pass "#456: Share Run button present in App.tsx" \
+  || fail "#456: Share Run button missing from App.tsx"
+
+# run-card-img CSS must exist in index.css
+grep -q 'run-card-img' frontend/src/index.css \
+  && pass "#456: .run-card-img CSS defined in index.css" \
+  || fail "#456: .run-card-img CSS missing from index.css"
+
 # --- Summary ---
 
 echo ""
