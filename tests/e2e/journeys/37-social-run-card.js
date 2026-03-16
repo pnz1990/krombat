@@ -124,37 +124,33 @@ async function run() {
     }
 
     // Enter room 2 via door button
-    for (let i = 0; i < 20; i++) {
-      const doorBtn = page.locator('[aria-label="Enter Room 2"], .arena-entity.door-entity[role="button"]');
-      if (await doorBtn.count() > 0) {
-        await doorBtn.first().click({ force: true }).catch(() => {});
-        await page.waitForTimeout(3000);
-        // Check if we're in room 2
-        const bAfterDoor = await page.textContent('body').catch(() => '');
-        if (bAfterDoor.includes('troll') || bAfterDoor.includes('ghoul') || bAfterDoor.includes('TROLL') || bAfterDoor.includes('GHOUL') || bAfterDoor.includes('Room 2')) break;
+    // NOTE: attackPhase must be null for the door click to register.
+    // The auto-treasure + auto-door-unlock effects fire after boss dies (each sets attackPhase).
+    // We must wait for all auto-actions to complete before clicking.
+    // Strategy: poll up to 30s for the door to be unlocked AND alive monsters present (room 2 kro-ready)
+
+    // Wait for door to unlock and attackPhase from unlock-door to clear (~4s after boss dies)
+    await page.waitForTimeout(4000);
+    await clearModals(page);
+
+    // Retry door click up to 5 times (mirror journey 11's proven approach)
+    let r2Loaded = false;
+    for (let attempt = 0; attempt < 5 && !r2Loaded; attempt++) {
+      if (attempt > 0) await page.waitForTimeout(3000);
+      await page.evaluate(() => {
+        const door = document.querySelector('[role="button"][aria-label="Enter Room 2"], .arena-entity.door-entity');
+        if (door) door.click();
+      }).catch(() => {});
+      // Wait for Room 2 to load (attack buttons appear + room 2 state)
+      for (let i = 0; i < 20; i++) {
+        const atkButtons = await page.locator('.arena-atk-btn.btn-primary').count();
+        const doorGone = await page.locator('[aria-label="Enter Room 2"]').count() === 0;
+        if (atkButtons > 0 && doorGone) { r2Loaded = true; break; }
+        await page.waitForTimeout(2000);
       }
-      await page.waitForTimeout(1500);
     }
 
-    body = await page.textContent('body').catch(() => '');
-    // Use DOM check for room 2 — body text is polluted by event log entries
-    const inRoom2 = await page.locator('.arena-entity.monster-entity').count() > 0 &&
-      await page.locator('[aria-label="Enter Room 2"]').count() === 0; // door gone = inside room 2
-    inRoom2 ? ok('Entered room 2') : warn('Room 2 entry uncertain — continuing');
-
-    // Wait for kro to set currentRoom:2 and populate room2BossHP/room2MonsterHP (kro reconcile ~1-4s)
-    // Poll until alive monsters appear (room 2 initialized) or timeout
-    let room2Ready = false;
-    for (let i = 0; i < 30; i++) {
-      const aliveNow = await aliveMonsterCount(page);
-      const doorGone = await page.locator('[aria-label="Enter Room 2"]').count() === 0;
-      if (aliveNow > 0 && doorGone) { room2Ready = true; break; }
-      // Also check: boss attack button visible (boss ready for room 2)
-      const bossReady = await page.locator('.arena-entity.boss-entity .arena-atk-btn.btn-primary').count() > 0;
-      if (bossReady && doorGone) { room2Ready = true; break; }
-      await page.waitForTimeout(1000);
-    }
-    room2Ready ? ok('Room 2 state initialized (kro reconciled)') : warn('Room 2 state uncertain after 30s wait');
+    r2Loaded ? ok('Entered room 2 (attack buttons present)') : warn('Room 2 entry uncertain — continuing');
 
     // === 3: Kill room 2 monsters and boss ===
     console.log('\n=== Step 3: Clear room 2 ===');
