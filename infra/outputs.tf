@@ -10,9 +10,7 @@ output "region" {
   value = var.region
 }
 
-output "kro_capability_arn" {
-  value = module.kro.arn
-}
+# kro is installed via Helm (patched fork), not EKS capability — no ARN output.
 
 output "argocd_capability_arn" {
   value = module.argocd.arn
