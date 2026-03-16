@@ -1,80 +1,70 @@
 #!/usr/bin/env bash
 # Pre-push hook: runs ALL test suites before allowing push.
 # If any test fails, push is blocked. Use --no-verify to skip.
+#
+# All tests run against the live prod cluster — never via port-forward.
+# Port-forward drops mid-test and causes false failures (see AGENTS.md).
 set -uo pipefail
 
-echo "🔒 Pre-push hook: running all tests..."
+KUBECTL_CONTEXT="arn:aws:eks:us-west-2:319279230668:cluster/krombat"
+BASE_URL="https://learn-kro.eks.aws.dev"
+
+echo "Pre-push hook: running all tests..."
 echo ""
 
 FAILED=0
 
-# 1. Integration tests (parallel)
+# 1. Integration tests (parallel, against prod cluster)
 echo "=== Integration Tests ==="
-./tests/run.sh
-if [ $? -ne 0 ]; then echo "❌ Integration tests failed"; FAILED=1
-else echo "✅ Integration tests passed"; fi
+KUBECTL_CONTEXT="$KUBECTL_CONTEXT" ./tests/run.sh
+if [ $? -ne 0 ]; then echo "FAIL Integration tests failed"; FAILED=1
+else echo "PASS Integration tests passed"; fi
 
 # 2. Guardrail tests
 echo ""
 echo "=== Guardrail Tests ==="
-./tests/guardrails.sh
-if [ $? -ne 0 ]; then echo "❌ Guardrail tests failed"; FAILED=1
-else echo "✅ Guardrail tests passed"; fi
+KUBECTL_CONTEXT="$KUBECTL_CONTEXT" ./tests/guardrails.sh
+if [ $? -ne 0 ]; then echo "FAIL Guardrail tests failed"; FAILED=1
+else echo "PASS Guardrail tests passed"; fi
 
-# 3. Backend API tests
+# 3. Backend API tests — against prod (no port-forward)
 echo ""
 echo "=== Backend API Tests ==="
-lsof -ti:8080 | xargs kill -9 2>/dev/null
-kubectl port-forward svc/rpg-backend -n rpg-system 8080:8080 > /dev/null 2>&1 &
-PF_PID=$!
-sleep 3
-./tests/backend-api.sh
-RESULT=$?
-kill $PF_PID 2>/dev/null
-if [ $RESULT -ne 0 ]; then echo "❌ Backend API tests failed"; FAILED=1
-else echo "✅ Backend API tests passed"; fi
+KUBECTL_CONTEXT="$KUBECTL_CONTEXT" BASE_URL="$BASE_URL" ./tests/backend-api.sh
+if [ $? -ne 0 ]; then echo "FAIL Backend API tests failed"; FAILED=1
+else echo "PASS Backend API tests passed"; fi
 
-# 4. UI smoke tests
+# 4. UI smoke tests — against prod (no port-forward)
 echo ""
 echo "=== UI Smoke Tests ==="
 if command -v npx &>/dev/null && npx playwright --version &>/dev/null 2>&1; then
-  lsof -ti:3000 | xargs kill -9 2>/dev/null
-  kubectl port-forward svc/rpg-frontend -n rpg-system 3000:3000 > /dev/null 2>&1 &
-  PF_PID=$!
-  sleep 3
-  node tests/e2e/smoke-test.js
-  RESULT=$?
-  kill $PF_PID 2>/dev/null
-  lsof -ti:3000 | xargs kill -9 2>/dev/null
-  if [ $RESULT -ne 0 ]; then echo "❌ UI smoke tests failed"; FAILED=1
-  else echo "✅ UI smoke tests passed"; fi
+  BASE_URL="$BASE_URL" node tests/e2e/smoke-test.js
+  if [ $? -ne 0 ]; then echo "FAIL UI smoke tests failed"; FAILED=1
+  else echo "PASS UI smoke tests passed"; fi
 else
-  echo "⚠️  Playwright not installed — skipping UI tests"
+  echo "SKIP Playwright not installed — skipping UI tests"
 fi
 
-# 5. Journey tests (all 10)
+# 5. Journey tests — against prod in batches of 8 (no port-forward)
 echo ""
 echo "=== Journey Tests ==="
 if command -v npx &>/dev/null && npx playwright --version &>/dev/null 2>&1; then
-  lsof -ti:3000 | xargs kill -9 2>/dev/null
-  kubectl port-forward svc/rpg-frontend -n rpg-system 3000:3000 > /dev/null 2>&1 &
-  PF_PID=$!
-  sleep 3
-  node tests/e2e/run-journeys.js
-  RESULT=$?
-  kill $PF_PID 2>/dev/null
-  lsof -ti:3000 | xargs kill -9 2>/dev/null
-  if [ $RESULT -ne 0 ]; then echo "❌ Journey tests failed"; FAILED=1
-  else echo "✅ Journey tests passed"; fi
+  JOURNEY_FAILED=0
+  for BATCH in "01,02,03,04,05,06,07,08" "09,10,11,12"; do
+    BASE_URL="$BASE_URL" node tests/e2e/run-journeys.js "$BATCH"
+    if [ $? -ne 0 ]; then JOURNEY_FAILED=1; fi
+  done
+  if [ $JOURNEY_FAILED -ne 0 ]; then echo "FAIL Journey tests failed"; FAILED=1
+  else echo "PASS Journey tests passed"; fi
 else
-  echo "⚠️  Playwright not installed — skipping journey tests"
+  echo "SKIP Playwright not installed — skipping journey tests"
 fi
 
 echo ""
 if [ $FAILED -ne 0 ]; then
-  echo "🚫 Push blocked — fix failing tests first"
+  echo "Push blocked — fix failing tests first"
   exit 1
 else
-  echo "✅ All tests passed — pushing"
+  echo "All tests passed — pushing"
   exit 0
 fi

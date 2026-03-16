@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Backend API integration tests
-# Requires: kubectl port-forward svc/rpg-backend -n rpg-system 8080:8080
+# Backend API integration tests — runs against prod (BASE_URL) or localhost port-forward (API_URL).
+# Production: BASE_URL=https://learn-kro.eks.aws.dev ./tests/backend-api.sh
 set -euo pipefail
 
 KUBECTL_CONTEXT="${KUBECTL_CONTEXT:-arn:aws:eks:us-west-2:319279230668:cluster/krombat}"
 kctl() { kubectl --context "$KUBECTL_CONTEXT" "$@"; }
 
-BASE="${API_URL:-http://localhost:8080}"
+BASE="${API_URL:-${BASE_URL:-http://localhost:8080}}"
 DUNGEON="api-test-$(date +%s)"
 PASS=0
 FAIL=0
@@ -36,7 +36,7 @@ trap cleanup EXIT
 log "Pre-flight: checking backend is reachable"
 CODE=$(curl -s -o /dev/null -w "%{http_code}" "$BASE/healthz" 2>/dev/null || echo "000")
 if [ "$CODE" != "200" ]; then
-  echo "Backend not reachable at $BASE (got $CODE). Run: kubectl port-forward svc/rpg-backend -n rpg-system 8080:8080"
+  echo "Backend not reachable at $BASE (got $CODE). Check BASE_URL or cluster connectivity."
   exit 1
 fi
 pass "Backend reachable"

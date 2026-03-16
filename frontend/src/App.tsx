@@ -8,7 +8,7 @@ import { PixelIcon } from './PixelIcon'
 import {
   InsightCard, KroConceptModal, KroGlossary,
   useKroGlossary, getInsightForEvent, kroAnnotate,
-  KRO_STATUS_TIPS, CelTrace, KroExpertCertificate, KroOnboardingOverlay, KRO_CONCEPTS, KroCelPlayground, type CelTraceData,
+  KRO_STATUS_TIPS, CelTrace, KroExpertCertificate, KroOnboardingOverlay, KRO_CONCEPTS, KroCelPlayground,
   type InsightTrigger, type KroConceptId,
 } from './KroTeach'
 import { KroGraphPanel } from './KroGraph'
@@ -389,7 +389,7 @@ export default function App() {
   const pendingLootRef = useRef<string | null>(null)
 
   const handleAttack = async (target: string, damage: number) => {
-    if (!selected || attackPhase || attackingRef.current) { console.log('[onAttack] early return: selected=', !!selected, 'attackPhase=', attackPhase, 'ref=', attackingRef.current); return }
+    if (!selected || attackPhase || attackingRef.current) { return }
     attackingRef.current = true
     // Prevent attacking dead targets
     if (detail?.spec) {
@@ -1850,11 +1850,9 @@ function HelpModal({ onClose, onCheat }: { onClose: () => void; onCheat: () => v
     )},
     { title: 'Boss Phases & Room 2', content: (
       <>
-        <p>The boss has three phases based on remaining HP. Higher phases deal more counter-attack damage.</p>
-        <table className="help-table">
-          {/* #452: Counter Mult fixed to 1.3x/1.6x (was 1.5x/2.0x); Special Chance replaced with actual hardcoded
-              status effect rates from dungeon-graph combatResolve specPatch (not driven by specialAttackChance) */}
-          <thead><tr><th>Phase</th><th>HP Range</th><th>Counter Mult</th><th>Burn</th><th>Stun</th><th>Poison (R2)</th></tr></thead>
+         <p>The boss has three phases based on remaining HP. Higher phases deal more counter-attack damage.</p>
+         <table className="help-table">
+           <thead><tr><th>Phase</th><th>HP Range</th><th>Counter Mult</th><th>Burn</th><th>Stun</th><th>Poison (R2)</th></tr></thead>
           <tbody>
             <tr><td>Normal</td><td>&gt;50%</td><td>1.0×</td><td>25%</td><td>15%</td><td>30%</td></tr>
             <tr><td style={{color:'#e67e22'}}>ENRAGED</td><td>26–50%</td><td>1.3×</td><td>25%</td><td>15%</td><td>30%</td></tr>

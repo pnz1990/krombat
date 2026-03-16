@@ -37,8 +37,8 @@ wait_dungeon_ready() {
 
 # After #110: combat is processed synchronously by the Go backend via REST API.
 # Attacks must be submitted via backend API — direct Attack CR apply does nothing.
-# BACKEND_URL is set by each test or defaults to port-forwarded backend.
-BACKEND_URL="${BACKEND_URL:-http://localhost:8089}"
+# BACKEND_URL defaults to prod. Set to http://localhost:8089 only for local dev.
+BACKEND_URL="${BACKEND_URL:-https://learn-kro.eks.aws.dev}"
 
 # Auth bypass header for integration tests.
 # The backend reads KROMBAT_TEST_USER from the krombat-test-auth K8s Secret.
