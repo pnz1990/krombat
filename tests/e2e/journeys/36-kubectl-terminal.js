@@ -70,7 +70,8 @@ async function run() {
       && !msg.text().includes('net::ERR')
       && !msg.text().includes('WebSocket')
       && !msg.text().includes('429')
-      && !msg.text().includes('401'))
+      && !msg.text().includes('401')
+      && !msg.text().includes('404'))  // terminal fetch-by-name returns 404 when resource absent (e.g. modifier=none) — expected
       consoleErrors.push(msg.text());
   });
 
