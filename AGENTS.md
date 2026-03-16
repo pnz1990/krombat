@@ -26,14 +26,21 @@ A turn-based dungeon RPG where game state lives in Kubernetes Custom Resources o
   - `attack-graph`: defines the Attack CRD (no resources — CRD only)
   - `action-graph`: defines the Action CRD (no resources — CRD only)
 - **Argo CD** (EKS Managed Capability) — GitOps from `manifests/`. GitHub webhook for ~6s sync
-- **Go Backend** — REST API + WebSocket in `rpg-system`. Creates/patches Dungeon CRs, creates Attack and Action CRs to trigger state changes. **The Go backend IS the game engine**: all combat math, damage, HP mutations, item effects, status effects, loot drops, and room transitions are computed in Go (`handlers.go`). The `combatResult` and `actionResult` ConfigMaps in dungeon-graph contain pre-computed CEL values (equip bonuses, HP-after-potion, Room 2 HP, etc.) but the backend currently re-derives all of these independently — those CEL blocks are scaffolding for a future migration, not active logic.
+- **Go Backend** — REST API + WebSocket in `rpg-system`. For combat, the backend writes trigger fields only (`attackSeq`, `lastAttackTarget`, `lastAttackSeed`, `lastAttackIndex`, `lastAttackIsBoss`, `lastAttackIsBackstab`) then polls until kro's `combatResolve` specPatch fires — kro CEL is the authoritative combat engine. For actions (equip, use-item, abilities), the backend writes trigger fields only (`actionSeq`, `lastAction`, `lastAbility`) and kro's `actionResolve`/`abilityResolve` specPatch nodes compute the result. The backend computes: loot drop chance/selection (writes `lastLootDrop`), log text (reads kro's post-state diff, no math), XP delta, leaderboard entries, and room transition triggers (writes `enterRoom2` trigger; kro's `enterRoom2Resolve` computes the new HP values).
 - **React Frontend** — 8-bit pixel art with circular dungeon arena, Tibia-style equipment panel, combat modal with dice rolling. All state from Dungeon CR `spec` (not `status` — status can be stale after room transitions)
 
-### What kro actually computes (active, not dead code)
+### What kro actually computes (authoritative — the game engine)
 
-| RGD | What kro CEL computes that matters |
+| RGD / specPatch | What kro CEL computes |
 |---|---|
-| `dungeon-graph` | Namespace, all child CRs, GameConfig CM (dice formula, HP/counter tables), Dungeon status fields |
+| `dungeon-graph` → `combatResolve` | All combat math: hero damage (dice, weapon, helmet, amulet, class multipliers, backstab), boss/monster counter-attack chains (armor, shield, class defense, pants dodge, taunt 60% reduction, one-shot floor), status effect infliction (poison/burn/stun), ring regen, monsterHP array mutation, heroHP mutation |
+| `dungeon-graph` → `abilityResolve` | Mage heal (heroHP clamp, mana cost), warrior taunt activation (tauntActive=1) |
+| `dungeon-graph` → `tickDoT` | DoT damage ticks: poison −5/turn, burn −8/turn, boots resist rolls |
+| `dungeon-graph` → `advanceTaunt` | Taunt counter lifecycle: 1 (queued) → 2 (active/protecting) → 0 (expired) |
+| `dungeon-graph` → `tickCooldown` | Backstab cooldown decrement |
+| `dungeon-graph` → `regenRing` | Ring HP regen per turn, capped at class max HP |
+| `dungeon-graph` → `actionResolve` | Item equip bonuses (weaponBonus, armorBonus, etc.), inventory updates |
+| `dungeon-graph` → `enterRoom2Resolve` | Room 2 HP scaling (monsters ×1.5, boss ×1.3), modifier adjustments, state resets |
 | `boss-graph` | `entityState` (pending/ready/defeated), `bossPhase` (phase1/2/3), `damageMultiplier` (1.0/1.3/1.6) |
 | `hero-graph` | `maxHP`, `maxMana`, `classNote` in status |
 | `monster-graph` | `entityState` (alive/dead) per monster |
@@ -41,15 +48,14 @@ A turn-based dungeon RPG where game state lives in Kubernetes Custom Resources o
 | `treasure-graph` | `state` (opened/unopened), loot key string |
 | `loot-graph` | Item `type`, `rarity`, `stat`, `description` |
 
-### What the Go backend computes (the actual game engine)
+### What the Go backend computes
 
-- All combat math: dice rolls (seeded by Attack CR UID), hero damage (class multipliers, backstab, weapon, helmet, amulet), boss counter-attack chain (armor, shield, warrior/rogue/pants defense, taunt reduction, one-shot floor), monster counter-attack + archer stun + shaman heal abilities
-- Status effects: DoT application (poison −5/turn, burn −8/turn, stun), infliction chances per boss/monster type, boots resist rolls
-- Mana lifecycle: consumption per attack, heal cost, regen on kill, mana restore on room entry
-- Loot drops: kill-transition detection, drop chance by difficulty, rarity roll, item type selection (seeded by dungeon name + index)
-- Item effects: all 27 equip cases (9 types × 3 rarities), potion healing (class-clamped), inventory add/remove/cap
-- Room transitions: Room 2 HP scaling (monsters ×1.5, boss ×1.3), modifier adjustments, monster type reassignment, state resets
+- Loot drops: kill-transition detection (OLD_HP>0 && NEW_HP==0), drop chance by difficulty, rarity roll, item type selection (seeded by dungeon name + index) — writes `lastLootDrop`
+- Log text: reads kro's post-state diff (pre/post heroHP, monsterHP, bossHP) and generates `lastHeroAction`/`lastEnemyAction` strings — no math, kro's results are authoritative
+- XP delta: kill/boss-kill/victory/defeat outcomes from post-spec, writes `xpEarned`
 - Leaderboard: outcome derivation, turn counting, ConfigMap storage (`krombat-leaderboard` in `rpg-system` — plain ConfigMap, no kro interface)
+- Room 2 trigger: writes `enterRoom2` trigger field; kro's `enterRoom2Resolve` specPatch computes all the HP scaling, modifier adjustments, and state resets
+- Dungeon creation: writes initial spec fields; kro's `dungeonInit` specPatch computes monster HP arrays and all derived initial values
 
 ### What the frontend computes (display + necessary spec re-derivation)
 
@@ -66,7 +72,7 @@ A turn-based dungeon RPG where game state lives in Kubernetes Custom Resources o
 |---|---|
 | `manifests/rgds/` | All 9 RGD YAML files (kro resource graph) |
 | `manifests/rbac/rbac.yaml` | ServiceAccounts, ClusterRoles, Bindings |
-| `backend/internal/handlers/handlers.go` | **The game engine**: combat math, item effects, loot, room transitions, leaderboard |
+| `backend/internal/handlers/handlers.go` | REST API handlers: writes trigger fields, polls for kro specPatch results, computes loot/log/XP/leaderboard |
 | `backend/internal/k8s/watchers.go` | GVR definitions (DungeonGVR, AttackGVR, ActionGVR) |
 | `frontend/src/App.tsx` | Main React app (~1000 lines) |
 | `frontend/src/Sprite.tsx` | Sprite components (hurt=6→1→6, dead=6 with 0.35 opacity) |
