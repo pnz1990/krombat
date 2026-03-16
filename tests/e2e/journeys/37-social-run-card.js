@@ -299,27 +299,38 @@ async function run() {
 
     // === 6: Help modal has "Share Run Card" page ===
     console.log('\n=== Step 6: Help modal ===');
-    const helpBtn = page.locator('button:has-text("?"), button[aria-label*="help"], button[aria-label*="Help"]').first();
+    // Dismiss any cert overlays before clicking help
+    for (let i = 0; i < 6; i++) {
+      const certOverlay = page.locator('.kro-cert-overlay');
+      if (await certOverlay.count() === 0) break;
+      await page.evaluate(() => { const el = document.querySelector('.kro-cert-overlay'); if (el) el.click(); }).catch(() => {});
+      await page.waitForTimeout(700);
+    }
+    // Also dismiss any other modals
+    await clearModals(page);
+    await page.waitForTimeout(500);
+    const helpBtn = page.locator('button.help-btn').first();
     if (await helpBtn.count() > 0) {
       await helpBtn.click({ force: true }).catch(() => {});
-      await page.waitForTimeout(600);
+      await page.waitForTimeout(800);
       // Navigate through pages to find "Share Run Card"
       let found = false;
       for (let p = 0; p < 15; p++) {
         const helpBody = await page.textContent('.help-modal').catch(() => '');
         if (helpBody.includes('Share Run Card') || helpBody.includes('Share Your Run')) { found = true; break; }
-        const nextBtn = page.locator('.help-nav button:has-text("Next"), .help-nav button:has-text("→")').first();
-        if (await nextBtn.count() === 0 || await nextBtn.isDisabled()) break;
+        const nextBtn = page.locator('.help-nav button').filter({ hasText: /Next/ }).first();
+        const isDisabled = await nextBtn.isDisabled().catch(() => true);
+        if (isDisabled) break;
         await nextBtn.click({ force: true }).catch(() => {});
-        await page.waitForTimeout(300);
+        await page.waitForTimeout(400);
       }
       found ? ok('Help modal has "Share Run Card" page') : fail('Help modal missing "Share Run Card" page');
       // Close help modal
-      const closeBtn = page.locator('.help-nav button:has-text("Close"), button[aria-label="Close"]').first();
+      const closeBtn = page.locator('.help-nav button').filter({ hasText: 'Close' }).first();
       await closeBtn.click({ force: true }).catch(() => {});
       await page.waitForTimeout(300);
     } else {
-      warn('Help button not found — skipping help modal check');
+      fail('Help button (.help-btn) not found — check if cert overlay is blocking');
     }
 
     // === 7: Intro tour has "Share Your Run" slide ===
