@@ -26,15 +26,17 @@
 
 > "No database. No Redis. No game server. The game engine is kro — the Kubernetes Resource Orchestrator — running CEL expressions on a Kubernetes CR."
 
+Open the game at `https://learn-kro.eks.aws.dev`. Click **New Dungeon**, fill in the name `demo-dungeon-kubecon-2026`, select Warrior + Normal, click **Create Dungeon**. The dungeon loads.
+
+> "I just applied a real CR to a live EKS cluster. kro is now watching it."
+
 Open ☰ → kubectl Terminal. Type:
 
 ```
-kubectl apply -f dungeon.yaml
+kubectl get dungeon demo-dungeon-kubecon-2026 -o yaml
 ```
 
-> "That just applied a real CR to a live EKS cluster. kro is now watching it."
-
-**[Show: dungeon view loads — arena with monsters and boss]**
+> "Here is the full Dungeon CR that kro is reconciling right now."
 
 > "kro created 16 resources from that one CR: a Namespace, a Hero CR, Monster CRs, a Boss CR, a Treasure CR, 9 specPatch nodes. All from a single RGD — a ResourceGraphDefinition."
 

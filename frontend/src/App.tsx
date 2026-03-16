@@ -1897,20 +1897,25 @@ function HelpModal({ onClose, onCheat }: { onClose: () => void; onCheat: () => v
     )},
     { title: 'kubectl Terminal', content: (
       <>
-        <p>Open the <b>kubectl Terminal</b> from the ☰ menu inside any dungeon. It gives you a real CLI experience — your commands call the actual backend API. No kubectl binary needed.</p>
+        <p>Open the <b>kubectl Terminal</b> from the ☰ menu inside any dungeon. Read-only — covers all 9 kro CRDs. No kubectl binary needed.</p>
         <table className="help-table">
           <thead><tr><th>Command</th><th>What it does</th></tr></thead>
           <tbody>
-            <tr><td><code>kubectl apply -f dungeon.yaml</code></td><td>Create a new dungeon CR</td></tr>
             <tr><td><code>kubectl get dungeons</code></td><td>List your dungeons</td></tr>
-            <tr><td><code>kubectl get dungeon &lt;name&gt;</code></td><td>Show spec fields</td></tr>
-            <tr><td><code>kubectl describe dungeon &lt;name&gt;</code></td><td>Verbose output + status</td></tr>
-            <tr><td><code>kubectl delete dungeon &lt;name&gt;</code></td><td>Delete a dungeon</td></tr>
+            <tr><td><code>kubectl get dungeon &lt;name&gt; -o yaml</code></td><td>Full Dungeon CR as YAML</td></tr>
+            <tr><td><code>kubectl get hero &lt;dungeon&gt;</code></td><td>Hero CR (hp, mana, class)</td></tr>
+            <tr><td><code>kubectl get boss &lt;dungeon&gt; -o yaml</code></td><td>Full Boss CR as YAML</td></tr>
+            <tr><td><code>kubectl get monsters &lt;dungeon&gt;</code></td><td>All monster CRs + HP + state</td></tr>
+            <tr><td><code>kubectl get monster &lt;dungeon&gt; &lt;idx&gt;</code></td><td>One monster (index 0..N-1)</td></tr>
+            <tr><td><code>kubectl get treasure &lt;dungeon&gt;</code></td><td>Treasure CR state</td></tr>
+            <tr><td><code>kubectl get modifier &lt;dungeon&gt;</code></td><td>Modifier CR + effect</td></tr>
+            <tr><td><code>kubectl get loot &lt;dungeon&gt;</code></td><td>List dropped loot CRs</td></tr>
+            <tr><td><code>kubectl describe &lt;type&gt; &lt;dungeon&gt;</code></td><td>Verbose info + kro status</td></tr>
             <tr><td><code>cat dungeon.yaml</code></td><td>Show the YAML template</td></tr>
           </tbody>
         </table>
-        <p>Every command shows a collapsible <b>[kro] What just happened?</b> block explaining which RGD was triggered and the CEL expression that ran.</p>
-        <p>Use ↑↓ arrow keys for command history. Tab to autocomplete dungeon name.</p>
+        <p>Every command shows a collapsible <b>[kro] What just happened?</b> block. Use ↑↓ for history. Tab to autocomplete dungeon name.</p>
+        <p>Write operations (apply, delete, patch) are disabled — use the game UI.</p>
       </>
     )},
     { title: 'Share Run Card', content: (
@@ -2864,7 +2869,7 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
                         const desc =                           item.includes('weapon') ? `Weapon (${rarity}) — click to equip, +damage for 3 attacks` :
                           item.includes('armor') ? `Armor (${rarity}) — click to equip, +defense for dungeon` :
                           item.includes('hppotion') ? `HP Potion (${rarity}) — click to restore HP` :
-                          isManaPotion ? (heroClass === 'mage' ? `Mana Potion (${rarity}) — click to restore mana` : `Mana Potion (${rarity}) — Mage only`) :
+                          isManaPotion ? (spec.heroClass === 'mage' ? `Mana Potion (${rarity}) — click to restore mana` : `Mana Potion (${rarity}) — Mage only`) :
                           item.includes('helmet') ? `Helmet (${rarity}) — click to equip, +crit chance` :
                           item.includes('pants') ? `Pants (${rarity}) — click to equip, +dodge chance` :
                           item.includes('boots') ? `Boots (${rarity}) — click to equip, +status resist` :
@@ -2872,7 +2877,7 @@ function DungeonView({ cr, prevCr, onBack, onNewGamePlus, onAttack, events, k8sL
                           item.includes('amulet') ? `Amulet (${rarity}) — click to equip, +% damage boost` : item
                         return (
                           <Tooltip key={i} text={desc}>
-                            <button className="backpack-slot" disabled={gameOver || !!attackPhase || (isManaPotion && heroClass !== 'mage')}
+                            <button className="backpack-slot" disabled={gameOver || !!attackPhase || (isManaPotion && spec.heroClass !== 'mage')}
                               style={{ borderColor: RARITY_COLOR[rarity] || '#555' }}
                               onClick={() => onAttack(isPotion ? `use-${item}` : `equip-${item}`, 0)}>
                               <ItemSprite id={item} size={22} />
