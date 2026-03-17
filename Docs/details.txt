@@ -13,7 +13,7 @@ Every game instance is a Dungeon custom resource. All mutable game state lives i
 - `modifier` (string) — none/curse-fortitude/curse-fury/curse-darkness/blessing-strength/blessing-resilience/blessing-fortune
 - `tauntActive` (int) — warrior taunt state
 - `backstabCooldown` (int) — rogue backstab cooldown turns
-- `inventory` (string) — CSV of item IDs (e.g. "weapon-epic,hppotion-rare")
+- `inventory` (string) — JSON array of item IDs (e.g. '["weapon-epic","hppotion-rare"]')
 - `weaponBonus` (int), `weaponUses` (int) — equipped weapon
 - `armorBonus` (int) — equipped armor defense %
 - `shieldBonus` (int) — equipped shield block %

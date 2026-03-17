@@ -267,7 +267,7 @@ git push origin main
 
 # 1. Create an isolated branch (one contribution per branch)
 git checkout -b <short-description>   # e.g. cel-bind-upstream
-# NO krombat-private files (lists.go, csv.go, specPatch, stateWrite, etc.)
+# NO krombat-private files (lists.go, specPatch, stateWrite, etc.)
 
 # 2. Make changes, run tests locally
 GOTOOLCHAIN=local go test ./pkg/cel/... 
