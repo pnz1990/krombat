@@ -77,6 +77,8 @@ func main() {
 	// Returns 404 when the krombat-test-auth secret is absent (i.e. in environments without the secret).
 	mux.HandleFunc("GET /api/v1/auth/test-login", handlers.TestLoginHandler)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
+	// #560: return 200 on root to silence ALB health probe 404 noise (~19k/10h).
+	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
 
 	// #416: serve Prometheus metrics on a separate internal-only port (9090).
 	// This port is NOT routed through the ALB ingress, preventing public exposure.
