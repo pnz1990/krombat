@@ -1045,8 +1045,8 @@ const FAQ_ITEMS: { q: string; a: () => ReactNode }[] = [
             </tr>
             <tr>
               <td><code>csv.add</code>, <code>csv.remove</code>, <code>csv.contains</code></td>
-              <td>CEL functions for manipulating comma-separated value strings — used for the inventory system, which stores item names as a CSV in a single Kubernetes string field.</td>
-              <td>Krombat-private — planned migration to <code>json.marshal</code>/<code>json.unmarshal</code> (upstream) which will eliminate this patch entirely (#583)</td>
+              <td>CEL functions for manipulating comma-separated value strings — previously used for the inventory system.</td>
+              <td><strong>Removed</strong> — migrated to <code>json.marshal</code>/<code>json.unmarshal</code> (upstream CEL). Inventory is now stored as a JSON array string in the Kubernetes spec field. (#583)</td>
             </tr>
           </tbody>
         </table>
@@ -1384,7 +1384,7 @@ function ProfilePanel({ profile, loading, authUser, onClose }: {
   const login = authUser?.login ?? 'anonymous'
   const avatarUrl = authUser?.avatarUrl ?? ''
   const earnedSet = new Set(profile?.earnedBadges ?? [])
-  const inventoryItems = profile?.inventory ? profile.inventory.split(',').filter(Boolean) : []
+  const inventoryItems = profile?.inventory ? (JSON.parse(profile.inventory || '[]') as string[]) : []
 
   return (
     <div className="leaderboard-overlay" role="dialog" aria-label="Player Profile">
@@ -2875,7 +2875,7 @@ function DungeonView({ cr, prevCr, onBack, onGameOverBack, onNewGamePlus, onAtta
           )}
 
           {(() => {
-            const items = (spec.inventory || '').split(',').filter(Boolean)
+            const items = JSON.parse(spec.inventory || '[]') as string[]
             const wb = spec.weaponBonus || 0
             const wu = spec.weaponUses || 0
             const ab = spec.armorBonus || 0

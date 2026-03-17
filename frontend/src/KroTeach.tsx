@@ -607,7 +607,7 @@ Under the hood: \`POST /api/v1/dungeons/{ns}/{name}/cel-eval\` with \`{"expr":".
 This means every kro extension is available in the Playground:
 - \`cel.bind(x, schema.spec.heroHP, x * 2)\` — bind macro (same as dungeon-graph.yaml)
 - \`random.seededInt(0, 20, "seed")\` — deterministic random (same RNG kro uses)
-- \`csv.add(schema.spec.inventory, "sword", 5)\` — CSV item manipulation
+- \`json.marshal(json.unmarshal(schema.spec.inventory == '' ? '[]' : schema.spec.inventory) + ["sword"])\` — add item to JSON inventory
 - \`lists.setAtIndex([1, 2, 3], 0, 99)\` — list mutation
 - \`json.unmarshal('{"name":"goblin","hp":30}').name\` — parse JSON string into a map
 - \`json.marshal({"class": schema.spec.heroClass, "hp": schema.spec.heroHP})\` — serialize a map to JSON
@@ -1767,7 +1767,7 @@ export function KroCelPlayground({ dungeonNs, dungeonName, onLearnConcept, onClo
           <div style={{ flex: 1 }} />
           <div className="kro-playground-supported">
             {/* #453: list all kro CEL extensions registered in BaseDeclarations() */}
-            Supported: field access · arithmetic · ternary · string() · int() · size() · has() · cel.bind() · random.seededInt/String() · lists.setAtIndex/insertAtIndex/removeAtIndex/range/filter() · csv.add/remove() · maps.* · json.marshal/unmarshal() · transformList/transformMap() · 500 char limit
+            Supported: field access · arithmetic · ternary · string() · int() · size() · has() · cel.bind() · random.seededInt/String() · lists.setAtIndex/insertAtIndex/removeAtIndex/range/filter() · maps.* · json.marshal/unmarshal() · transformList/transformMap() · 500 char limit
           </div>
         </div>
       </div>

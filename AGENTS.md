@@ -84,7 +84,7 @@ A turn-based dungeon RPG where game state lives in Kubernetes Custom Resources o
 
 ## Dungeon CR Spec Fields
 
-`monsters`, `difficulty`, `heroClass`, `heroHP`, `heroMana`, `monsterHP` ([]int), `bossHP`, `modifier`, `tauntActive`, `backstabCooldown`, `inventory` (CSV), `weaponBonus`, `weaponUses`, `armorBonus`, `shieldBonus`, `helmetBonus`, `pantsBonus`, `bootsBonus`, `ringBonus`, `amuletBonus`, `poisonTurns`, `burnTurns`, `stunTurns`, `treasureOpened`, `currentRoom`, `doorUnlocked`, `room2MonsterHP`, `room2BossHP`, `lastHeroAction`, `lastEnemyAction`, `lastLootDrop`
+`monsters`, `difficulty`, `heroClass`, `heroHP`, `heroMana`, `monsterHP` ([]int), `bossHP`, `modifier`, `tauntActive`, `backstabCooldown`, `inventory` (JSON array string), `weaponBonus`, `weaponUses`, `armorBonus`, `shieldBonus`, `helmetBonus`, `pantsBonus`, `bootsBonus`, `ringBonus`, `amuletBonus`, `poisonTurns`, `burnTurns`, `stunTurns`, `treasureOpened`, `currentRoom`, `doorUnlocked`, `room2MonsterHP`, `room2BossHP`, `lastHeroAction`, `lastEnemyAction`, `lastLootDrop`
 
 ---
 
@@ -215,8 +215,8 @@ BASE_URL=https://learn-kro.eks.aws.dev node tests/e2e/run-journeys.js 25,26,27,2
 ## Current Priority: UPSTREAM ADOPTION + FORK REDUCTION
 
 All journey tests pass. Stabilization is complete. Current focus:
-- Issues #570–#573, #579–#580: teaching layer refresh for new upstream CEL features
-- Issue #583: migrate inventory from CSV to JSON to eliminate `csv.go` fork patch
+- Issues #570–#573, #579–#580: teaching layer refresh for new upstream CEL features ✅ done
+- Issue #583: migrate inventory from CSV to JSON to eliminate `csv.go` fork patch ✅ done
 - Issue #578: open upstream kro KREP for `specPatch` / CEL write-back
 - Issue #575: investigate replacing `specPatch` with upstream-compatible patterns
 
@@ -350,7 +350,6 @@ Sign at: https://easycla.lfx.linuxfoundation.org
 
 ### What NOT to include in upstream PRs
 
-- `pkg/cel/library/csv.go` — krombat-private CSV library (planned removal via #583)
 - `specPatch` / `stateWrite` dispatch in `builder.go` — pending maintainer discussion (#578)
 - Any reference to the krombat game, game logic, or game-specific CEL patterns
 - The 3-arg `random.seededInt(min, max, seed)` signature changes — already upstream
@@ -360,9 +359,6 @@ Sign at: https://easycla.lfx.linuxfoundation.org
 The current fork diff is exactly these files — run `git diff cel-writeback-d upstream/main --name-only` in `/Users/rrroizma/Projects/kro-fork` to verify the isolation boundary before opening any upstream PR:
 
 ```
-pkg/cel/library/csv.go              ← krombat-private (removal planned)
-pkg/cel/library/csv_test.go         ← same
-pkg/cel/environment.go              ← one line: library.CSV()
 pkg/graph/builder.go                ← specPatch/stateWrite dispatch
 pkg/graph/node.go                   ← NodeTypeSpecPatch, NodeTypeStateWrite
 pkg/graph/crd/crd.go                ← InjectKstateField

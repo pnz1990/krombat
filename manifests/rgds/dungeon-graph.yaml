@@ -774,7 +774,11 @@ spec:
                 : ''
               )))
             : '',
-            lootItem != '' ? csv.add(schema.spec.inventory, lootItem, 8) : schema.spec.inventory
+            lootItem != '' ?
+              cel.bind(invItems, json.unmarshal(schema.spec.inventory == '' ? '[]' : schema.spec.inventory),
+                size(invItems) < 8 ? json.marshal(invItems + [lootItem]) : schema.spec.inventory
+              )
+            : schema.spec.inventory
           ))))))))))))))))))}
 
         # --- Clear attack context so specPatch doesn't re-fire ---
@@ -796,7 +800,9 @@ spec:
           ${cel.bind(a, schema.spec.lastAction,
           cel.bind(inv, schema.spec.inventory,
             a.startsWith('use-') || a.startsWith('equip-') ?
-              csv.remove(inv, a.startsWith('use-') ? a.substring(4) : a.substring(6))
+              cel.bind(item, a.startsWith('use-') ? a.substring(4) : a.substring(6),
+                json.marshal(json.unmarshal(inv == '' ? '[]' : inv).filter(x, x != item))
+              )
             : inv
           ))}
 
