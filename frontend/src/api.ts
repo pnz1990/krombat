@@ -141,7 +141,7 @@ export interface UserProfile {
   totalBossKills: number
   favouriteClass: string
   favouriteDifficulty: string
-  inventory: string          // CSV
+  inventory: string          // JSON array string e.g. '["weapon-epic","hppotion-rare"]'
   weaponBonus: number; weaponUses: number; armorBonus: number; shieldBonus: number
   helmetBonus: number; pantsBonus: number; bootsBonus: number; ringBonus: number; amuletBonus: number
   heroHP: number
