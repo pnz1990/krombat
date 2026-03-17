@@ -279,15 +279,32 @@ resource "aws_cloudwatch_metric_alarm" "backend_restarts" {
   alarm_name          = "${var.cluster_name}-backend-restarts"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 1
-  metric_name         = "pod_number_of_container_restarts"
-  namespace           = "ContainerInsights"
-  period              = 300
-  statistic           = "Sum"
   threshold           = 3
   alarm_description   = "Backend pod restarted more than 3 times in 5 minutes"
-  dimensions = {
-    ClusterName = var.cluster_name
-    Namespace   = "rpg-system"
+
+  # ContainerInsights publishes at 4-dimension granularity (PodName + FullPodName +
+  # ClusterName + Namespace). A 2-dimension query never returns data and the alarm
+  # stays in INSUFFICIENT_DATA. Use metric math to SUM across all rpg-backend pods. (#565)
+  metric_query {
+    id          = "restarts"
+    expression  = "SUM(METRICS())"
+    label       = "Backend Pod Restarts (sum)"
+    return_data = true
+  }
+
+  metric_query {
+    id = "m1"
+    metric {
+      namespace   = "ContainerInsights"
+      metric_name = "pod_number_of_container_restarts"
+      period      = 300
+      stat        = "Maximum"
+      dimensions = {
+        ClusterName = var.cluster_name
+        Namespace   = "rpg-system"
+        PodName     = "rpg-backend"
+      }
+    }
   }
 }
 
@@ -323,11 +340,13 @@ resource "aws_cloudwatch_log_metric_filter" "dungeon_deleted" {
   }
 }
 
-# Counts each successful reaper cleanup run logged by the reaper CronJob
+# Counts each successful reaper cleanup run logged by the reaper CronJob.
+# The reaper pod runs in rpg-system namespace, so its logs land in rpg_system
+# log group. Pattern is case-sensitive; reaper prints "Reaper complete." (#563)
 resource "aws_cloudwatch_log_metric_filter" "reaper_success" {
   name           = "${var.cluster_name}-reaper-success"
-  log_group_name = aws_cloudwatch_log_group.game.name
-  pattern        = "reaper complete"
+  log_group_name = aws_cloudwatch_log_group.rpg_system.name
+  pattern        = "Reaper complete"
 
   metric_transformation {
     name          = "ReaperSuccess"
@@ -339,31 +358,33 @@ resource "aws_cloudwatch_log_metric_filter" "reaper_success" {
 }
 
 # Extracts attack handler duration_ms for P95 latency tracking.
-# Log line emitted by processCombat: attack_processed dungeon=<n> target=<t> duration_ms=<v>
+# Logs are JSON wrapped in a fluentbit envelope; use JSON filter syntax to
+# extract $.log_processed.duration_ms from the inner object. (#564)
 resource "aws_cloudwatch_log_metric_filter" "attack_latency" {
   name           = "${var.cluster_name}-attack-latency"
   log_group_name = aws_cloudwatch_log_group.rpg_system.name
-  pattern        = "[timestamp, level, msg=\"attack_processed\", dungeon, target, duration]"
+  pattern        = "{ $.log_processed.msg = \"attack_processed\" }"
 
   metric_transformation {
     name      = "AttackDurationMs"
     namespace = "Krombat/Game"
-    value     = "$duration"
+    value     = "$.log_processed.duration_ms"
     unit      = "Milliseconds"
   }
 }
 
 # Extracts action handler duration_ms for P95 latency tracking.
-# Log line emitted by processAction: action_processed dungeon=<n> action=<a> duration_ms=<v>
+# Logs are JSON wrapped in a fluentbit envelope; use JSON filter syntax to
+# extract $.log_processed.duration_ms from the inner object. (#564)
 resource "aws_cloudwatch_log_metric_filter" "action_latency" {
   name           = "${var.cluster_name}-action-latency"
   log_group_name = aws_cloudwatch_log_group.rpg_system.name
-  pattern        = "[timestamp, level, msg=\"action_processed\", dungeon, action, duration]"
+  pattern        = "{ $.log_processed.msg = \"action_processed\" }"
 
   metric_transformation {
     name      = "ActionDurationMs"
     namespace = "Krombat/Game"
-    value     = "$duration"
+    value     = "$.log_processed.duration_ms"
     unit      = "Milliseconds"
   }
 }
