@@ -174,7 +174,7 @@ The damage you just dealt was computed by CEL inside a specPatch node in dungeon
     # Dice roll seeded by lastAttackSeed for deterministic replay
     monsterHP: >-
       \${schema.spec.difficulty == 'easy'
-        ? lists.set(schema.spec.monsterHP, idx,
+        ? lists.setAtIndex(schema.spec.monsterHP, idx,
             schema.spec.monsterHP[idx] - (roll + 2))
         : ...}
     combatProcessedSeq: "\${schema.spec.attackSeq}"`,
@@ -574,7 +574,7 @@ This means every kro extension is available in the Playground:
 - \`cel.bind(x, schema.spec.heroHP, x * 2)\` — bind macro (same as dungeon-graph.yaml)
 - \`random.seededInt(0, 20, "seed")\` — deterministic random (same RNG kro uses)
 - \`csv.add(schema.spec.inventory, "sword", 5)\` — CSV item manipulation
-- \`lists.set([1, 2, 3], 0, 99)\` — list mutation
+- \`lists.setAtIndex([1, 2, 3], 0, 99)\` — list mutation
 - \`schema.spec.heroClass.startsWith("war")\` — string functions
 
 Try expressions that mirror real kro RGD patterns:
@@ -1726,7 +1726,7 @@ export function KroCelPlayground({ dungeonNs, dungeonName, onLearnConcept, onClo
           <div style={{ flex: 1 }} />
           <div className="kro-playground-supported">
             {/* #453: list all kro CEL extensions registered in BaseDeclarations() */}
-            Supported: field access · arithmetic · ternary · string() · int() · size() · has() · cel.bind() · random.seededInt/String() · lists.set/range/filter() · csv.add/remove() · maps.* · 500 char limit
+            Supported: field access · arithmetic · ternary · string() · int() · size() · has() · cel.bind() · random.seededInt/String() · lists.setAtIndex/insertAtIndex/removeAtIndex/range/filter() · csv.add/remove() · maps.* · 500 char limit
           </div>
         </div>
       </div>

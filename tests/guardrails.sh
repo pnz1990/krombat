@@ -673,7 +673,8 @@ grep -q "modExpr = .*'spec\.modifier\|modExpr = .*\"spec\.modifier" frontend/src
 
 # #448: InsightCards must not reference combatResult CM or processCombat
 grep -q "combatResult ConfigMap\|processCombat\|in a ConfigMap'" frontend/src/KroTeach.tsx && fail "#448: InsightCards still reference stale combatResult CM or processCombat" || pass "#448: InsightCards stale arch references removed"
-grep -q 'lists\.setIndex' frontend/src/KroTeach.tsx && fail "#448: lists.setIndex still used (should be lists.set)" || pass "#448: lists.setIndex replaced with lists.set"
+grep -q 'lists\.setIndex' frontend/src/KroTeach.tsx && fail "#448: lists.setIndex still used (should be lists.setAtIndex)" || pass "#448: lists.setIndex replaced with lists.setAtIndex"
+grep -q 'lists\.set[^A]' frontend/src/KroTeach.tsx && fail "#448: old lists.set() name still used in KroTeach (should be lists.setAtIndex)" || pass "#448: KroTeach uses lists.setAtIndex (upstream PR #1148 name)"
 grep -q 'int(name.*36\|base-36.*coercion' frontend/src/KroTeach.tsx && fail "#448: loot-drop-string-ops still mentions int(name, 36) / base-36" || pass "#448: loot-drop-string-ops headline updated"
 
 # #451: intro modal must be updated
@@ -1130,8 +1131,8 @@ grep -q 'kro/pull/1145\|PR #1145\|1145' frontend/src/App.tsx \
   || fail "FAQ: kro PR #1145 (cel.bind) missing from FAQ"
 
 grep -q 'kro/pull/1148\|PR #1148\|1148' frontend/src/App.tsx \
-  && pass "FAQ: kro PR #1148 (lists.setIndex) referenced in FAQ" \
-  || fail "FAQ: kro PR #1148 (lists.setIndex) missing from FAQ"
+  && pass "FAQ: kro PR #1148 (lists.setAtIndex) referenced in FAQ" \
+  || fail "FAQ: kro PR #1148 (lists.setAtIndex) missing from FAQ"
 
 grep -q 'specPatch\|stateWrite' frontend/src/App.tsx \
   && pass "FAQ: fork patches (specPatch/stateWrite) documented in FAQ" \

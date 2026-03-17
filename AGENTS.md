@@ -349,7 +349,7 @@ Sign at: https://easycla.lfx.linuxfoundation.org
 - Any reference to the krombat game, game logic, or game-specific CEL patterns
 - The 3-arg `random.seededInt(min, max, seed)` signature changes — already upstream
 - `ext.Bindings()` / `cel.bind()` — **already merged upstream** (PR #1145)
-- `lists.setIndex`, `lists.insertAt`, `lists.removeAt` — **in review upstream** (PR #1148)
+- `lists.setAtIndex`, `lists.insertAtIndex`, `lists.removeAtIndex` — **already merged upstream** (PR #1148)
 
 ### Isolation check before opening a PR
 
