@@ -41,6 +41,7 @@ export type KroConceptId =
   | 'taunt-state-machine'
   | 'mana-lifecycle'
   | 'cel-probability'
+  | 'include-when-sibling'
 
 export interface KroConcept {
   id: KroConceptId
@@ -234,7 +235,9 @@ resources:
     title: 'includeWhen — Conditional Resources',
     tagline: 'Resources that only exist when a condition is true.',
     body: `\`includeWhen\` is a CEL expression on a resource block. When it evaluates to \`false\`, kro does not create (or deletes) that resource. When it flips to \`true\`, kro creates it.
-This is how loot works: the Loot CR only appears when a monster's HP reaches 0. The moment you killed that monster, kro evaluated \`schema.spec.hp == 0\` and created the Loot CR, which trigger loot-graph to generate the item.`,
+This is how loot works: the Loot CR only appears when a monster's HP reaches 0. The moment you killed that monster, kro evaluated \`schema.spec.hp == 0\` and created the Loot CR, which trigger loot-graph to generate the item.
+
+Expressions can reference \`schema.spec.*\` fields **and** the observed state of other already-reconciled resources in the same graph — enabling purely data-driven resource inclusion without backend trigger fields. See the 'includeWhen — Sibling Resource References' concept for details.`,
     snippet: `# monster-graph — lootCR only created on kill
 resources:
   - id: lootCR
@@ -255,6 +258,37 @@ resources:
     template:
       kind: Secret`,
     learnMore: 'manifests/rgds/monster-graph.yaml and treasure-graph.yaml',
+  },
+
+  'include-when-sibling': {
+    id: 'include-when-sibling',
+    title: 'includeWhen — Sibling Resource References',
+    tagline: 'Gate a resource on the live state of another resource in the same graph.',
+    body: `By default, \`includeWhen\` can only read \`schema.spec.*\` fields from the instance CR. kro now also supports referencing the **observed state of already-reconciled sibling resources** in the same RGD.
+
+This means resource inclusion can be driven by real cluster data — not just what the operator wrote into the CR spec.
+
+**Before (spec-only):**
+A dungeon specPatch fires because a counter field in spec was incremented by the backend.
+
+**Now also valid (resource-backed):**
+A resource is conditionally created based on whether a sibling ConfigMap or CR has reached a specific state — without the backend having to write a trigger field.
+
+**kro evaluates these in DAG order** — if resource B's \`includeWhen\` references resource A, kro ensures A is reconciled first, then evaluates B's condition against A's observed state. If A isn't ready yet, kro returns \`data-pending\` and retries.
+
+This is useful for multi-stage workflows where later resources should only appear after earlier stages are definitively complete — no polling, no trigger fields, pure graph-driven logic.`,
+    snippet: `# resource B only appears once resource A reaches a specific state
+resources:
+  - id: resourceA
+    readyWhen:
+      - "\${resourceA.status.phase == 'complete'}"
+    template: { ... }
+
+  - id: resourceB
+    includeWhen:
+      - "\${resourceA.status.phase == 'complete'}"
+    template: { ... }`,
+    learnMore: 'kubernetes-sigs/kro — commit 332bbf8 (allow includeWhen to reference upstream resources)',
   },
 
   'readyWhen': {
@@ -575,6 +609,8 @@ This means every kro extension is available in the Playground:
 - \`random.seededInt(0, 20, "seed")\` — deterministic random (same RNG kro uses)
 - \`csv.add(schema.spec.inventory, "sword", 5)\` — CSV item manipulation
 - \`lists.setAtIndex([1, 2, 3], 0, 99)\` — list mutation
+- \`json.unmarshal('{"name":"goblin","hp":30}').name\` — parse JSON string into a map
+- \`json.marshal({"class": schema.spec.heroClass, "hp": schema.spec.heroHP})\` — serialize a map to JSON
 - \`schema.spec.heroClass.startsWith("war")\` — string functions
 
 Try expressions that mirror real kro RGD patterns:
@@ -582,6 +618,9 @@ Try expressions that mirror real kro RGD patterns:
 - \`schema.spec.difficulty == "hard" ? "big dice" : "small dice"\`
 - \`cel.bind(hp, schema.spec.heroHP, hp > 100 ? "healthy" : "injured")\`
 - \`schema.spec.heroClass == "mage" && schema.spec.heroMana > 0\`
+- \`[10, 20, 30].transformList(hp, hp * 2)\` → scale all values: \`[20, 40, 60]\`
+- \`{"goblin": 30, "skeleton": 40}.transformMap(k, v, v + 10)\` → bump all HP values
+- \`{"difficulty": "hard"}.merge({"class": schema.spec.heroClass})\` → merge two maps, right-side keys win
 
 This is how you become fluent in CEL: not by reading docs, but by experimenting against real data. The dungeon-graph RGD has 40+ CEL expressions using these exact functions.`,
     snippet: `# In kro RGDs, expressions appear inside \${...} blocks:
@@ -917,6 +956,8 @@ const CONCEPT_ORDER: KroConceptId[] = [
   'cel-filter', 'cel-string-ops', 'spec-patch',
   // #459: class-specific deep dives (Warrior, Mage, Rogue)
   'taunt-state-machine', 'mana-lifecycle', 'cel-probability',
+  // #573: includeWhen sibling resource refs
+  'include-when-sibling',
 ]
 
 interface KroGlossaryProps {
@@ -1726,7 +1767,7 @@ export function KroCelPlayground({ dungeonNs, dungeonName, onLearnConcept, onClo
           <div style={{ flex: 1 }} />
           <div className="kro-playground-supported">
             {/* #453: list all kro CEL extensions registered in BaseDeclarations() */}
-            Supported: field access · arithmetic · ternary · string() · int() · size() · has() · cel.bind() · random.seededInt/String() · lists.setAtIndex/insertAtIndex/removeAtIndex/range/filter() · csv.add/remove() · maps.* · 500 char limit
+            Supported: field access · arithmetic · ternary · string() · int() · size() · has() · cel.bind() · random.seededInt/String() · lists.setAtIndex/insertAtIndex/removeAtIndex/range/filter() · csv.add/remove() · maps.* · json.marshal/unmarshal() · transformList/transformMap() · 500 char limit
           </div>
         </div>
       </div>

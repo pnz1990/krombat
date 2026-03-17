@@ -212,10 +212,15 @@ BASE_URL=https://learn-kro.eks.aws.dev node tests/e2e/run-journeys.js 25,26,27,2
 
 ---
 
-## Current Priority: FEATURE DEVELOPMENT (Issue #95 complete)
+## Current Priority: UPSTREAM ADOPTION + FORK REDUCTION
 
-All 11 journey tests pass and are enforced by the pre-push hook. Stabilization is complete.
-Next tasks may include the open feature requests:
+All journey tests pass. Stabilization is complete. Current focus:
+- Issues #570–#573, #579–#580: teaching layer refresh for new upstream CEL features
+- Issue #583: migrate inventory from CSV to JSON to eliminate `csv.go` fork patch
+- Issue #578: open upstream kro KREP for `specPatch` / CEL write-back
+- Issue #575: investigate replacing `specPatch` with upstream-compatible patterns
+
+Open feature requests (lower priority):
 - Issue #92: Helmet, pants, boots equipment slots with buffs
 - Issue #25: Multi-phase boss mechanics with HP thresholds
 - Issue #20: Loot system enhancements (persistent inventory / item effects)
@@ -344,12 +349,34 @@ Sign at: https://easycla.lfx.linuxfoundation.org
 
 ### What NOT to include in upstream PRs
 
-- `pkg/cel/library/csv.go` — krombat-private CSV library
-- `specPatch` / `stateWrite` dispatch in `builder.go` — pending maintainer discussion
+- `pkg/cel/library/csv.go` — krombat-private CSV library (planned removal via #583)
+- `specPatch` / `stateWrite` dispatch in `builder.go` — pending maintainer discussion (#578)
 - Any reference to the krombat game, game logic, or game-specific CEL patterns
 - The 3-arg `random.seededInt(min, max, seed)` signature changes — already upstream
 - `ext.Bindings()` / `cel.bind()` — **already merged upstream** (PR #1145)
 - `lists.setAtIndex`, `lists.insertAtIndex`, `lists.removeAtIndex` — **already merged upstream** (PR #1148)
+
+The current fork diff is exactly these files — run `git diff cel-writeback-d upstream/main --name-only` in `/Users/rrroizma/Projects/kro-fork` to verify the isolation boundary before opening any upstream PR:
+
+```
+pkg/cel/library/csv.go              ← krombat-private (removal planned)
+pkg/cel/library/csv_test.go         ← same
+pkg/cel/environment.go              ← one line: library.CSV()
+pkg/graph/builder.go                ← specPatch/stateWrite dispatch
+pkg/graph/node.go                   ← NodeTypeSpecPatch, NodeTypeStateWrite
+pkg/graph/crd/crd.go                ← InjectKstateField
+pkg/graph/parser/conditions.go      ← StripExpressionWrapper
+pkg/controller/instance/context.go  ← StateWriteMutated field
+pkg/controller/instance/resources.go ← processSpecPatchNode, processStateWriteNode
+pkg/controller/instance/status.go   ← stateWrite status handling
+pkg/runtime/node.go                 ← specPatch/stateWrite eval
+pkg/runtime/runtime.go              ← RefreshInstance
+api/v1alpha1/resourcegraphdefinition_types.go ← specPatch/stateWrite API types
+helm/crds/kro.run_resourcegraphdefinitions.yaml ← CRD schema for above
+docs/design/proposals/cel-writeback/proposal.md ← design doc
+kro-patched.md                      ← fork summary doc
+Dockerfile.fix                      ← fork build tooling
+```
 
 ### Isolation check before opening a PR
 
@@ -371,6 +398,7 @@ If anything outside the intended scope appears, do NOT open the PR — clean the
 - Cherry-picking a commit that adds new files to a branch where those files don't exist triggers "modify/delete" conflicts — resolve by `git add`ing the new files and `git rm`ing any fork-private files (e.g. `kro-patched.md`) before `--continue`
 - **Always use `cel.TypeParamType("T")` for generic list/map functions, never `cel.DynType`** — `DynType` loses type information at compile time so the return type collapses to `list(dyn)` regardless of input. Use `maps.go` as the reference: `cel.MapType(cel.TypeParamType("K"), cel.TypeParamType("V"))`. Read the existing file in the same package end-to-end before writing any `CompileOptions`.
 - **Always add a `TestXxxTypeInference` test for every new CEL library function** that asserts `ast.OutputType().String()` equals the concrete type (e.g. `"list(int)"`). This is the only way to catch `DynType` regressions at test time — runtime tests pass either way.
+- **The fork diff is small and well-isolated.** Run `git diff cel-writeback-d upstream/main --name-only` before any upstream PR to verify the current isolation boundary. If anything outside the intended scope appears, clean the branch first.
 
 ---
 
