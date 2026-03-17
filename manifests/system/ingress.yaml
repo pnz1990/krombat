@@ -38,6 +38,7 @@ metadata:
     # HTTP/2 does not support the Upgrade header, so WS connections fail with 400
     # when the ALB negotiates HTTP/2 with the backend.
     alb.ingress.kubernetes.io/backend-protocol-version: HTTP1
+    alb.ingress.kubernetes.io/ssl-policy: "ELBSecurityPolicy-TLS13-1-2-2021-06"
 spec:
   ingressClassName: krombat
   rules:
