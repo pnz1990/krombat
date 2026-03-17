@@ -1046,16 +1046,56 @@ const FAQ_ITEMS: { q: string; a: () => ReactNode }[] = [
             <tr>
               <td><code>csv.add</code>, <code>csv.remove</code>, <code>csv.contains</code></td>
               <td>CEL functions for manipulating comma-separated value strings — used for the inventory system, which stores item names as a CSV in a single Kubernetes string field.</td>
-              <td>Krombat-private; no upstream PR planned (game-specific pattern)</td>
+              <td>Krombat-private — planned migration to <code>json.marshal</code>/<code>json.unmarshal</code> (upstream) which will eliminate this patch entirely (#583)</td>
             </tr>
           </tbody>
         </table>
         <p>The goal is to upstream <code>specPatch</code> and <code>stateWrite</code> once the design has been agreed with the kro maintainers. The CEL library additions (<code>cel.bind</code>, list mutations, seeded random) are all merged upstream.</p>
+        <p>The following CEL capabilities arrived in upstream kro and are available in Krombat's environment with no fork patch required:</p>
+        <table className="help-table">
+          <thead><tr><th>Feature</th><th>What it adds</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><code>json.marshal</code>, <code>json.unmarshal</code></td>
+              <td>Parse a JSON string into a CEL map/list, or serialize a CEL value to a JSON string. Available in the CEL Playground now.</td>
+            </tr>
+            <tr>
+              <td><code>transformList</code>, <code>transformMap</code></td>
+              <td>Two-variable comprehension macros for mapping lists and maps to new values — cleaner than chained <code>filter</code> expressions for bulk transformations.</td>
+            </tr>
+            <tr>
+              <td><code>map.merge(other)</code></td>
+              <td>Merges two maps; keys from the right-hand map overwrite the left. Useful for config layering patterns.</td>
+            </tr>
+            <tr>
+              <td><code>sortBy</code> comprehension</td>
+              <td>Sort a list by a key expression. The kro AST inspector now correctly handles <code>sortBy</code> variable scoping.</td>
+            </tr>
+          </tbody>
+        </table>
       </>
     ),
   },
   {
     q: 'Why does the game engine live in YAML instead of Go code?',
+    a: () => (
+      <>
+        <p>That is the point. Every design decision in Krombat was made to prove that kro CEL is expressive enough to implement real stateful logic — not just templating. The entire combat engine (dice rolls, damage formulas, multi-phase boss, status effects, room transitions) is in <code>manifests/rgds/dungeon-graph.yaml</code>. The Go backend only writes trigger fields and reads the results.</p>
+        <p>If you can implement a turn-based dungeon RPG with multi-phase bosses and a loot system in pure Kubernetes YAML + CEL, the same approach works for CI/CD pipelines, approval workflows, quota systems, and any other stateful workflow you would normally write a custom controller for.</p>
+      </>
+    ),
+  },
+  {
+    q: 'How does kro decide when to create a resource?',
+    a: () => (
+      <>
+        <p>Two mechanisms control resource lifecycle in an RGD:</p>
+        <p><strong><code>includeWhen</code></strong> — a CEL condition on the resource block. When it evaluates to <code>false</code>, kro deletes (or skips creating) that resource. When it flips to <code>true</code>, kro creates it. Loot CRs in Krombat use this: <code>{`"includeWhen: [\"\${schema.spec.hp == 0}\"]"`}</code> — the Loot CR only exists after a monster is killed.</p>
+        <p><strong><code>readyWhen</code></strong> — a condition that must be true before kro considers a resource ready for downstream consumers. kro blocks dependent resources until all <code>readyWhen</code> conditions pass.</p>
+        <p>As of recent kro upstream releases, <code>includeWhen</code> expressions can also reference the <strong>observed state of already-reconciled sibling resources</strong> in the same graph — not just <code>schema.spec.*</code> fields. This enables purely data-driven resource inclusion: resource B only appears once resource A has reached a specific state, without the operator needing to write a trigger field into the CR. kro evaluates these in DAG order and retries if a referenced sibling is not yet ready.</p>
+      </>
+    ),
+  },
     a: () => (
       <>
         <p>That is the point. Every design decision in Krombat was made to prove that kro CEL is expressive enough to implement real stateful logic — not just templating. The entire combat engine (dice rolls, damage formulas, multi-phase boss, status effects, room transitions) is in <code>manifests/rgds/dungeon-graph.yaml</code>. The Go backend only writes trigger fields and reads the results.</p>

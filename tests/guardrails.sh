@@ -1134,6 +1134,18 @@ grep -q 'kro/pull/1148\|PR #1148\|1148' frontend/src/App.tsx \
   && pass "FAQ: kro PR #1148 (lists.setAtIndex) referenced in FAQ" \
   || fail "FAQ: kro PR #1148 (lists.setAtIndex) missing from FAQ"
 
+grep -q 'json\.unmarshal\|json\.marshal' frontend/src/KroTeach.tsx \
+  && pass "FAQ: json.unmarshal/marshal documented in KroTeach Playground" \
+  || fail "FAQ: json.unmarshal/marshal missing from KroTeach Playground"
+
+grep -q 'transformList\|transformMap' frontend/src/KroTeach.tsx \
+  && pass "FAQ: transformList/transformMap documented in KroTeach Playground" \
+  || fail "FAQ: transformList/transformMap missing from KroTeach Playground"
+
+grep -q 'include-when-sibling' frontend/src/KroTeach.tsx \
+  && pass "FAQ: include-when-sibling InsightCard concept present in KroTeach" \
+  || fail "FAQ: include-when-sibling InsightCard concept missing from KroTeach"
+
 grep -q 'specPatch\|stateWrite' frontend/src/App.tsx \
   && pass "FAQ: fork patches (specPatch/stateWrite) documented in FAQ" \
   || fail "FAQ: fork patches (specPatch/stateWrite) missing from FAQ"
