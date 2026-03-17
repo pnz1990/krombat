@@ -239,6 +239,7 @@ Open feature requests (lower priority):
 - Avoid `${}` in RGD YAML — kro parses it as CEL; use `$()` for bash variable expansion
 - `readyWhen` expressions in RGDs must use `${}` wrapper AND the resource's own ID (not `self`) — kro enforces both
 - When adding new fields to the Dungeon CR spec in `dungeon-graph.yaml`, always `kubectl delete rgd dungeon-graph` after merge so kro regenerates the CRD schema — Argo CD sync alone does NOT update the CRD field list
+- **Do NOT use `transformList` or `transformMap` in `specPatch` nodes** — kro's dep-graph builder does not recognize the comprehension variable as a local binding and reports it as an unknown identifier. Use `lists.range(n).map(i, expr)` instead, which the dep-graph builder handles correctly.
 
 ---
 
