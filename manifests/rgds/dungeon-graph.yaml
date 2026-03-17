@@ -389,7 +389,7 @@ spec:
             cel.bind(idx, schema.spec.lastAttackIndex,
             cel.bind(oldHP, schema.spec.monsterHP[idx],
             cel.bind(newHP, oldHP - finalDmg < 0 ? 0 : oldHP - finalDmg,
-            cel.bind(postArr, lists.set(schema.spec.monsterHP, idx, newHP),
+            cel.bind(postArr, lists.setAtIndex(schema.spec.monsterHP, idx, newHP),
             cel.bind(postAlive, postArr.filter(h, h > 0).size(),
               postAlive > 0 ?
                 cel.bind(shamans, lists.range(size(schema.spec.monsterHP)).filter(i,
@@ -408,7 +408,7 @@ spec:
                           (diff == 'easy' ? 30 : diff == 'hard' ? 80 : 50)
                           * (schema.spec.modifier == 'curse-fortitude' ? 3 : 2) / 2,
                         cel.bind(healedHP, postArr[hj] + 10 > monMaxHP ? monMaxHP : postArr[hj] + 10,
-                          healedHP > postArr[hj] ? lists.set(postArr, hj, healedHP) : postArr
+                          healedHP > postArr[hj] ? lists.setAtIndex(postArr, hj, healedHP) : postArr
                         )))
                       : postArr
                     )
@@ -545,7 +545,7 @@ spec:
           cel.bind(idx, schema.spec.lastAttackIndex,
           cel.bind(newMonsterArr,
             (!isBoss && idx >= 0) ?
-              lists.set(schema.spec.monsterHP, idx, (schema.spec.monsterHP[idx] - finalDmg < 0 ? 0 : schema.spec.monsterHP[idx] - finalDmg))
+              lists.setAtIndex(schema.spec.monsterHP, idx, (schema.spec.monsterHP[idx] - finalDmg < 0 ? 0 : schema.spec.monsterHP[idx] - finalDmg))
             : schema.spec.monsterHP,
           cel.bind(aliveCount,
             (!isBoss && idx >= 0) ? newMonsterArr.filter(h, h > 0).size() : 0,
@@ -635,7 +635,7 @@ spec:
               cel.bind(amuDmg, schema.spec.amuletBonus > 0 ? helmDmg * (100 + schema.spec.amuletBonus) / 100 : helmDmg,
               cel.bind(finalDmg, schema.spec.stunTurns > 0 ? 0 : amuDmg,
               cel.bind(postArr,
-                idx >= 0 ? lists.set(schema.spec.monsterHP, idx,
+                idx >= 0 ? lists.setAtIndex(schema.spec.monsterHP, idx,
                   schema.spec.monsterHP[idx] - finalDmg < 0 ? 0 : schema.spec.monsterHP[idx] - finalDmg)
                 : schema.spec.monsterHP,
               cel.bind(postAlive, postArr.filter(h, h > 0).size(),
