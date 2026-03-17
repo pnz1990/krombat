@@ -936,7 +936,7 @@ spec:
               mod.startsWith('blessing') ? r2m * 9 / 10
               : mod.startsWith('curse') ? r2m * 11 / 10
               : r2m,
-              schema.spec.monsterHP.transformList(_, adj)
+              schema.spec.monsterHP.transformList(hp, adj)
             )))))}
 
         bossHP: >-
@@ -958,7 +958,7 @@ spec:
               mod.startsWith('blessing') ? r2m * 9 / 10
               : mod.startsWith('curse') ? r2m * 11 / 10
               : r2m,
-              schema.spec.monsterHP.transformList(_, adj)
+              schema.spec.monsterHP.transformList(hp, adj)
             )))))}
 
         room2BossHP: >-
