@@ -58,7 +58,7 @@ wait_group "Infra"          $PID_INFRA /tmp/test-infra.log
 # NEVER delete user dungeons owned by real GitHub logins.
 echo "=== Cleanup ==="
 kctl delete attacks --all --ignore-not-found --wait=false 2>/dev/null || true
-_CLEANUP_USER="$(kubectl --context "${KUBECTL_CONTEXT:-arn:aws:eks:us-west-2:319279230668:cluster/krombat}" \
+_CLEANUP_USER="$(kubectl --context "${KUBECTL_CONTEXT}" \
   get secret krombat-test-auth -n rpg-system \
   -o jsonpath='{.data.KROMBAT_TEST_USER}' 2>/dev/null | base64 -d || true)"
 if [ -n "$_CLEANUP_USER" ]; then

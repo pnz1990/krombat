@@ -2,9 +2,22 @@
 # Shared test helpers
 set -euo pipefail
 
+# Load .env from the repo root if present (provides AWS_ACCOUNT_ID locally).
+# In CI, AWS_ACCOUNT_ID is injected as a GitHub Actions secret.
+_REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+if [ -f "$_REPO_ROOT/.env" ]; then
+  # shellcheck source=/dev/null
+  set -a; source "$_REPO_ROOT/.env"; set +a
+fi
+
+if [ -z "${AWS_ACCOUNT_ID:-}" ]; then
+  echo "ERROR: AWS_ACCOUNT_ID is not set. Copy .env.example to .env and fill it in." >&2
+  exit 1
+fi
+
 # CRITICAL: Always use the krombat cluster context. Multiple EKS clusters share
 # this kubeconfig — another session may switch the default context at any time.
-KUBECTL_CONTEXT="${KUBECTL_CONTEXT:-arn:aws:eks:us-west-2:319279230668:cluster/krombat}"
+KUBECTL_CONTEXT="${KUBECTL_CONTEXT:-arn:aws:eks:us-west-2:${AWS_ACCOUNT_ID}:cluster/krombat}"
 export KUBECTL_CONTEXT
 kctl() { kubectl --context "$KUBECTL_CONTEXT" "$@"; }
 

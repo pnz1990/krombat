@@ -11,7 +11,7 @@
 #
 # After rotating, restart the backend to pick up the new value:
 #
-#   kubectl --context arn:aws:eks:us-west-2:319279230668:cluster/krombat \
+#   kubectl --context arn:aws:eks:us-west-2:<AWS_ACCOUNT_ID>:cluster/krombat \
 #     rollout restart deployment/rpg-backend -n rpg-system
 #
 # Test scripts (helpers.sh, backend-api.sh, guardrails.sh) read this secret

@@ -8,11 +8,12 @@ terraform {
     }
   }
 
+  # Backend config is injected at init time via a gitignored backend.tfvars file:
+  #   terraform init -backend-config=backend.tfvars
+  # See backend.tfvars.example for the required keys.
   backend "s3" {
-    bucket  = "krombat-terraform-state-319279230668"
-    key     = "krombat/terraform.tfstate"
-    region  = "us-west-2"
-    profile = "319279230668-Admin"
+    key    = "krombat/terraform.tfstate"
+    region = "us-west-2"
     # #425: enable server-side encryption and state locking.
     # The DynamoDB table "krombat-terraform-locks" must be bootstrapped once:
     #   aws dynamodb create-table \
@@ -20,7 +21,7 @@ terraform {
     #     --attribute-definitions AttributeName=LockID,AttributeType=S \
     #     --key-schema AttributeName=LockID,KeyType=HASH \
     #     --billing-mode PAY_PER_REQUEST \
-    #     --region us-west-2 --profile 319279230668-Admin
+    #     --region us-west-2 --profile <AWS_PROFILE>
     encrypt        = true
     dynamodb_table = "krombat-terraform-locks"
   }
@@ -28,14 +29,14 @@ terraform {
 
 provider "aws" {
   region  = var.region
-  profile = "319279230668-Admin"
+  profile = var.aws_profile
 }
 
 # Identity Center lives in us-east-1 in this account
 provider "aws" {
   alias   = "idc"
   region  = var.idc_region
-  profile = "319279230668-Admin"
+  profile = var.aws_profile
 }
 
 data "aws_availability_zones" "available" {
