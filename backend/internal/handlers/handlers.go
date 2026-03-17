@@ -862,7 +862,7 @@ func (h *Handler) recordProfile(login string, spec map[string]interface{}, kroSt
 		profile.DungeonsWon++
 		// Carry inventory and equipment forward only on victory.
 		rawInv, _ := spec["inventory"].(string)
-		profile.Inventory = normalizeInventory(rawInv)
+		profile.Inventory = rawInv
 		profile.WeaponBonus = getInt(spec, "weaponBonus")
 		profile.WeaponUses = getInt(spec, "weaponUses")
 		profile.ArmorBonus = getInt(spec, "armorBonus")
@@ -2457,31 +2457,7 @@ func sanitizeK8sError(err error) string {
 	}
 }
 
-// normalizeInventory converts a legacy CSV inventory string to a JSON array
-// string. New dungeons store inventory as JSON (e.g. `["weapon-common"]`);
-// old live dungeons may still carry CSV format (e.g. `"weapon-common,armor-rare"`).
-// Always returns a valid JSON array string or "" for empty.
-func normalizeInventory(inv string) string {
-	if inv == "" {
-		return ""
-	}
-	if strings.HasPrefix(inv, "[") {
-		return inv // already JSON
-	}
-	// Legacy CSV — convert to JSON array
-	parts := strings.Split(inv, ",")
-	out := make([]string, 0, len(parts))
-	for _, p := range parts {
-		if p != "" {
-			out = append(out, p)
-		}
-	}
-	b, _ := json.Marshal(out)
-	return string(b)
-}
-
 func inventoryContains(inventory, item string) bool {
-	inventory = normalizeInventory(inventory)
 	if inventory == "" {
 		return false
 	}
@@ -2499,7 +2475,6 @@ func inventoryContains(inventory, item string) bool {
 
 // inventoryCount returns the number of items in the inventory string.
 func inventoryCount(inventory string) int {
-	inventory = normalizeInventory(inventory)
 	if inventory == "" {
 		return 0
 	}
@@ -3103,7 +3078,6 @@ func (h *Handler) RunNarrative(w http.ResponseWriter, r *http.Request) {
 
 	// Event 6: Loot drop via loot-graph (if inventory non-empty)
 	inventory, _ := spec["inventory"].(string)
-	inventory = normalizeInventory(inventory)
 	if inventory != "" {
 		var invItems []string
 		json.Unmarshal([]byte(inventory), &invItems)

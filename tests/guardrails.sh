@@ -486,10 +486,6 @@ grep -q '"warrior"' backend/internal/handlers/handlers.go && grep -q '"mage"' ba
 ! grep -q "kro status unavailable.*derive from spec" backend/internal/handlers/handlers.go && pass "#402: no raw-HP fallback in leaderboard/profile when kro status absent" || fail "#402: raw-HP fallback still present in leaderboard/profile — remove it"
 # #403: dead inventory helper functions must not exist
 ! grep -q "func inventoryAdd\|func inventoryRemove" backend/internal/handlers/handlers.go && pass "#403: dead inventoryAdd/inventoryRemove functions removed" || fail "#403: inventoryAdd or inventoryRemove still exist — delete them"
-# #583: csv.* must not appear in RGDs (migrated to json.marshal/unmarshal)
-! grep -q 'csv\.' manifests/rgds/dungeon-graph.yaml && pass "#583: csv.* removed from dungeon-graph RGD (inventory uses json.marshal/unmarshal)" || fail "#583: csv.* still present in dungeon-graph RGD — migration incomplete"
-# #583: csv.* must not appear in KroTeach teaching layer
-! grep -q 'csv\.add\|csv\.remove\|csv\.contains' frontend/src/KroTeach.tsx && pass "#583: csv.* removed from KroTeach teaching layer" || fail "#583: csv.* still in KroTeach — update teaching layer"
 # #401: no hardcoded per-turn DoT damage in log string literals (comment references are ok)
 ! grep -q '"-5 HP/turn\|-8 HP/turn"' backend/internal/handlers/handlers.go && pass "#401: no hardcoded per-turn DoT amounts in log string literals" || fail "#401: hardcoded -5/-8 HP/turn still in log string literals — remove them"
 

@@ -64,16 +64,11 @@ function computeAchievements(spec: any, maxHeroHP: number) {
    ]
 }
 
-// parseInventory handles both JSON array format (new: '["weapon-common"]')
-// and legacy CSV format (old: 'weapon-common,armor-rare') gracefully.
+// parseInventory parses a JSON array inventory string.
 // Returns an empty array for null/empty/invalid input.
 function parseInventory(inv: string | undefined | null): string[] {
   if (!inv) return []
-  if (inv.startsWith('[')) {
-    try { return JSON.parse(inv) as string[] } catch { return [] }
-  }
-  // Legacy CSV fallback for live dungeons during migration window
-  return inv.split(',').filter(Boolean)
+  try { return JSON.parse(inv) as string[] } catch { return [] }
 }
 
 function AchievementBadges({ achievements }: { achievements: ReturnType<typeof computeAchievements> }) {
@@ -1054,11 +1049,6 @@ const FAQ_ITEMS: { q: string; a: () => ReactNode }[] = [
               <td><code>random.seededInt</code>, <code>random.seededString</code></td>
               <td>Deterministic pseudo-random CEL functions seeded by stable string identifiers. Required because kro reconciles continuously — a non-deterministic random call would recompute a different value on every reconcile cycle.</td>
               <td>Merged upstream as part of earlier contributions</td>
-            </tr>
-            <tr>
-              <td><code>csv.add</code>, <code>csv.remove</code>, <code>csv.contains</code></td>
-              <td>CEL functions for manipulating comma-separated value strings — previously used for the inventory system.</td>
-              <td><strong>Removed</strong> — migrated to <code>json.marshal</code>/<code>json.unmarshal</code> (upstream CEL). Inventory is now stored as a JSON array string in the Kubernetes spec field. (#583)</td>
             </tr>
           </tbody>
         </table>
