@@ -956,6 +956,8 @@ const CONCEPT_ORDER: KroConceptId[] = [
   'cel-filter', 'cel-string-ops', 'spec-patch',
   // #459: class-specific deep dives (Warrior, Mage, Rogue)
   'taunt-state-machine', 'mana-lifecycle', 'cel-probability',
+  // #573: includeWhen sibling resource refs
+  'include-when-sibling',
 ]
 
 interface KroGlossaryProps {
