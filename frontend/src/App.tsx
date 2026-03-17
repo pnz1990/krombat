@@ -1096,13 +1096,6 @@ const FAQ_ITEMS: { q: string; a: () => ReactNode }[] = [
       </>
     ),
   },
-    a: () => (
-      <>
-        <p>That is the point. Every design decision in Krombat was made to prove that kro CEL is expressive enough to implement real stateful logic — not just templating. The entire combat engine (dice rolls, damage formulas, multi-phase boss, status effects, room transitions) is in <code>manifests/rgds/dungeon-graph.yaml</code>. The Go backend only writes trigger fields and reads the results.</p>
-        <p>If you can implement a turn-based dungeon RPG with multi-phase bosses and a loot system in pure Kubernetes YAML + CEL, the same approach works for CI/CD pipelines, approval workflows, quota systems, and any other stateful workflow you would normally write a custom controller for.</p>
-      </>
-    ),
-  },
   {
     q: 'What happens to my dungeons after I stop playing?',
     a: () => (
