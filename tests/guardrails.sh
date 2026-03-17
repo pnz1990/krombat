@@ -452,19 +452,14 @@ echo "=== New Game+ guardrails"
 grep -q "runCount" backend/internal/handlers/handlers.go && pass "Backend handles runCount in CreateDungeon" || fail "Backend missing runCount handling"
 grep -q "runCount.*20\|20.*runCount" backend/internal/handlers/handlers.go && pass "Backend clamps runCount to max 20 (overflow guard)" || fail "Backend missing runCount overflow guard"
 grep -q "1\.25\|125\|scale.*125\|125.*scale" manifests/rgds/dungeon-graph.yaml && pass "kro dungeon-graph applies 1.25x HP scaling per NG+ run (CEL)" || fail "dungeon-graph missing 1.25x NG+ HP scaling"
+# NG+ carry-over: gear must be in inventory only — no *Bonus fields at creation (#555)
 grep -q "createNewGamePlus" frontend/src/api.ts && pass "Frontend api.ts exports createNewGamePlus" || fail "createNewGamePlus missing from api.ts"
 grep -q "onNewGamePlus\|handleNewGamePlus" frontend/src/App.tsx && pass "App.tsx wires New Game+ handler" || fail "App.tsx missing New Game+ handler"
 grep -q "ng-plus-badge" frontend/src/App.tsx && pass "App.tsx renders NG+ badge on dungeon tiles" || fail "App.tsx missing NG+ badge"
-# NG+ carry-over completeness: all 8 gear fields must be present in CreateDungeonReq and carry-over block
-grep -q "BootsBonus" backend/internal/handlers/handlers.go && pass "Backend CreateDungeonReq includes BootsBonus for NG+ carry-over" || fail "BootsBonus missing from CreateDungeonReq — boots not carried over on NG+"
-grep -q "bootsBonus.*req\.BootsBonus\|req\.BootsBonus.*bootsBonus" backend/internal/handlers/handlers.go && pass "Backend applies BootsBonus to dungeonSpec in CreateDungeon" || fail "BootsBonus not applied to dungeonSpec"
-grep -q "bootsBonus" frontend/src/App.tsx && pass "Frontend handleNewGamePlus sends bootsBonus" || fail "Frontend missing bootsBonus in handleNewGamePlus call"
-grep -q "RingBonus" backend/internal/handlers/handlers.go && pass "Backend CreateDungeonReq includes RingBonus for NG+ carry-over" || fail "RingBonus missing from CreateDungeonReq — ring not carried over on NG+"
-grep -q "ringBonus.*req\.RingBonus\|req\.RingBonus.*ringBonus" backend/internal/handlers/handlers.go && pass "Backend applies RingBonus to dungeonSpec in CreateDungeon" || fail "RingBonus not applied to dungeonSpec"
-grep -q "ringBonus" frontend/src/App.tsx && pass "Frontend handleNewGamePlus sends ringBonus" || fail "Frontend missing ringBonus in handleNewGamePlus call"
-grep -q "AmuletBonus" backend/internal/handlers/handlers.go && pass "Backend CreateDungeonReq includes AmuletBonus for NG+ carry-over" || fail "AmuletBonus missing from CreateDungeonReq — amulet not carried over on NG+"
-grep -q "amuletBonus.*req\.AmuletBonus\|req\.AmuletBonus.*amuletBonus" backend/internal/handlers/handlers.go && pass "Backend applies AmuletBonus to dungeonSpec in CreateDungeon" || fail "AmuletBonus not applied to dungeonSpec"
-grep -q "amuletBonus" frontend/src/App.tsx && pass "Frontend handleNewGamePlus sends amuletBonus" || fail "Frontend missing amuletBonus in handleNewGamePlus call"
+# Ensure bonus fields are NOT applied at dungeon creation (fix for double-equip bug #555)
+! grep -q "applyBonus\|req\.BootsBonus\|req\.RingBonus\|req\.AmuletBonus\|req\.WeaponBonus\|req\.ArmorBonus\|req\.ShieldBonus\|req\.HelmetBonus\|req\.PantsBonus" backend/internal/handlers/handlers.go && pass "#555: Backend CreateDungeon does NOT apply *Bonus fields (inventory-only carry-over)" || fail "#555: Backend CreateDungeon still applies *Bonus fields — gear double-equip bug not fixed"
+# Ensure frontend does NOT send bonus fields in New Game+ request
+! grep -q "weaponBonus: spec\|armorBonus: spec\|shieldBonus: spec\|helmetBonus: spec\|pantsBonus: spec\|bootsBonus: spec\|ringBonus: spec\|amuletBonus: spec" frontend/src/App.tsx && pass "#555: Frontend handleNewGamePlus does not send *Bonus fields" || fail "#555: Frontend handleNewGamePlus still sends *Bonus fields — update to inventory-only carry-over"
 
 # --- Boss loot invariants ---
 echo "=== Boss loot invariants"
@@ -599,8 +594,8 @@ grep -A10 "func requireDungeonOwner" backend/internal/handlers/handlers.go | gre
 [ -f manifests/system/admission-policy.yaml ] && pass "#422: ValidatingAdmissionPolicy manifest exists" || fail "#422: ValidatingAdmissionPolicy manifest missing"
 grep -q "krombat.io/owner" manifests/system/admission-policy.yaml && pass "#422: admission policy enforces krombat.io/owner label" || fail "#422: admission policy does not reference krombat.io/owner"
 
-# #423: equipment bonus upper bound must be enforced
-grep -q "maxEquipBonus\|equip.*50\|50.*equip" backend/internal/handlers/handlers.go && pass "#423: maxEquipBonus constant present in CreateDungeon" || fail "#423: maxEquipBonus missing from CreateDungeon"
+# #423/#555: equipment bonus fields must NOT be accepted at dungeon creation (inventory-only model)
+! grep -q "req\.WeaponBonus\|req\.ArmorBonus\|req\.ShieldBonus\|req\.HelmetBonus\|req\.PantsBonus\|req\.BootsBonus\|req\.RingBonus\|req\.AmuletBonus" backend/internal/handlers/handlers.go && pass "#423/#555: CreateDungeon ignores *Bonus request fields (inventory-only carry-over)" || fail "#423/#555: CreateDungeon still reads *Bonus fields from request"
 grep -q "maximum=50" manifests/rgds/dungeon-graph.yaml && pass "#423: dungeon-graph RGD has maximum=50 on bonus fields" || fail "#423: dungeon-graph RGD missing maximum=50 on bonus fields"
 
 # --- Security P3 guardrails (#424-#429) ---
