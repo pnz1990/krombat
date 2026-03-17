@@ -95,8 +95,7 @@ export async function createDungeon(name: string, monsters: number, difficulty: 
 
 export interface NewGamePlusOptions {
   runCount: number
-  weaponBonus?: number; weaponUses?: number; armorBonus?: number; shieldBonus?: number
-  helmetBonus?: number; pantsBonus?: number; bootsBonus?: number; ringBonus?: number; amuletBonus?: number
+  // *Bonus fields removed — gear is carried in inventory only (#555)
 }
 
 export async function createNewGamePlus(

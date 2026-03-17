@@ -118,16 +118,9 @@ type CreateDungeonReq struct {
 	HeroClass  string `json:"heroClass"`
 	Namespace  string `json:"namespace"`
 	// New Game+ carry-over fields (optional, 0 = fresh start)
-	RunCount    int64 `json:"runCount"`
-	WeaponBonus int64 `json:"weaponBonus"`
-	WeaponUses  int64 `json:"weaponUses"`
-	ArmorBonus  int64 `json:"armorBonus"`
-	ShieldBonus int64 `json:"shieldBonus"`
-	HelmetBonus int64 `json:"helmetBonus"`
-	PantsBonus  int64 `json:"pantsBonus"`
-	BootsBonus  int64 `json:"bootsBonus"`
-	RingBonus   int64 `json:"ringBonus"`
-	AmuletBonus int64 `json:"amuletBonus"`
+	// NOTE: *Bonus fields are intentionally ignored — gear is carried in
+	// inventory only and the player re-equips each run to avoid double-dipping.
+	RunCount int64 `json:"runCount"`
 }
 
 func (h *Handler) CreateDungeon(w http.ResponseWriter, r *http.Request) {
@@ -196,20 +189,15 @@ func (h *Handler) CreateDungeon(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// #423: validate equipment bonus values have a reasonable upper bound.
-	// Prevents leaderboard cheating via inflated weapon/armor stats.
-	const maxEquipBonus = 50
-	if req.WeaponBonus > maxEquipBonus || req.ArmorBonus > maxEquipBonus ||
-		req.ShieldBonus > maxEquipBonus || req.HelmetBonus > maxEquipBonus ||
-		req.PantsBonus > maxEquipBonus || req.BootsBonus > maxEquipBonus ||
-		req.RingBonus > maxEquipBonus || req.AmuletBonus > maxEquipBonus {
-		writeError(w, fmt.Sprintf("equipment bonus values must not exceed %d", maxEquipBonus), http.StatusBadRequest)
-		return
-	}
+	// (Bonus fields are no longer accepted on dungeon creation — gear is
+	// carried in inventory only. This block is kept for safety against
+	// unexpected future field additions.)
 
-	// Load persistent profile to pre-populate inventory and equipment for returning players.
-	// Only applied when the request carries no explicit gear (i.e. not a manual New Game+).
+	// Load persistent profile to pre-populate inventory for returning players.
+	// Equipment bonuses are NOT carried over — items are in inventory and the
+	// player re-equips each run, preventing gear from being both equipped and
+	// in the backpack simultaneously (#555).
 	var profileInv string
-	var profileEquip map[string]int64
 	if sess != nil {
 		ctx0 := context.Background()
 		cmClient0 := h.client.Dynamic.Resource(leaderboardGVR).Namespace(leaderboardNamespace)
@@ -218,13 +206,6 @@ func (h *Handler) CreateDungeon(w http.ResponseWriter, r *http.Request) {
 				p := profileFromData(d, sess.Login)
 				if p.HeroHP > 0 || p.Inventory != "" {
 					profileInv = p.Inventory
-					profileEquip = map[string]int64{
-						"weaponBonus": p.WeaponBonus, "weaponUses": p.WeaponUses,
-						"armorBonus": p.ArmorBonus, "shieldBonus": p.ShieldBonus,
-						"helmetBonus": p.HelmetBonus, "pantsBonus": p.PantsBonus,
-						"bootsBonus": p.BootsBonus, "ringBonus": p.RingBonus,
-						"amuletBonus": p.AmuletBonus,
-					}
 				}
 			}
 		}
@@ -239,42 +220,9 @@ func (h *Handler) CreateDungeon(w http.ResponseWriter, r *http.Request) {
 		"heroClass":  heroClass,
 		"runCount":   runCount,
 	}
-	// Carry over gear bonuses: explicit request values take priority,
-	// then fall back to persistent profile values for returning players.
-	applyBonus := func(field string, reqVal int64, profileVal int64) {
-		if reqVal > 0 {
-			dungeonSpec[field] = reqVal
-		} else if profileVal > 0 {
-			dungeonSpec[field] = profileVal
-		}
-	}
-	var profWeaponUses, profWeaponBonus, profArmorBonus, profShieldBonus int64
-	var profHelmetBonus, profPantsBonus, profBootsBonus, profRingBonus, profAmuletBonus int64
-	if profileEquip != nil {
-		profWeaponBonus = profileEquip["weaponBonus"]
-		profWeaponUses = profileEquip["weaponUses"]
-		profArmorBonus = profileEquip["armorBonus"]
-		profShieldBonus = profileEquip["shieldBonus"]
-		profHelmetBonus = profileEquip["helmetBonus"]
-		profPantsBonus = profileEquip["pantsBonus"]
-		profBootsBonus = profileEquip["bootsBonus"]
-		profRingBonus = profileEquip["ringBonus"]
-		profAmuletBonus = profileEquip["amuletBonus"]
-	}
-	applyBonus("weaponBonus", req.WeaponBonus, profWeaponBonus)
-	if req.WeaponUses > 0 {
-		dungeonSpec["weaponUses"] = req.WeaponUses
-	} else if profWeaponUses > 0 {
-		dungeonSpec["weaponUses"] = profWeaponUses
-	}
-	applyBonus("armorBonus", req.ArmorBonus, profArmorBonus)
-	applyBonus("shieldBonus", req.ShieldBonus, profShieldBonus)
-	applyBonus("helmetBonus", req.HelmetBonus, profHelmetBonus)
-	applyBonus("pantsBonus", req.PantsBonus, profPantsBonus)
-	applyBonus("bootsBonus", req.BootsBonus, profBootsBonus)
-	applyBonus("ringBonus", req.RingBonus, profRingBonus)
-	applyBonus("amuletBonus", req.AmuletBonus, profAmuletBonus)
-	// Carry persistent inventory if no explicit inventory was provided.
+	// Carry persistent inventory only — no *Bonus fields (#555).
+	// Items start in the backpack; the player equips them manually each run.
+	// kro actionResolve will set the bonus fields when the player equips.
 	if profileInv != "" {
 		dungeonSpec["inventory"] = profileInv
 	}

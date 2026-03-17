@@ -783,15 +783,8 @@ export default function App() {
     try {
       await createNewGamePlus(newName, spec.monsters ?? 3, spec.difficulty ?? 'normal', spec.heroClass ?? 'warrior', {
         runCount,
-        weaponBonus: spec.weaponBonus,
-        weaponUses: spec.weaponUses,
-        armorBonus: spec.armorBonus,
-        shieldBonus: spec.shieldBonus,
-        helmetBonus: spec.helmetBonus,
-        pantsBonus: spec.pantsBonus,
-        bootsBonus: spec.bootsBonus,
-        ringBonus: spec.ringBonus,
-        amuletBonus: spec.amuletBonus,
+        // *Bonus fields intentionally omitted — gear starts in backpack (inventory),
+        // player re-equips each run (#555). Backend also ignores these fields now.
       }, ns)
       navigate(`/dungeon/${ns}/${newName}`)
       trackEvent('dungeon_created', { monsters: spec.monsters ?? 3, difficulty: spec.difficulty ?? 'normal', heroClass: spec.heroClass ?? 'warrior', runCount })

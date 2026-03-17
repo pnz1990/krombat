@@ -299,10 +299,10 @@ sleep 15
 BASE_SPEC=$(curl -s "${AUTH_H[@]}" "$BASE/api/v1/dungeons/default/$BASE_DUNGEON")
 BASE_MONSTER_HP=$(echo "$BASE_SPEC" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['spec']['monsterHP'][0])" 2>/dev/null || echo "0")
 
-# Create New Game+ dungeon with runCount=1 and inherited gear
+# Create New Game+ dungeon with runCount=1 — bonus fields are ignored by backend (#555)
 NG_RESP=$(curl -s -w "\n%{http_code}" -X POST "$BASE/api/v1/dungeons" \
   -H "Content-Type: application/json" "${AUTH_H[@]}" \
-  -d "{\"name\":\"$NG_DUNGEON\",\"monsters\":2,\"difficulty\":\"easy\",\"heroClass\":\"warrior\",\"runCount\":1,\"weaponBonus\":5,\"weaponUses\":3,\"armorBonus\":15}")
+  -d "{\"name\":\"$NG_DUNGEON\",\"monsters\":2,\"difficulty\":\"easy\",\"heroClass\":\"warrior\",\"runCount\":1}")
 NG_CODE=$(echo "$NG_RESP" | tail -1)
 [ "$NG_CODE" = "201" ] && pass "POST /dungeons with runCount=1 -> 201" || fail "POST /dungeons NG+ -> $NG_CODE (expected 201)"
 
@@ -317,13 +317,15 @@ spec=d.get('spec',{})
 assert spec.get('runCount') == 1, f'runCount should be 1, got {spec.get(\"runCount\")}'
 print('runCount=1 OK')
 
-# weaponBonus must carry over
-assert spec.get('weaponBonus') == 5, f'weaponBonus should be 5, got {spec.get(\"weaponBonus\")}'
-print('weaponBonus=5 OK')
+# #555: weaponBonus must NOT be pre-set at dungeon creation (items in inventory, equip manually)
+wb = spec.get('weaponBonus', 0)
+assert wb == 0, f'weaponBonus should be 0 at NG+ creation (inventory-only model), got {wb}'
+print('weaponBonus=0 (inventory-only) OK')
 
-# armorBonus must carry over
-assert spec.get('armorBonus') == 15, f'armorBonus should be 15, got {spec.get(\"armorBonus\")}'
-print('armorBonus=15 OK')
+# #555: armorBonus must NOT be pre-set at dungeon creation
+ab = spec.get('armorBonus', 0)
+assert ab == 0, f'armorBonus should be 0 at NG+ creation (inventory-only model), got {ab}'
+print('armorBonus=0 (inventory-only) OK')
 
 # Hero HP must be boosted (110% of base for warrior=200)
 base_hp = 200
@@ -332,8 +334,8 @@ actual_hp = spec.get('heroHP', 0)
 assert actual_hp == expected_hp, f'heroHP should be {expected_hp} for NG+1 warrior, got {actual_hp}'
 print(f'heroHP={actual_hp} (expected {expected_hp}) OK')
 " 2>/dev/null \
-  && pass "NG+ spec fields correct (runCount, weaponBonus, armorBonus, heroHP scaled)" \
-  || fail "NG+ spec fields incorrect — check runCount/gear carry-over/HP scaling"
+  && pass "NG+ spec fields correct (runCount, no bonus pre-set, heroHP scaled) (#555)" \
+  || fail "NG+ spec fields incorrect — check runCount/inventory-only carry-over/HP scaling"
 
 # Monster HP must be scaled 125% vs base
 echo "$BASE_MONSTER_HP $NG_SPEC" | python3 -c "
