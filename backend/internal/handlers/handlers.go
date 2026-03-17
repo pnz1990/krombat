@@ -1697,6 +1697,27 @@ func (h *Handler) processCombat(ctx context.Context, r *http.Request, ns, name, 
 			"xpEarned":        newXPEarned,
 		},
 	}
+
+	// Record leaderboard + profile immediately on victory so the run appears
+	// in the leaderboard without requiring the player to delete the dungeon.
+	// recordLeaderboard uses dungeonName as the ConfigMap key, so a second
+	// write at delete-time is a harmless overwrite with identical data.
+	if combatOutcome == "victory" {
+		victoryLogin := "anonymous"
+		if sess := sessionFromCtx(r.Context()); sess != nil {
+			victoryLogin = sess.Login
+		}
+		// Build a merged spec that includes the final xpEarned value (not yet
+		// written to the CR) so the leaderboard entry reflects the full run XP.
+		victorySpec := make(map[string]interface{}, len(postSpec)+1)
+		for k, v := range postSpec {
+			victorySpec[k] = v
+		}
+		victorySpec["xpEarned"] = newXPEarned
+		go h.recordLeaderboard(victorySpec, postStatus, name, victoryLogin)
+		go h.recordProfile(victoryLogin, victorySpec, postStatus)
+	}
+
 	return h.patchAndRespond(ctx, ns, name, logPatch, w)
 }
 
