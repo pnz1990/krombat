@@ -9,7 +9,7 @@ package handlers
 //   - library.Random() (random.seededInt, random.seededString)
 //   - library.Maps()  (maps.*)
 //   - library.JSON()  (json.*)
-//   - library.Lists() (lists.setIndex, lists.insertAt, lists.removeAt)
+//   - library.Lists() (lists.setAtIndex, lists.insertAtIndex, lists.removeAtIndex)
 //   - library.CSV()   (csv.add, csv.remove, csv.contains)
 //
 // Variable bindings follow the same schema as kro RGD expressions:

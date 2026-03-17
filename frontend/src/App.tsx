@@ -1034,9 +1034,9 @@ const FAQ_ITEMS: { q: string; a: () => ReactNode }[] = [
               <td><a href="https://github.com/kubernetes-sigs/kro/pull/1145" target="_blank" rel="noopener noreferrer" className="faq-link">Merged upstream (PR #1145)</a></td>
             </tr>
             <tr>
-              <td><code>lists.setIndex</code>, <code>lists.insertAt</code>, <code>lists.removeAt</code></td>
+              <td><code>lists.setAtIndex</code>, <code>lists.insertAtIndex</code>, <code>lists.removeAtIndex</code></td>
               <td>Index-mutation functions for CEL lists. CEL has no built-in way to return a new list with a single element replaced — these fill that gap and are essential for updating per-monster HP arrays.</td>
-              <td><a href="https://github.com/kubernetes-sigs/kro/pull/1148" target="_blank" rel="noopener noreferrer" className="faq-link">In review upstream (PR #1148)</a>, expected to merge soon</td>
+              <td><a href="https://github.com/kubernetes-sigs/kro/pull/1148" target="_blank" rel="noopener noreferrer" className="faq-link">Merged upstream (PR #1148)</a></td>
             </tr>
             <tr>
               <td><code>random.seededInt</code>, <code>random.seededString</code></td>
@@ -1050,7 +1050,7 @@ const FAQ_ITEMS: { q: string; a: () => ReactNode }[] = [
             </tr>
           </tbody>
         </table>
-        <p>The goal is to upstream <code>specPatch</code> and <code>stateWrite</code> once the design has been agreed with the kro maintainers. The CEL library additions (<code>cel.bind</code>, list mutations, seeded random) are already on their way — two are merged, one is in review.</p>
+        <p>The goal is to upstream <code>specPatch</code> and <code>stateWrite</code> once the design has been agreed with the kro maintainers. The CEL library additions (<code>cel.bind</code>, list mutations, seeded random) are all merged upstream.</p>
       </>
     ),
   },
