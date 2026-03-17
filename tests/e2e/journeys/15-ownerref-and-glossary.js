@@ -4,7 +4,7 @@
 //   1. Delete a dungeon → dungeon-deleted event → ownerReferences InsightCard appears
 //   2. Glossary search bar appears after 4+ concepts are unlocked
 //   3. Search bar filters concepts, clear button restores all, empty state for nonsense query
-//   4. Glossary header shows total of /27 concepts
+//   4. Glossary header shows total of /28 concepts
 const { chromium } = require('playwright');
 const { createDungeonUI, attackMonster, waitForCombatResult, dismissLootPopup, navigateHome, deleteDungeon , testLogin} = require('./helpers');
 
@@ -164,8 +164,8 @@ async function run() {
     }
     attacksDone > 0 ? ok(`Completed ${attacksDone} attack(s) to unlock concepts`) : warn('No attacks succeeded (all monsters may be dead)');
 
-    // ── Part 3: Glossary tab — /27 total, search bar, filtering ──────────────
-    console.log('\n  [Part 3: kro Glossary tab — /27 count, search bar, filtering]');
+    // ── Part 3: Glossary tab — /28 total, search bar, filtering ──────────────
+    console.log('\n  [Part 3: kro Glossary tab — /28 count, search bar, filtering]');
 
     const kroTabSwitched = await switchToTab(page, 'kro');
     kroTabSwitched ? ok('Switched to kro tab') : fail('kro tab not found');
@@ -174,12 +174,12 @@ async function run() {
     const glossary = page.locator('.kro-glossary');
     (await glossary.count() > 0) ? ok('kro glossary panel is visible') : fail('kro glossary panel not found');
 
-    // Header should show "/27" total concept count
+    // Header should show "/28" total concept count
     const glossaryHeader = page.locator('.kro-glossary-header');
     const headerText = await glossaryHeader.textContent().catch(() => '');
-    (headerText.includes('/27') || headerText.includes('/ 27'))
-      ? ok(`Glossary header shows total of 27: "${headerText.trim()}"`)
-      : fail(`Glossary header does not show "/27": "${headerText.trim()}"`);
+    (headerText.includes('/28') || headerText.includes('/ 28'))
+      ? ok(`Glossary header shows total of 28: "${headerText.trim()}"`)
+      : fail(`Glossary header does not show "/28": "${headerText.trim()}"`);
 
     // Count unlocked concepts
     const unlockedItems = page.locator('.kro-glossary-item.unlocked');
@@ -189,12 +189,12 @@ async function run() {
     // All 27 grid items should be rendered (some locked, some unlocked)
     const allItems = page.locator('.kro-glossary-item');
     const allItemsCount = await allItems.count();
-    allItemsCount === 27 ? ok('Glossary grid renders exactly 27 concept items') : fail(`Glossary grid has ${allItemsCount} items, expected 27`);
+    allItemsCount === 28 ? ok('Glossary grid renders exactly 28 concept items') : fail(`Glossary grid has ${allItemsCount} items, expected 28`);
 
     // Locked items show "Keep playing to unlock"
     const lockedItems = page.locator('.kro-glossary-item.locked');
     const lockedCount = await lockedItems.count();
-    lockedCount > 0 ? ok(`${lockedCount} locked concept(s) show "Keep playing" state`) : warn('All 27 concepts already unlocked (unusual at this stage)');
+    lockedCount > 0 ? ok(`${lockedCount} locked concept(s) show "Keep playing" state`) : warn('All 28 concepts already unlocked (unusual at this stage)');
 
     // ── Part 4: Search bar — appears at 4+ unlocked concepts ─────────────────
     console.log('\n  [Part 4: Glossary search bar]');
@@ -211,15 +211,15 @@ async function run() {
 
         // Count current visible items (should be all 27 before searching)
         const beforeSearch = await page.locator('.kro-glossary-item').count();
-        beforeSearch === 27 ? ok(`All 27 concepts visible before search (no active filter)`) : fail(`Expected 27 items before search, got ${beforeSearch}`);
+        beforeSearch === 28 ? ok(`All 28 concepts visible before search (no active filter)`) : fail(`Expected 28 items before search, got ${beforeSearch}`);
 
         // Type a known concept keyword — "ResourceGraph" / "RGD" / "cel" should narrow results
         await searchInput.fill('cel');
         await page.waitForTimeout(300);
 
         const afterSearch = await page.locator('.kro-glossary-item').count();
-        afterSearch < 27
-          ? ok(`Search "cel" narrowed results: ${afterSearch} item(s) shown (was 27)`)
+        afterSearch < 28
+          ? ok(`Search "cel" narrowed results: ${afterSearch} item(s) shown (was 28)`)
           : fail(`Search "cel" did not narrow results (still showing ${afterSearch} items)`);
 
         // Clear button (×) should appear when search is non-empty
@@ -231,9 +231,9 @@ async function run() {
           await clearBtn.click();
           await page.waitForTimeout(300);
           const afterClear = await page.locator('.kro-glossary-item').count();
-          afterClear === 27
-            ? ok(`Clear button restores all 27 concepts (was ${afterSearch} during filter)`)
-            : fail(`After clearing, expected 27 items but got ${afterClear}`);
+          afterClear === 28
+            ? ok(`Clear button restores all 28 concepts (was ${afterSearch} during filter)`)
+            : fail(`After clearing, expected 28 items but got ${afterClear}`);
 
           // Clear button should disappear once search is empty
           const clearAfter = await page.locator('.kro-glossary-search-clear').count();
@@ -270,7 +270,7 @@ async function run() {
           await page.waitForTimeout(300);
         }
         const finalCount = await page.locator('.kro-glossary-item').count();
-        finalCount === 27 ? ok('All 27 concepts restored after clearing nonsense search') : fail(`Expected 20 after restore, got ${finalCount}`);
+        finalCount === 28 ? ok('All 28 concepts restored after clearing nonsense search') : fail(`Expected 28 after restore, got ${finalCount}`);
 
       } else {
         fail('Search input (.kro-glossary-search-input) not found');
@@ -287,8 +287,8 @@ async function run() {
     // ── Part 5: kro tab label reflects correct totals ─────────────────────────
     console.log('\n  [Part 5: kro tab label concept count format]');
     const kroTabLabel = await page.locator('button.log-tab.kro-tab').textContent().catch(() => '');
-    kroTabLabel.match(/kro \(\d+\/27\)/)
-      ? ok(`kro tab label shows correct format with /27: "${kroTabLabel.trim()}"`)
+    kroTabLabel.match(/kro \(\d+\/28\)/)
+      ? ok(`kro tab label shows correct format with /28: "${kroTabLabel.trim()}"`)
       : fail(`kro tab label format unexpected: "${kroTabLabel.trim()}"`);
 
     // ── Console errors ────────────────────────────────────────────────────────
