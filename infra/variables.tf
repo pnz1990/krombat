@@ -4,6 +4,16 @@ variable "region" {
   default     = "us-west-2"
 }
 
+variable "aws_profile" {
+  description = "AWS CLI profile name (e.g. 123456789012-Admin). Set in terraform.tfvars — never committed."
+  type        = string
+}
+
+variable "state_bucket" {
+  description = "S3 bucket name for Terraform remote state. Set in terraform.tfvars — never committed."
+  type        = string
+}
+
 variable "cluster_name" {
   description = "EKS cluster name"
   type        = string

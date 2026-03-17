@@ -1,0 +1,6 @@
+# Copy to backend.tfvars and fill in your values.
+# Pass at init time: terraform init -backend-config=backend.tfvars
+# backend.tfvars is gitignored — never commit it.
+
+bucket  = "krombat-terraform-state-<AWS_ACCOUNT_ID>"
+profile = "<AWS_ACCOUNT_ID>-Admin"

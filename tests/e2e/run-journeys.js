@@ -15,7 +15,9 @@ const FILTER = process.env.FILTER || (process.argv[2] ? process.argv[2].replace(
 let KROMBAT_TEST_TOKEN = process.env.KROMBAT_TEST_TOKEN || '';
 if (!KROMBAT_TEST_TOKEN) {
   try {
-    const ctx = process.env.KUBECTL_CONTEXT || 'arn:aws:eks:us-west-2:319279230668:cluster/krombat';
+    const awsAccountId = process.env.AWS_ACCOUNT_ID;
+    if (!awsAccountId) throw new Error('AWS_ACCOUNT_ID not set');
+    const ctx = process.env.KUBECTL_CONTEXT || `arn:aws:eks:us-west-2:${awsAccountId}:cluster/krombat`;
     const raw = execSync(
       `kubectl --context "${ctx}" get secret krombat-test-auth -n rpg-system -o jsonpath='{.data.KROMBAT_TEST_USER}'`,
       { stdio: ['ignore', 'pipe', 'ignore'] }

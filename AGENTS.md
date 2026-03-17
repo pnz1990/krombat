@@ -2,9 +2,9 @@
 
 ## CRITICAL: kubectl Context Rule
 
-**ALWAYS pass `--context arn:aws:eks:us-west-2:319279230668:cluster/krombat` on EVERY kubectl command.** Multiple EKS clusters share this kubeconfig. Never rely on `kubectl config use-context` — another session may switch it. This applies to direct kubectl calls AND to test scripts (set `KUBECTL_CONTEXT` env var or pass `--context` inline).
+**ALWAYS pass `--context arn:aws:eks:us-west-2:<AWS_ACCOUNT_ID>:cluster/krombat` on EVERY kubectl command.** Multiple EKS clusters share this kubeconfig. Never rely on `kubectl config use-context` — another session may switch it. This applies to direct kubectl calls AND to test scripts (set `KUBECTL_CONTEXT` env var or pass `--context` inline).
 
-Example: `kubectl --context arn:aws:eks:us-west-2:319279230668:cluster/krombat get pods -n rpg-system`
+Example: `kubectl --context arn:aws:eks:us-west-2:<AWS_ACCOUNT_ID>:cluster/krombat get pods -n rpg-system`
 
 ## What This Is
 
@@ -14,7 +14,7 @@ A turn-based dungeon RPG where game state lives in Kubernetes Custom Resources o
 
 ## Architecture
 
-- **EKS Auto Mode** cluster (`krombat`, K8s 1.34) in `us-west-2`, account `319279230668`
+- **EKS Auto Mode** cluster (`krombat`, K8s 1.34) in `us-west-2`, account `<AWS_ACCOUNT_ID>`
 - **kro** (self-installed via Helm, patched fork `cel-writeback-d`) — nine RGDs manage the resource graph and derived status:
   - `dungeon-graph` (parent): Dungeon CR → Namespace, Hero CR, Monster CRs, Boss CR, Treasure CR, Modifier CR, GameConfig CM, combatResult CM, actionResult CM
   - `hero-graph`: Hero CR → ConfigMap (HP, class, mana, stats via CEL)
@@ -164,10 +164,10 @@ gh pr merge <pr-number> --squash --delete-branch
 # 2. Commit and push via PR (see Git Workflow)
 # 3. Wait for CI deploy to land on prod (Argo CD syncs in ~6s after merge to main)
 # 4. Clean up stale TEST dungeons before testing (NEVER --all — that deletes real user data):
-_TEST_USER=$(kubectl --context arn:aws:eks:us-west-2:319279230668:cluster/krombat \
+_TEST_USER=$(kubectl --context arn:aws:eks:us-west-2:<AWS_ACCOUNT_ID>:cluster/krombat \
   get secret krombat-test-auth -n rpg-system \
   -o jsonpath='{.data.KROMBAT_TEST_USER}' | base64 -d)
-kubectl --context arn:aws:eks:us-west-2:319279230668:cluster/krombat \
+kubectl --context arn:aws:eks:us-west-2:<AWS_ACCOUNT_ID>:cluster/krombat \
   delete dungeons -l "krombat.io/owner=${_TEST_USER}" -A --ignore-not-found --wait=false
 # 5. Run journey tests in batches of 8 against prod (NEVER port-forward):
 BASE_URL=https://learn-kro.eks.aws.dev node tests/e2e/run-journeys.js 01,02,03,04,05,06,07,08
@@ -376,8 +376,8 @@ If anything outside the intended scope appears, do NOT open the PR — clean the
 
 ## Infrastructure
 
-- Cluster: `krombat` in `us-west-2`, account `319279230668`
-- ECR: `319279230668.dkr.ecr.us-west-2.amazonaws.com/krombat/{backend,frontend}`
+- Cluster: `krombat` in `us-west-2`, account `<AWS_ACCOUNT_ID>`
+- ECR: `<AWS_ACCOUNT_ID>.dkr.ecr.us-west-2.amazonaws.com/krombat/{backend,frontend}`
 - GitHub: `pnz1990/krombat`
 - 9 RGDs active, Argo CD syncing from `manifests/`
 - CI: `.github/workflows/build-images.yml` — builds on PR, pushes to ECR + rollout restart on main merge
@@ -385,8 +385,8 @@ If anything outside the intended scope appears, do NOT open the PR — clean the
 ### Terraform
 
 - Working directory: `infra/`
-- AWS profile: `319279230668-Admin`
-- **Remote state**: S3 bucket `krombat-terraform-state-319279230668`, key `krombat/terraform.tfstate`, region `us-west-2`
+- AWS profile: `<AWS_ACCOUNT_ID>-Admin`
+- **Remote state**: S3 bucket `krombat-terraform-state-<AWS_ACCOUNT_ID>`, key `krombat/terraform.tfstate`, region `us-west-2`
 - **State locking**: DynamoDB table `krombat-terraform-locks` (issue #425)
 - The local `infra/terraform.tfstate` file is **not authoritative** — always use remote state via `terraform init` + `terraform plan/apply`
 - **CI does NOT run `terraform apply`** — infra changes require a manual `terraform apply` from `infra/` after merging to main
@@ -397,5 +397,5 @@ If anything outside the intended scope appears, do NOT open the PR — clean the
 cd infra/
 terraform init          # pulls remote state from S3
 terraform plan          # review changes
-terraform apply         # deploy — requires valid 319279230668-Admin AWS credentials
+terraform apply         # deploy — requires valid <AWS_ACCOUNT_ID>-Admin AWS credentials
 ```
