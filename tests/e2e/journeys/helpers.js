@@ -201,6 +201,13 @@ async function testLogin(page, baseUrl) {
     // No token available — skip; test will fail if login screen is shown
     return;
   }
+  // Suppress the onboarding overlay for every page load in this context.
+  // The overlay blocks pointer events until dismissed; commit 51191c4 made it
+  // appear on every fresh browser context (#534).
+  await page.addInitScript(() => {
+    localStorage.setItem('kroOnboardingDone', 'true');
+  });
+
   const loginUrl = `${baseUrl}/api/v1/auth/test-login?token=${encodeURIComponent(token)}`;
   await page.goto(loginUrl, { timeout: 15000 });
   // The endpoint redirects to '/' — wait for the main app to load
