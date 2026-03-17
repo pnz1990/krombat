@@ -61,7 +61,19 @@ function computeAchievements(spec: any, maxHeroHP: number) {
     { id: 'rogue-win', name: 'Shadow', icon: 'dagger', earned: heroClass === 'rogue', desc: 'Won as Rogue' },
     { id: 'hard-win', name: 'Nightmare', icon: 'skull', earned: difficulty === 'hard', desc: 'Won on Hard difficulty' },
     { id: 'collector', name: 'Hoarder', icon: 'chest', earned: equippedCount >= 5, desc: `Won with ${equippedCount}/5 items equipped` },
-  ]
+   ]
+}
+
+// parseInventory handles both JSON array format (new: '["weapon-common"]')
+// and legacy CSV format (old: 'weapon-common,armor-rare') gracefully.
+// Returns an empty array for null/empty/invalid input.
+function parseInventory(inv: string | undefined | null): string[] {
+  if (!inv) return []
+  if (inv.startsWith('[')) {
+    try { return JSON.parse(inv) as string[] } catch { return [] }
+  }
+  // Legacy CSV fallback for live dungeons during migration window
+  return inv.split(',').filter(Boolean)
 }
 
 function AchievementBadges({ achievements }: { achievements: ReturnType<typeof computeAchievements> }) {
@@ -1384,7 +1396,7 @@ function ProfilePanel({ profile, loading, authUser, onClose }: {
   const login = authUser?.login ?? 'anonymous'
   const avatarUrl = authUser?.avatarUrl ?? ''
   const earnedSet = new Set(profile?.earnedBadges ?? [])
-  const inventoryItems = profile?.inventory ? (JSON.parse(profile.inventory || '[]') as string[]) : []
+  const inventoryItems = parseInventory(profile?.inventory)
 
   return (
     <div className="leaderboard-overlay" role="dialog" aria-label="Player Profile">
@@ -2875,7 +2887,7 @@ function DungeonView({ cr, prevCr, onBack, onGameOverBack, onNewGamePlus, onAtta
           )}
 
           {(() => {
-            const items = JSON.parse(spec.inventory || '[]') as string[]
+            const items = parseInventory(spec.inventory)
             const wb = spec.weaponBonus || 0
             const wu = spec.weaponUses || 0
             const ab = spec.armorBonus || 0
