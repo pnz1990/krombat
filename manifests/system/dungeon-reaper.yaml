@@ -75,27 +75,73 @@ spec:
                   NOW=$(date +%s)
 
                   # #477: retention policy
-                  #   test-infra dungeons (krombat.io/owner=test-infra or no label): reap after 4h
-                  #   user dungeons (real GitHub login):                             reap after 30 days
+                  #   test user (c766300f… hash) and no-label dungeons: reap after 4h
+                  #   real user dungeons (GitHub login):                 reap after 30 days
                   TEST_MAX_AGE=$((4 * 3600))
                   USER_MAX_AGE=$((30 * 24 * 3600))
+                  # Attack/Action CRs older than this are never in-flight
+                  CR_STALE_AGE=$((1 * 3600))
 
+                  TEST_USER="c766300fc60d01939efde4f12dccd01170d792aaa9c0ef4df7d48d7ed9128e"
+
+                  # ── Step 1: collect live dungeon names ──────────────────────────────────
+                  LIVE_DUNGEONS=$(kubectl get dungeons -n default -o jsonpath='{.items[*].metadata.name}' 2>/dev/null || true)
+
+                  # ── Step 2: clean up orphaned Attack CRs (parent dungeon gone) ─────────
+                  echo "Cleaning orphaned Attack CRs..."
+                  kubectl get attacks -n default -o json 2>/dev/null | jq -r '
+                    .items[] | [.metadata.name, .metadata.creationTimestamp] | @tsv
+                  ' | while IFS=$'\t' read -r CR_NAME CR_TS; do
+                    DUNGEON_NAME="${CR_NAME%-latest-attack}"
+                    CREATED=$(date -d "$CR_TS" +%s 2>/dev/null || date -jf "%Y-%m-%dT%H:%M:%SZ" "$CR_TS" +%s 2>/dev/null || echo 0)
+                    CR_AGE=$((NOW - CREATED))
+                    # Delete if orphaned OR if stale (>1h, never in-flight)
+                    IS_LIVE=$(echo " $LIVE_DUNGEONS " | grep -q " $DUNGEON_NAME " && echo yes || echo no)
+                    if [ "$IS_LIVE" = "no" ]; then
+                      echo "  Deleting orphaned Attack CR $CR_NAME (dungeon gone)"
+                      kubectl delete attack "$CR_NAME" -n default --wait=false 2>/dev/null || true
+                    elif [ "$CR_AGE" -gt "$CR_STALE_AGE" ]; then
+                      echo "  Deleting stale Attack CR $CR_NAME (age: $((CR_AGE/60))m, dungeon alive)"
+                      kubectl delete attack "$CR_NAME" -n default --wait=false 2>/dev/null || true
+                    fi
+                  done
+
+                  # ── Step 3: clean up orphaned/stale Action CRs ───────────────────────
+                  echo "Cleaning orphaned/stale Action CRs..."
+                  kubectl get actions -n default -o json 2>/dev/null | jq -r '
+                    .items[] | [.metadata.name, .metadata.creationTimestamp] | @tsv
+                  ' | while IFS=$'\t' read -r CR_NAME CR_TS; do
+                    DUNGEON_NAME="${CR_NAME%-latest-action}"
+                    CREATED=$(date -d "$CR_TS" +%s 2>/dev/null || date -jf "%Y-%m-%dT%H:%M:%SZ" "$CR_TS" +%s 2>/dev/null || echo 0)
+                    CR_AGE=$((NOW - CREATED))
+                    IS_LIVE=$(echo " $LIVE_DUNGEONS " | grep -q " $DUNGEON_NAME " && echo yes || echo no)
+                    if [ "$IS_LIVE" = "no" ]; then
+                      echo "  Deleting orphaned Action CR $CR_NAME (dungeon gone)"
+                      kubectl delete action "$CR_NAME" -n default --wait=false 2>/dev/null || true
+                    elif [ "$CR_AGE" -gt "$CR_STALE_AGE" ]; then
+                      echo "  Deleting stale Action CR $CR_NAME (age: $((CR_AGE/60))m, dungeon alive)"
+                      kubectl delete action "$CR_NAME" -n default --wait=false 2>/dev/null || true
+                    fi
+                  done
+
+                  # ── Step 4: reap expired dungeons ────────────────────────────────────
                   echo "Reaping dungeons (test: 4h, user: 30d)..."
 
-                  # #427: role is now namespaced to default only — use -n default
                   kubectl get dungeons -n default -o json | jq -r '
                     .items[] |
                     [
-                      "default/\(.metadata.name)",
-                      (.metadata.creationTimestamp),
+                      .metadata.name,
+                      .metadata.creationTimestamp,
                       (.metadata.labels["krombat.io/owner"] // "")
                     ] | @tsv
-                  ' | while IFS=$'\t' read -r DUNGEON TS OWNER; do
+                  ' | while IFS=$'\t' read -r NAME TS OWNER; do
                     CREATED=$(date -d "$TS" +%s 2>/dev/null || date -jf "%Y-%m-%dT%H:%M:%SZ" "$TS" +%s 2>/dev/null || echo 0)
                     AGE=$((NOW - CREATED))
 
                     # Determine max age by owner (#477)
-                    if [ "$OWNER" = "test-infra" ] || [ -z "$OWNER" ]; then
+                    # Test user hash and no-label/test-infra dungeons: 4h
+                    # Real GitHub logins: 30d
+                    if [ -z "$OWNER" ] || [ "$OWNER" = "test-infra" ] || [ "$OWNER" = "$TEST_USER" ]; then
                       MAX_AGE=$TEST_MAX_AGE
                       POLICY="test (4h)"
                     else
@@ -104,21 +150,33 @@ spec:
                     fi
 
                     if [ "$AGE" -gt "$MAX_AGE" ]; then
-                      NS=$(echo "$DUNGEON" | cut -d/ -f1)
-                      NAME=$(echo "$DUNGEON" | cut -d/ -f2)
+                      # Active-game guard: skip if dungeon was modified in the last 90s.
+                      # Attack/Action CRs do not use .status.phase — use dungeon's own
+                      # .metadata.managedFields lastTime or simply its resourceVersion age.
+                      # Simplest reliable approach: check if a same-named Attack or Action CR
+                      # was created in the last 90s (backend writes these on every combat/action).
+                      RECENT_ATTACK=$(kubectl get attack "${NAME}-latest-attack" -n default \
+                        -o jsonpath='{.metadata.creationTimestamp}' 2>/dev/null || echo "")
+                      RECENT_ACTION=$(kubectl get action "${NAME}-latest-action" -n default \
+                        -o jsonpath='{.metadata.creationTimestamp}' 2>/dev/null || echo "")
+                      IN_FLIGHT=0
+                      for CR_TS in "$RECENT_ATTACK" "$RECENT_ACTION"; do
+                        if [ -n "$CR_TS" ]; then
+                          CR_CREATED=$(date -d "$CR_TS" +%s 2>/dev/null || date -jf "%Y-%m-%dT%H:%M:%SZ" "$CR_TS" +%s 2>/dev/null || echo 0)
+                          CR_AGE=$((NOW - CR_CREATED))
+                          if [ "$CR_AGE" -lt 90 ]; then
+                            IN_FLIGHT=1
+                          fi
+                        fi
+                      done
 
-                      # Active-game guard: skip dungeon if it has any running Attack or Action CRs
-                      ACTIVE_ATTACKS=$(kubectl get attacks -n "$NS" -o json 2>/dev/null | jq '[.items[] | select(.status.phase != "Completed" and .status.phase != "Failed")] | length' 2>/dev/null || echo 0)
-                      ACTIVE_ACTIONS=$(kubectl get actions -n "$NS" -o json 2>/dev/null | jq '[.items[] | select(.status.phase != "Completed" and .status.phase != "Failed")] | length' 2>/dev/null || echo 0)
-                      ACTIVE_TOTAL=$((ACTIVE_ATTACKS + ACTIVE_ACTIONS))
-
-                      if [ "$ACTIVE_TOTAL" -gt 0 ]; then
-                        echo "Skipping dungeon $NAME (namespace $NS) — $ACTIVE_TOTAL active CR(s) in progress"
+                      if [ "$IN_FLIGHT" = "1" ]; then
+                        echo "Skipping dungeon $NAME — combat/action in-flight (<90s ago)"
                         continue
                       fi
 
-                      echo "Deleting dungeon $NAME (namespace $NS, age: $((AGE/3600))h, policy: $POLICY)"
-                      kubectl delete dungeon "$NAME" -n "$NS" --wait=false || true
+                      echo "Deleting dungeon $NAME (age: $((AGE/3600))h, policy: $POLICY)"
+                      kubectl delete dungeon "$NAME" -n default --wait=false || true
                     fi
                   done
 
