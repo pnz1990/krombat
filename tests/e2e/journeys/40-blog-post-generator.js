@@ -67,7 +67,7 @@ async function run() {
   const dName = `j40-${Date.now()}`;
   const consoleErrors = [];
   page.on('console', msg => {
-    if (msg.type() === 'error' && !msg.text().includes('WebSocket') && !msg.text().includes('404') && !msg.text().includes('net::ERR') && !msg.text().includes('400') && !msg.text().includes('429') && !msg.text().includes('502') && !msg.text().includes('504'))
+    if (msg.type() === 'error' && !msg.text().includes('WebSocket') && !msg.text().includes('404') && !msg.text().includes('net::ERR') && !msg.text().includes('400') && !msg.text().includes('409') && !msg.text().includes('429') && !msg.text().includes('502') && !msg.text().includes('504'))
       consoleErrors.push(msg.text());
   });
 

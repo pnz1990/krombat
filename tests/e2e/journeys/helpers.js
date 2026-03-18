@@ -220,7 +220,10 @@ async function testLogin(page, baseUrl) {
 async function gotoApp(page, url) {
   await testLogin(page, url.replace(/\/[^/]*$/, '') || url); // extract origin
   await page.goto(url, { timeout: 15000 });
-  await page.waitForTimeout(500);
+  // Wait for React authUser state to settle (loaded via /api/v1/me async call).
+  // Without this wait, the unauthenticated view renders briefly and blocks the
+  // dungeon creation form (it's only visible when logged in).
+  await page.waitForTimeout(2000);
 }
 
 module.exports = {
