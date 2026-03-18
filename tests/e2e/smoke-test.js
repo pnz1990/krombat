@@ -49,11 +49,13 @@ async function runTests() {
     console.log('=== Page Load ===');
     await page.goto(BASE_URL, { timeout: TIMEOUT });
     await page.waitForLoadState('domcontentloaded');
+    // Wait for React auth state to settle (authUser loaded via /api/v1/me)
+    await page.waitForTimeout(1500);
     ok('Page loads');
 
     // Dismiss onboarding overlay early — it covers the create form and intercepts pointer events
     const skipBtnEarly = page.locator('button.kro-onboard-skip');
-    if (await skipBtnEarly.count() > 0) { await skipBtnEarly.click(); await page.waitForTimeout(300); }
+    if (await skipBtnEarly.count() > 0) { await skipBtnEarly.click(); await page.waitForTimeout(500); }
 
     const body = await page.textContent('body');
     body.includes('Dungeon') ? ok('Main content rendered') : fail('Main content missing');
