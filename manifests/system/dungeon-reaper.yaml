@@ -84,18 +84,24 @@ spec:
 
                   TEST_USER="c766300fc60d01939efde4f12dccd01170d792aaa9c0ef4df7d48d7ed9128e"
 
+                  # NOTE: alpine's `date` does not support ISO 8601 with -d.
+                  # All age calculations use jq's `fromdate` which handles the
+                  # "2006-01-02T15:04:05Z" format correctly.
+
                   # ── Step 1: collect live dungeon names ──────────────────────────────────
                   LIVE_DUNGEONS=$(kubectl get dungeons -n default -o jsonpath='{.items[*].metadata.name}' 2>/dev/null || true)
 
-                  # ── Step 2: clean up orphaned Attack CRs (parent dungeon gone) ─────────
-                  echo "Cleaning orphaned Attack CRs..."
-                  kubectl get attacks -n default -o json 2>/dev/null | jq -r '
-                    .items[] | [.metadata.name, .metadata.creationTimestamp] | @tsv
-                  ' | while IFS=$'\t' read -r CR_NAME CR_TS; do
+                  # ── Step 2: clean up orphaned/stale Attack CRs ───────────────────────
+                  echo "Cleaning orphaned/stale Attack CRs..."
+                  kubectl get attacks -n default -o json 2>/dev/null | jq -r \
+                    --argjson now "$NOW" \
+                    --argjson stale "$CR_STALE_AGE" '
+                    .items[] |
+                    (.metadata.creationTimestamp | fromdate) as $created |
+                    ($now - $created) as $age |
+                    [.metadata.name, ($age | tostring)] | @tsv
+                  ' | while IFS=$'\t' read -r CR_NAME CR_AGE; do
                     DUNGEON_NAME="${CR_NAME%-latest-attack}"
-                    CREATED=$(date -d "$CR_TS" +%s 2>/dev/null || date -jf "%Y-%m-%dT%H:%M:%SZ" "$CR_TS" +%s 2>/dev/null || echo 0)
-                    CR_AGE=$((NOW - CREATED))
-                    # Delete if orphaned OR if stale (>1h, never in-flight)
                     IS_LIVE=$(echo " $LIVE_DUNGEONS " | grep -q " $DUNGEON_NAME " && echo yes || echo no)
                     if [ "$IS_LIVE" = "no" ]; then
                       echo "  Deleting orphaned Attack CR $CR_NAME (dungeon gone)"
@@ -108,12 +114,15 @@ spec:
 
                   # ── Step 3: clean up orphaned/stale Action CRs ───────────────────────
                   echo "Cleaning orphaned/stale Action CRs..."
-                  kubectl get actions -n default -o json 2>/dev/null | jq -r '
-                    .items[] | [.metadata.name, .metadata.creationTimestamp] | @tsv
-                  ' | while IFS=$'\t' read -r CR_NAME CR_TS; do
+                  kubectl get actions -n default -o json 2>/dev/null | jq -r \
+                    --argjson now "$NOW" \
+                    --argjson stale "$CR_STALE_AGE" '
+                    .items[] |
+                    (.metadata.creationTimestamp | fromdate) as $created |
+                    ($now - $created) as $age |
+                    [.metadata.name, ($age | tostring)] | @tsv
+                  ' | while IFS=$'\t' read -r CR_NAME CR_AGE; do
                     DUNGEON_NAME="${CR_NAME%-latest-action}"
-                    CREATED=$(date -d "$CR_TS" +%s 2>/dev/null || date -jf "%Y-%m-%dT%H:%M:%SZ" "$CR_TS" +%s 2>/dev/null || echo 0)
-                    CR_AGE=$((NOW - CREATED))
                     IS_LIVE=$(echo " $LIVE_DUNGEONS " | grep -q " $DUNGEON_NAME " && echo yes || echo no)
                     if [ "$IS_LIVE" = "no" ]; then
                       echo "  Deleting orphaned Action CR $CR_NAME (dungeon gone)"
@@ -127,16 +136,17 @@ spec:
                   # ── Step 4: reap expired dungeons ────────────────────────────────────
                   echo "Reaping dungeons (test: 4h, user: 30d)..."
 
-                  kubectl get dungeons -n default -o json | jq -r '
+                  kubectl get dungeons -n default -o json | jq -r \
+                    --argjson now "$NOW" '
                     .items[] |
+                    (.metadata.creationTimestamp | fromdate) as $created |
+                    ($now - $created) as $age |
                     [
                       .metadata.name,
-                      .metadata.creationTimestamp,
+                      ($age | tostring),
                       (.metadata.labels["krombat.io/owner"] // "")
                     ] | @tsv
-                  ' | while IFS=$'\t' read -r NAME TS OWNER; do
-                    CREATED=$(date -d "$TS" +%s 2>/dev/null || date -jf "%Y-%m-%dT%H:%M:%SZ" "$TS" +%s 2>/dev/null || echo 0)
-                    AGE=$((NOW - CREATED))
+                  ' | while IFS=$'\t' read -r NAME AGE OWNER; do
 
                     # Determine max age by owner (#477)
                     # Test user hash and no-label/test-infra dungeons: 4h
@@ -150,20 +160,15 @@ spec:
                     fi
 
                     if [ "$AGE" -gt "$MAX_AGE" ]; then
-                      # Active-game guard: skip if dungeon was modified in the last 90s.
-                      # Attack/Action CRs do not use .status.phase — use dungeon's own
-                      # .metadata.managedFields lastTime or simply its resourceVersion age.
-                      # Simplest reliable approach: check if a same-named Attack or Action CR
-                      # was created in the last 90s (backend writes these on every combat/action).
-                      RECENT_ATTACK=$(kubectl get attack "${NAME}-latest-attack" -n default \
-                        -o jsonpath='{.metadata.creationTimestamp}' 2>/dev/null || echo "")
-                      RECENT_ACTION=$(kubectl get action "${NAME}-latest-action" -n default \
-                        -o jsonpath='{.metadata.creationTimestamp}' 2>/dev/null || echo "")
+                      # Active-game guard: check if a same-named Attack or Action CR
+                      # was created in the last 90s (backend writes these on every
+                      # combat/action). Use jq fromdate — no shell date parsing.
                       IN_FLIGHT=0
-                      for CR_TS in "$RECENT_ATTACK" "$RECENT_ACTION"; do
+                      for SUFFIX in latest-attack latest-action; do
+                        CR_TS=$(kubectl get "${SUFFIX%%-*}" "${NAME}-${SUFFIX}" -n default \
+                          -o jsonpath='{.metadata.creationTimestamp}' 2>/dev/null || echo "")
                         if [ -n "$CR_TS" ]; then
-                          CR_CREATED=$(date -d "$CR_TS" +%s 2>/dev/null || date -jf "%Y-%m-%dT%H:%M:%SZ" "$CR_TS" +%s 2>/dev/null || echo 0)
-                          CR_AGE=$((NOW - CR_CREATED))
+                          CR_AGE=$(echo "\"$CR_TS\"" | jq --argjson now "$NOW" 'fromdate | ($now - .) | floor')
                           if [ "$CR_AGE" -lt 90 ]; then
                             IN_FLIGHT=1
                           fi
