@@ -922,16 +922,19 @@ spec:
         lastAction: "${''}"
 
     # ===================================================================
-    # enterRoom2Resolve: handles ONLY the array fields for room 2 transition.
-    # Kept separate from actionResolve because []string / []integer arrays
-    # with no default cause kro "data pending" errors when passed through
-    # as-is in a specPatch that fires on every action turn.
-    # Fires independently on its own sentinel (room2ProcessedSeq).
+     # enterRoom2Resolve: handles ONLY the array fields for room 2 transition.
+     # Kept separate from actionResolve because []string / []integer arrays
+     # with no default cause kro "data pending" errors when passed through
+     # as-is in a specPatch that fires on every action turn.
+      # Fires ONCE (one-shot): when currentRoom reaches 2 AND room2ProcessedSeq
+      # is still 0 (its default). After firing, room2ProcessedSeq is set to
+      # actionSeq (non-zero) so this node never fires again — preventing
+      # equip/item actions from resetting monsterHP/bossHP to initial values.
     # ===================================================================
     - id: enterRoom2Resolve
       type: specPatch
       includeWhen:
-        - "${schema.spec.currentRoom == 2 && schema.spec.actionSeq > schema.spec.room2ProcessedSeq}"
+        - "${schema.spec.currentRoom == 2 && schema.spec.room2ProcessedSeq == 0}"
       patch:
         monsterHP: >-
           ${cel.bind(diff, schema.spec.difficulty,
@@ -980,6 +983,7 @@ spec:
         monsterTypes: >-
           ${lists.range(schema.spec.monsters).map(i, i % 2 == 0 ? 'troll' : 'ghoul')}
 
-        # --- Room 2 sentinel ---
+        # --- Room 2 sentinel: set to actionSeq once so includeWhen (== 0) never fires again,
+        #     and the frontend can detect completion via room2ProcessedSeq >= actionSeq ---
         room2ProcessedSeq: "${schema.spec.actionSeq}"
 
