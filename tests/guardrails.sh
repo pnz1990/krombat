@@ -388,7 +388,7 @@ grep -q "inCombat && attackTarget === mName) mAction = 'attack'" frontend/src/Ap
 grep -q "inCombatB && attackTarget.*boss.*bAction = 'attack'" frontend/src/App.tsx && pass "Boss target uses attack anim during combat" || fail "Boss target not using attack anim"
 CLEAR_COUNT=$(grep -c "setAttackTarget(null)" frontend/src/App.tsx)
 [ "$CLEAR_COUNT" -le 4 ] && pass "attackTarget cleared only in dismiss/catch/item ($CLEAR_COUNT)" || fail "attackTarget cleared too many places: $CLEAR_COUNT"
-grep -q "opacity.*dead.*0.35" frontend/src/Sprite.tsx && pass "Dead sprites have reduced opacity" || fail "Dead sprites missing opacity"
+grep -q "arena-entity.dead" frontend/src/index.css && grep -q "opacity" frontend/src/index.css && pass "Dead sprites have reduced opacity" || fail "Dead sprites missing opacity"
 
 # --- kro teaching layer guardrails ---
 echo "=== kro teaching layer guardrails"

@@ -681,7 +681,7 @@ body {
 }
 
 /* Dead entities */
-.arena-entity.dead { opacity: 0.4; filter: grayscale(0.5); }
+.arena-entity.dead { opacity: 0.55; filter: grayscale(0.6); }
 
 /* Boss entrance animation */
 .boss-entity { animation: bossEntrance 0.8s ease-out; z-index: 3; }
