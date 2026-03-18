@@ -292,7 +292,7 @@ while [ $KILL_ATTEMPTS -lt 5 ]; do
     -H "Content-Type: application/json" \
     -d "{\"target\":\"${LOOT_TEST}-monster-0\",\"damage\":100,\"seq\":-1}" -o /dev/null
   sleep 5
-  MONSTER_HP=$(kctl get dungeon "$LOOT_TEST" -n default -o jsonpath='{.spec.monsterHP[0]}' 2>/dev/null || echo "99")
+  MONSTER_HP=$(kctl get dungeon "$LOOT_TEST" -n default -o jsonpath='{.status.game.monsterHP[0]}' 2>/dev/null || echo "99")
   [ "$MONSTER_HP" = "0" ] && break
   KILL_ATTEMPTS=$((KILL_ATTEMPTS+1))
 done
@@ -303,9 +303,9 @@ sleep 15  # wait for full kro chain: monster-graph → Loot CR → loot-graph �
 LOOT_SECRET_AFTER=$(kctl get secret "${LOOT_TEST}-monster-0-loot" -n "$LOOT_TEST" --ignore-not-found 2>/dev/null || true)
 [ -n "$LOOT_SECRET_AFTER" ] && pass "Loot Secret exists after monster killed (hp == 0)" || fail "Loot Secret missing after monster killed"
 
-# Verify lastLootDrop field is present in dungeon spec (may be empty if no drop — that is valid)
-LOOT_DROP_FIELD=$(kctl get dungeon "$LOOT_TEST" -n default -o jsonpath='{.spec.lastLootDrop}' 2>/dev/null || echo "__missing__")
-[ "$LOOT_DROP_FIELD" != "__missing__" ] && pass "lastLootDrop field present in dungeon spec after kill" || fail "lastLootDrop field missing from dungeon spec"
+# Verify lastLootDrop field is present in dungeon status.game (may be empty if no drop — that is valid)
+LOOT_DROP_FIELD=$(kctl get dungeon "$LOOT_TEST" -n default -o jsonpath='{.status.game.lastLootDrop}' 2>/dev/null || echo "__missing__")
+[ "$LOOT_DROP_FIELD" != "__missing__" ] && pass "lastLootDrop field present in dungeon status.game after kill" || fail "lastLootDrop field missing from dungeon status.game"
 
 # Cleanup loot test dungeon (deleting the dungeon CR cascades to the namespace via ownerReferences)
 kctl delete dungeon "$LOOT_TEST" -n default --ignore-not-found --wait=false &>/dev/null

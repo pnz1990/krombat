@@ -2,12 +2,12 @@
 // UI-ONLY: no kubectl, no direct fetch/api, no execSync
 //
 // Journey 17 verified the playground UI renders. This journey verifies the
-// *actual evaluated values* from the live dungeon spec via CelEvalHandler.
-// Specifically: we create a dungeon with known spec values, type expressions
+// *actual evaluated values* from the live dungeon state via CelEvalHandler.
+// Specifically: we create a dungeon with known values, type expressions
 // that reference those values, and assert exact result strings.
 //
 // CelEvalHandler: POST /api/v1/dungeons/{ns}/{name}/cel-eval
-//   Body:  { "expr": "schema.spec.heroHP > 0" }
+//   Body:  { "expr": "schema.status.game.heroHP > 0" }
 //   Reply: { "result": "true" }  or  { "error": "..." }
 //
 // The frontend sends this request when the user clicks "Run" in the
@@ -136,28 +136,28 @@ async function run() {
 
     // ── Live eval: boolean expression ─────────────────────────────────────────
     console.log('\n  [Live eval: heroHP boolean]');
-    const boolResult = await evalExpression(page, 'schema.spec.heroHP > 0');
+    const boolResult = await evalExpression(page, 'schema.status.game.heroHP > 0');
     if (boolResult !== null) {
-      ok(`schema.spec.heroHP > 0 evaluated (result: "${boolResult}")`);
+      ok(`schema.status.game.heroHP > 0 evaluated (result: "${boolResult}")`);
       boolResult === 'true'
         ? ok('Boolean expression result is "true" (hero is alive)')
         : warn(`Boolean result: "${boolResult}" — expected "true"`);
     } else {
-      fail('schema.spec.heroHP > 0: no result within timeout');
+      fail('schema.status.game.heroHP > 0: no result within timeout');
     }
 
     // ── Live eval: warrior HP = 200 ───────────────────────────────────────────
     // Warrior heroHP starts at 200; this directly verifies CelEvalHandler
-    // reads the live spec and returns the integer value.
+    // reads the live status.game and returns the integer value.
     console.log('\n  [Live eval: exact heroHP integer value]');
-    const hpResult = await evalExpression(page, 'schema.spec.heroHP');
+    const hpResult = await evalExpression(page, 'schema.status.game.heroHP');
     if (hpResult !== null) {
-      ok(`schema.spec.heroHP evaluated (result: "${hpResult}")`);
+      ok(`schema.status.game.heroHP evaluated (result: "${hpResult}")`);
       hpResult === '200'
-        ? ok('heroHP == 200: exact warrior starting HP confirmed from live spec (CelEvalHandler round-trip)')
-        : warn(`heroHP result: "${hpResult}" — expected 200 for warrior (may have taken damage or spec differs)`);
+        ? ok('heroHP == 200: exact warrior starting HP confirmed from live status.game (CelEvalHandler round-trip)')
+        : warn(`heroHP result: "${hpResult}" — expected 200 for warrior (may have taken damage or state differs)`);
     } else {
-      fail('schema.spec.heroHP: no result within timeout');
+      fail('schema.status.game.heroHP: no result within timeout');
     }
 
     // ── Live eval: ternary expression (kro RGD pattern) ──────────────────────
@@ -165,7 +165,7 @@ async function run() {
     console.log('\n  [Live eval: ternary expression (kro RGD pattern)]');
     const ternaryResult = await evalExpression(
       page,
-      'schema.spec.heroHP > 0 ? "alive" : "dead"'
+      'schema.status.game.heroHP > 0 ? "alive" : "dead"'
     );
     if (ternaryResult !== null) {
       ok(`Ternary expression evaluated (result: "${ternaryResult}")`);
@@ -180,7 +180,7 @@ async function run() {
     // cel.bind() was not available in the old hand-rolled parser.
     // Now that we use the real kro CEL env, it must work correctly.
     console.log('\n  [Live eval: cel.bind() macro]');
-    const bindResult = await evalExpression(page, 'cel.bind(x, schema.spec.heroHP, x > 0 ? "alive" : "dead")');
+    const bindResult = await evalExpression(page, 'cel.bind(x, schema.status.game.heroHP, x > 0 ? "alive" : "dead")');
     if (bindResult !== null) {
       ok(`cel.bind() evaluated (result: "${bindResult}")`);
       bindResult === 'alive' || bindResult === '"alive"'

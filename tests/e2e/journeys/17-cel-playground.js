@@ -121,7 +121,7 @@ async function run() {
 
     // ── Run another expression ────────────────────────────────────────────────
     console.log('\n  [Evaluate integer expression]');
-    await input.fill('schema.spec.heroHP * 2');
+    await input.fill('schema.status.game.heroHP * 2');
     await runBtn.click();
     await page.waitForTimeout(3000);
 

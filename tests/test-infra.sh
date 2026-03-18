@@ -12,7 +12,7 @@ metadata:
   name: $D
   labels:
     krombat.io/owner: test-infra
-spec: {monsters: 1, difficulty: easy, monsterHP: [30], bossHP: 200, heroHP: 150, heroClass: warrior, modifier: none}
+spec: {monsters: 1, difficulty: easy, heroClass: warrior}
 EOF
 
 wait_for "configmap ready" "kctl get configmap ${D}-monster-0 -n $D" 60

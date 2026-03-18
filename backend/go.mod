@@ -69,4 +69,4 @@ require (
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
 
-replace github.com/kubernetes-sigs/kro => github.com/pnz1990/kro v0.8.6-0.20260313202353-52b19b57f44d
+replace github.com/kubernetes-sigs/kro => github.com/pnz1990/kro v0.8.6-0.20260318200354-ba16290d8802

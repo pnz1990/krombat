@@ -48,6 +48,25 @@ export interface DungeonCR {
     maxHeroHP: number; diceFormula: string; monsterCounter: number; bossCounter: number
     modifier?: string; modifierType?: string; treasureState?: string; bossPhase?: string
     conditions?: KroCondition[]
+    // KREP-023: kro-computed game state lives in status.game (state node storeName)
+    game?: {
+      heroHP?: number; heroMana?: number; bossHP?: number
+      monsterHP?: number[]; monsterTypes?: string[]
+      modifier?: string; inventory?: string
+      weaponBonus?: number; weaponUses?: number; armorBonus?: number; shieldBonus?: number
+      helmetBonus?: number; pantsBonus?: number; bootsBonus?: number
+      ringBonus?: number; amuletBonus?: number
+      poisonTurns?: number; burnTurns?: number; stunTurns?: number
+      tauntActive?: number; backstabCooldown?: number
+      treasureOpened?: number; doorUnlocked?: number; currentRoom?: number
+      room2MonsterHP?: number[]; room2BossHP?: number
+      lastLootDrop?: string
+      initProcessedSeq?: number; combatProcessedSeq?: number
+      abilityProcessedSeq?: number; actionProcessedSeq?: number
+      room2ProcessedSeq?: number; dotProcessedSeq?: number
+      tauntProcessedSeq?: number; cooldownProcessedSeq?: number
+      ringProcessedSeq?: number
+    }
   }
 }
 
