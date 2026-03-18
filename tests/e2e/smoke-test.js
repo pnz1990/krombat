@@ -51,6 +51,10 @@ async function runTests() {
     await page.waitForLoadState('domcontentloaded');
     ok('Page loads');
 
+    // Dismiss onboarding overlay early — it covers the create form and intercepts pointer events
+    const skipBtnEarly = page.locator('button.kro-onboard-skip');
+    if (await skipBtnEarly.count() > 0) { await skipBtnEarly.click(); await page.waitForTimeout(300); }
+
     const body = await page.textContent('body');
     body.includes('Dungeon') ? ok('Main content rendered') : fail('Main content missing');
 
@@ -87,7 +91,7 @@ async function runTests() {
 
     // === SECTION 4: Create Dungeon (Warrior) ===
     console.log('\n=== Create Dungeon (Warrior) ===');
-    // Dismiss onboarding overlay if present — it intercepts pointer events in fresh browser sessions
+    // Overlay already dismissed above; skip button click is idempotent if still present
     const skipBtn = page.locator('button.kro-onboard-skip');
     if (await skipBtn.count() > 0) { await skipBtn.click(); await page.waitForTimeout(300); }
     const dName = `ui-test-${Date.now()}`;
