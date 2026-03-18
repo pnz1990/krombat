@@ -82,7 +82,7 @@ export function Sprite({ spriteType, action, size = 64, flip = false }: SpritePr
         objectFit: 'contain',
         imageRendering: 'pixelated' as any,
         transform: flip ? 'scaleX(-1)' : undefined,
-        opacity: action === 'dead' ? 0.35 : 1,
+        opacity: 1,
       }}
     />
   )
