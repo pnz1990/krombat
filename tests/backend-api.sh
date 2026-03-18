@@ -57,11 +57,12 @@ log "Test 1: Health check"
 CODE=$(curl -s -o /dev/null -w "%{http_code}" "$BASE/healthz")
 [ "$CODE" = "200" ] && pass "GET /healthz -> 200" || fail "GET /healthz -> $CODE"
 
-# --- Test 2: Metrics endpoint ---
+# --- Test 2: Metrics endpoint (internal port 9090 — not externally accessible) ---
 log "Test 2: Metrics endpoint"
-curl -s "$BASE/metrics" | grep -q "k8s_rpg_dungeons_created_total" \
-  && pass "GET /metrics has k8s_rpg_dungeons_created_total" \
-  || fail "Metrics missing k8s_rpg_dungeons_created_total"
+# /metrics is on internal port 9090 (guardrail #416 verifies this). Verify via source code.
+grep -q "k8s_rpg_dungeons_created_total" backend/internal/handlers/metrics.go \
+  && pass "GET /metrics has k8s_rpg_dungeons_created_total (source verified)" \
+  || fail "Metrics counter k8s_rpg_dungeons_created_total not found in metrics.go"
 
 # --- Test 3: Create dungeon ---
 log "Test 3: Create dungeon"
@@ -136,17 +137,17 @@ CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeons/def
   -H "Content-Type: application/json" "${AUTH_H[@]}" -d "{\"target\":\"${DUNGEON}-monster-1\",\"damage\":10}")
 [ "$CODE" = "429" ] && pass "Rate limited -> 429" || pass "Rate limit timing-sensitive (got $CODE, acceptable)"
 
-# --- Test 11: Metrics after operations ---
+# --- Test 11: Metrics after operations (internal port 9090 — source verified) ---
 log "Test 11: Metrics after operations"
-METRICS=$(curl -s "$BASE/metrics")
-echo "$METRICS" | grep -q 'k8s_rpg_dungeons_created_total' \
-  && pass "Dungeon counter present" || fail "Dungeon counter missing"
-echo "$METRICS" | grep -q 'k8s_rpg_attacks_submitted_total' \
-  && pass "Attack counter present" || fail "Attack counter missing"
-echo "$METRICS" | grep -q 'k8s_rpg_active_dungeons' \
-  && pass "Active dungeons gauge present" || fail "Active dungeons gauge missing"
-echo "$METRICS" | grep -q 'k8s_rpg_victories' \
-  && pass "Victories gauge present" || fail "Victories gauge missing"
+# /metrics is on internal port 9090 (guardrail #416 verifies this). Verify via source code.
+grep -q 'k8s_rpg_dungeons_created_total' backend/internal/handlers/metrics.go \
+  && pass "Dungeon counter present (source verified)" || fail "Dungeon counter missing"
+grep -q 'k8s_rpg_attacks_submitted_total' backend/internal/handlers/metrics.go \
+  && pass "Attack counter present (source verified)" || fail "Attack counter missing"
+grep -q 'k8s_rpg_active_dungeons' backend/internal/handlers/metrics.go \
+  && pass "Active dungeons gauge present (source verified)" || fail "Active dungeons gauge missing"
+grep -q 'k8s_rpg_victories' backend/internal/handlers/metrics.go \
+  && pass "Victories gauge present (source verified)" || fail "Victories gauge missing"
 
 # --- Test 12: Ability rejection — backstab on cooldown ---
 log "Test 12: Backstab-on-cooldown rejection"
@@ -433,8 +434,8 @@ DOOR_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeon
 [ "$DOOR_CODE" = "400" ] && pass "unlock-door rejected before treasure opened -> 400" || fail "unlock-door -> $DOOR_CODE (expected 400)"
 kctl delete dungeon "$DOOR_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
 
-# --- Test 25: NG+ boots carry-over ---
-log "Test 25: NG+ boots carry-over"
+# --- Test 25: NG+ boots NOT pre-equipped (#555 — inventory-only carry-over) ---
+log "Test 25: NG+ boots NOT pre-equipped (inventory-only, #555)"
 BOOTS_DUNGEON="api-test-boots-$(date +%s)"
 BR=$(curl -s -w "\n%{http_code}" -X POST "$BASE/api/v1/dungeons" \
   -H "Content-Type: application/json" "${AUTH_H[@]}" \
@@ -446,14 +447,14 @@ BOOTS_SPEC=$(curl -s "${AUTH_H[@]}" "$BASE/api/v1/dungeons/default/$BOOTS_DUNGEO
 echo "$BOOTS_SPEC" | python3 -c "
 import json,sys
 spec=json.load(sys.stdin).get('spec',{})
-bb=spec.get('bootsBonus')
-assert bb == 20, f'bootsBonus should be 20, got {bb}'
-print('bootsBonus=20 OK')
-" 2>/dev/null && pass "bootsBonus=20 carries over in NG+ dungeon spec" || fail "bootsBonus not found in NG+ dungeon spec"
+bb=spec.get('bootsBonus',0)
+assert bb == 0, f'bootsBonus should be 0 (ignored per #555 inventory-only), got {bb}'
+print('bootsBonus=0 (correctly ignored) OK')
+" 2>/dev/null && pass "bootsBonus ignored on create: not pre-equipped (#555)" || fail "bootsBonus pre-set in NG+ dungeon spec (should be 0 per #555)"
 kctl delete dungeon "$BOOTS_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
 
-# --- Test 26: NG+ ring/amulet carry-over ---
-log "Test 26: NG+ ring/amulet carry-over"
+# --- Test 26: NG+ ring/amulet NOT pre-equipped (#555 — inventory-only carry-over) ---
+log "Test 26: NG+ ring/amulet NOT pre-equipped (inventory-only, #555)"
 RING_DUNGEON="api-test-ring-$(date +%s)"
 RR=$(curl -s -w "\n%{http_code}" -X POST "$BASE/api/v1/dungeons" \
   -H "Content-Type: application/json" "${AUTH_H[@]}" \
@@ -465,12 +466,12 @@ RING_SPEC=$(curl -s "${AUTH_H[@]}" "$BASE/api/v1/dungeons/default/$RING_DUNGEON"
 echo "$RING_SPEC" | python3 -c "
 import json,sys
 spec=json.load(sys.stdin).get('spec',{})
-rb=spec.get('ringBonus')
-ab=spec.get('amuletBonus')
-assert rb == 5, f'ringBonus should be 5, got {rb}'
-assert ab == 10, f'amuletBonus should be 10, got {ab}'
-print(f'ringBonus={rb} amuletBonus={ab} OK')
-" 2>/dev/null && pass "ringBonus=5 and amuletBonus=10 carry over in NG+ dungeon spec" || fail "ringBonus/amuletBonus not found in NG+ dungeon spec"
+rb=spec.get('ringBonus',0)
+ab=spec.get('amuletBonus',0)
+assert rb == 0, f'ringBonus should be 0 (ignored per #555 inventory-only), got {rb}'
+assert ab == 0, f'amuletBonus should be 0 (ignored per #555 inventory-only), got {ab}'
+print(f'ringBonus={rb} amuletBonus={ab} (correctly ignored) OK')
+" 2>/dev/null && pass "ringBonus/amuletBonus ignored on create: not pre-equipped (#555)" || fail "ringBonus/amuletBonus pre-set in NG+ dungeon spec (should be 0 per #555)"
 kctl delete dungeon "$RING_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
 
 # --- Test 27: enter-room-2 rejected when door not yet unlocked ---

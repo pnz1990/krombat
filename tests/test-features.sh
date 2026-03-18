@@ -26,8 +26,13 @@ wait_dungeon_ready "test-loot-$TS"
 log "Modifier test"
 MOD=$(kctl get dungeon "test-mod-$TS" -o jsonpath='{.spec.modifier}' 2>/dev/null)
 [ -n "$MOD" ] && pass "Modifier assigned: $MOD" || fail "Modifier not assigned"
-wait_for "modifier CR" "kctl get modifier test-mod-$TS-modifier -n test-mod-$TS" 30 \
-  && pass "Modifier CR in dungeon namespace" || fail "Modifier CR"
+# Modifier CR only exists when modifier != "none" (includeWhen in dungeon-graph RGD)
+if [ "$MOD" != "none" ]; then
+  wait_for "modifier CR" "kctl get modifier test-mod-$TS-modifier -n test-mod-$TS" 30 \
+    && pass "Modifier CR in dungeon namespace" || fail "Modifier CR"
+else
+  pass "Modifier CR skipped (modifier=none, no CR expected)"
+fi
 
 # --- Status effects: patch dungeon with pre-existing effects, then attack ---
 log "Status effect test"
@@ -46,11 +51,11 @@ FX_STUN=$(kctl get dungeon "test-fx-$TS" -o jsonpath='{.spec.stunTurns}')
 
 # --- Loot: patch inventory, then use item ---
 log "Loot test"
-kctl patch dungeon "test-loot-$TS" --type=merge -p '{"spec":{"inventory":"hppotion-rare","heroHP":50}}' &>/dev/null
+kctl patch dungeon "test-loot-$TS" --type=merge -p '{"spec":{"inventory":"[\"hppotion-rare\"]","heroHP":50}}' &>/dev/null
 sleep 2
 submit_action "test-loot-$TS" "use-hppotion-rare"
 INV=$(kctl get dungeon "test-loot-$TS" -o jsonpath='{.spec.inventory}')
-[ -z "$INV" ] && pass "Item consumed: inventory empty" || fail "Inventory=$INV"
+[ -z "$INV" ] || [ "$INV" = "[]" ] && pass "Item consumed: inventory empty" || fail "Inventory=$INV"
 HP_AFTER=$(kctl get dungeon "test-loot-$TS" -o jsonpath='{.spec.heroHP}')
 [ "$HP_AFTER" -gt 50 ] && pass "Potion used: HP increased from 50 to $HP_AFTER" || fail "Potion HP=$HP_AFTER"
 
