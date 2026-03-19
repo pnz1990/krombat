@@ -6,7 +6,7 @@ Answer these 5 questions using the live game at `https://learn-kro.eks.aws.dev`.
 
 ## Q1 — Resource count
 
-Create a dungeon with 3 monsters. Open the kro panel and count all nodes in the resource graph (including specPatch nodes).
+Create a dungeon with 3 monsters. Open the kro panel and count all nodes in the resource graph (including state nodes).
 
 **How many resources did kro create from your single Dungeon CR?**
 

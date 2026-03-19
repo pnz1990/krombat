@@ -9,7 +9,7 @@
 // modifier-cm: present only when dungeon has a modifier (includeWhen guard)
 //              — tested conditionally; warns if no modifier was assigned.
 //
-// NOTE: combatResolve and actionResolve are virtual specPatch nodes with no
+// NOTE: combatResolve and actionResolve are virtual state nodes with no
 // persistent K8s resource — the Inspector skips them by design. gameConfig is
 // the closest real ConfigMap that shows kro CEL output for every dungeon.
 const { chromium } = require('playwright');
@@ -134,7 +134,7 @@ async function run() {
       if (label && label.includes('modifierState')) modifierNodeFound = true;
     }
     combatNodeFound
-      ? ok('combatResolve (specPatch) node found in KroGraph')
+      ? ok('combatResolve (stateNode) node found in KroGraph')
       : fail('combatResolve node not found in KroGraph');
     gameConfigNodeFound
       ? ok('gameConfig (ConfigMap) node found in KroGraph')

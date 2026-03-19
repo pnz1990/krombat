@@ -112,7 +112,7 @@ submit_attack() {
 
 # Submit an action (non-combat) via the backend REST API and wait for kro to finish.
 # The backend writes trigger fields (lastAction, actionSeq) and kro's actionResolve
-# specPatch computes the actual state mutations, then clears lastAction.
+# state node computes the actual state mutations and writes them to status.game.
 # Usage: submit_action <dungeon-name> <action>
 submit_action() {
   local dname="$1" action="$2"
