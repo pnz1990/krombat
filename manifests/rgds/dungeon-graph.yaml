@@ -30,47 +30,9 @@ spec:
       lastEnemyAction: string | default=""
       lastCombatLog: string | default=""
       xpEarned: integer | default=0
-      # --- Read-only migration fields (spec → status.game rolling migration) ---
-      # These fields are NOT written by backend or kro state nodes. They exist
-      # solely so kstate() can fall back to schema.spec.X for existing dungeons
-      # that were created before the state-node migration. Once the 4-hour reaper
-      # cleans all pre-migration dungeons, these fields can be removed.
-      heroHP: integer | default=0
-      heroMana: integer | default=0
-      monsterHP: "[]integer"
-      bossHP: integer | default=0
-      modifier: string | default="none"
-      monsterTypes: "[]string"
-      inventory: string | default=""
-      weaponBonus: integer | default=0
-      weaponUses: integer | default=0
-      armorBonus: integer | default=0
-      shieldBonus: integer | default=0
-      helmetBonus: integer | default=0
-      pantsBonus: integer | default=0
-      bootsBonus: integer | default=0
-      ringBonus: integer | default=0
-      amuletBonus: integer | default=0
-      poisonTurns: integer | default=0
-      burnTurns: integer | default=0
-      stunTurns: integer | default=0
-      tauntActive: integer | default=0
-      backstabCooldown: integer | default=0
-      treasureOpened: integer | default=0
-      currentRoom: integer | default=1
-      doorUnlocked: integer | default=0
-      room2MonsterHP: "[]integer"
-      room2BossHP: integer | default=0
       lastLootDrop: string | default=""
-      initProcessedSeq: integer | default=0
-      combatProcessedSeq: integer | default=0
-      abilityProcessedSeq: integer | default=0
-      dotProcessedSeq: integer | default=0
-      tauntProcessedSeq: integer | default=0
-      cooldownProcessedSeq: integer | default=0
-      ringProcessedSeq: integer | default=0
-      actionProcessedSeq: integer | default=0
-      room2ProcessedSeq: integer | default=0
+      inventory: string | default=""
+      enterRoom2: integer | default=0
     status:
       # --- Child CR projections (unchanged — read from child RGD statuses) ---
       livingMonsters: "${size(monsterCRs.filter(m, m.status.?entityState.orValue('alive') == 'alive'))}"
@@ -113,15 +75,15 @@ spec:
           namespace: ${ns.metadata.name}
         spec:
           dungeonName: ${schema.metadata.name}
-          hp: ${kstate(schema.status.game, 'heroHP', schema.spec.heroHP)}
+          hp: ${kstate(schema.status.game, 'heroHP', 0)}
           difficulty: ${schema.spec.difficulty}
           heroClass: ${schema.spec.heroClass}
-          mana: ${kstate(schema.status.game, 'heroMana', schema.spec.heroMana)}
+          mana: ${kstate(schema.status.game, 'heroMana', 0)}
 
     # --- Monster CRs (reads monsterHP array from status.game) ---
     - id: monsterCRs
       forEach:
-        - idx: "${has(schema.status.game.monsterHP) ? lists.range(size(schema.status.game.monsterHP)) : (has(schema.spec.monsterHP) ? lists.range(size(schema.spec.monsterHP)) : [])}"
+        - idx: "${has(schema.status.game.monsterHP) ? lists.range(size(schema.status.game.monsterHP)) : []}"
       template:
         apiVersion: game.k8s.example/v1alpha1
         kind: Monster
@@ -131,7 +93,7 @@ spec:
         spec:
           dungeonName: ${schema.metadata.name}
           index: ${idx}
-          hp: "${has(schema.status.game.monsterHP) ? int(schema.status.game.monsterHP[idx]) : (has(schema.spec.monsterHP) ? int(schema.spec.monsterHP[idx]) : 0)}"
+          hp: "${has(schema.status.game.monsterHP) ? int(schema.status.game.monsterHP[idx]) : 0}"
           difficulty: ${schema.spec.difficulty}
 
     # --- Boss CR (reads bossHP and monsterHP from status.game) ---
@@ -144,10 +106,10 @@ spec:
           namespace: ${ns.metadata.name}
         spec:
           dungeonName: ${schema.metadata.name}
-          hp: ${kstate(schema.status.game, 'bossHP', schema.spec.bossHP)}
+          hp: ${kstate(schema.status.game, 'bossHP', 0)}
           maxHP: "${schema.spec.difficulty == 'easy' ? 200 : schema.spec.difficulty == 'hard' ? 800 : 400}"
           difficulty: ${schema.spec.difficulty}
-          monstersAlive: "${has(schema.status.game.monsterHP) ? size(schema.status.game.monsterHP.filter(hp, int(hp) > 0)) : (has(schema.spec.monsterHP) ? size(schema.spec.monsterHP.filter(hp, int(hp) > 0)) : 0)}"
+          monstersAlive: "${has(schema.status.game.monsterHP) ? size(schema.status.game.monsterHP.filter(hp, int(hp) > 0)) : 0}"
 
     # --- Treasure CR (reads treasureOpened from status.game) ---
     - id: treasureCR
@@ -159,12 +121,12 @@ spec:
           namespace: ${ns.metadata.name}
         spec:
           dungeonName: ${schema.metadata.name}
-          opened: ${kstate(schema.status.game, 'treasureOpened', schema.spec.treasureOpened)}
+          opened: ${kstate(schema.status.game, 'treasureOpened', 0)}
 
     # --- Modifier CR (reads modifier from status.game, conditional) ---
     - id: modifierCR
       includeWhen:
-        - ${kstate(schema.status.game, 'modifier', schema.spec.modifier) != "none"}
+        - ${kstate(schema.status.game, 'modifier', 'none') != "none"}
       readyWhen:
         - "${modifierCR.status.?modifierType.orValue('') != ''}"
       template:
@@ -175,7 +137,7 @@ spec:
           namespace: ${ns.metadata.name}
         spec:
           dungeonName: ${schema.metadata.name}
-          modifierType: ${kstate(schema.status.game, 'modifier', schema.spec.modifier)}
+          modifierType: ${kstate(schema.status.game, 'modifier', 'none')}
 
     # --- Game config (reads immutable fields from spec — unchanged) ---
     - id: gameConfig
@@ -312,7 +274,7 @@ spec:
           room2ProcessedSeq: "${0}"
 
       includeWhen:
-        - "${kstate(schema.status.game, 'initProcessedSeq', schema.spec.initProcessedSeq) == 0}"
+        - "${kstate(schema.status.game, 'initProcessedSeq', 0) == 0}"
 
     # ===================================================================
     # abilityResolve: mage heal or warrior taunt.
@@ -325,7 +287,7 @@ spec:
           # Mage heal: min(heroHP + 40, 120); warrior taunt: no change
           heroHP: >-
             ${cel.bind(lastAbility, schema.spec.lastAbility,
-            cel.bind(hp, kstate(schema.status.game, 'heroHP', schema.spec.heroHP),
+            cel.bind(hp, kstate(schema.status.game, 'heroHP', 0),
               lastAbility == 'mage-heal'
                 ? (hp + 40 > 120 ? 120 : hp + 40)
                 : hp
@@ -333,7 +295,7 @@ spec:
           # Mage heal: heroMana - 2; warrior taunt: no change
           heroMana: >-
             ${cel.bind(lastAbility, schema.spec.lastAbility,
-            cel.bind(mana, kstate(schema.status.game, 'heroMana', schema.spec.heroMana),
+            cel.bind(mana, kstate(schema.status.game, 'heroMana', 0),
               lastAbility == 'mage-heal'
                 ? mana - 2
                 : mana
@@ -343,17 +305,17 @@ spec:
             ${cel.bind(lastAbility, schema.spec.lastAbility,
               lastAbility == 'warrior-taunt'
                 ? 1
-                : kstate(schema.status.game, 'tauntActive', schema.spec.tauntActive)
+                : kstate(schema.status.game, 'tauntActive', 0)
             )}
           # Warrior taunt: pre-arm tauntProcessedSeq so advanceTaunt doesn't fire this turn
           tauntProcessedSeq: >-
             ${schema.spec.lastAbility == 'warrior-taunt'
               ? schema.spec.attackSeq
-              : kstate(schema.status.game, 'tauntProcessedSeq', schema.spec.tauntProcessedSeq)}
+              : kstate(schema.status.game, 'tauntProcessedSeq', 0)}
           # Advance sentinel
           abilityProcessedSeq: "${schema.spec.attackSeq}"
       includeWhen:
-        - "${schema.spec.attackSeq > kstate(schema.status.game, 'abilityProcessedSeq', schema.spec.abilityProcessedSeq) && schema.spec.lastAbility != ''}"
+        - "${schema.spec.attackSeq > kstate(schema.status.game, 'abilityProcessedSeq', 0) && schema.spec.lastAbility != ''}"
 
     # ===================================================================
     # tickDoT: decrement poison/burn and apply HP damage, once per attack turn.
@@ -366,23 +328,23 @@ spec:
         storeName: game
         fields:
           heroHP: >-
-            ${cel.bind(hp, kstate(schema.status.game, 'heroHP', schema.spec.heroHP),
-            cel.bind(poison, kstate(schema.status.game, 'poisonTurns', schema.spec.poisonTurns),
-            cel.bind(burn, kstate(schema.status.game, 'burnTurns', schema.spec.burnTurns),
+            ${cel.bind(hp, kstate(schema.status.game, 'heroHP', 0),
+            cel.bind(poison, kstate(schema.status.game, 'poisonTurns', 0),
+            cel.bind(burn, kstate(schema.status.game, 'burnTurns', 0),
             cel.bind(dmg, (poison > 0 ? 5 : 0) + (burn > 0 ? 8 : 0),
               hp - dmg < 0 ? 0 : hp - dmg
             ))))}
           poisonTurns: >-
-            ${cel.bind(pt, kstate(schema.status.game, 'poisonTurns', schema.spec.poisonTurns),
+            ${cel.bind(pt, kstate(schema.status.game, 'poisonTurns', 0),
               pt > 0 ? pt - 1 : 0
             )}
           burnTurns: >-
-            ${cel.bind(bt, kstate(schema.status.game, 'burnTurns', schema.spec.burnTurns),
+            ${cel.bind(bt, kstate(schema.status.game, 'burnTurns', 0),
               bt > 0 ? bt - 1 : 0
             )}
           dotProcessedSeq: "${schema.spec.attackSeq}"
       includeWhen:
-        - "${schema.spec.attackSeq > kstate(schema.status.game, 'dotProcessedSeq', schema.spec.dotProcessedSeq) && kstate(schema.status.game, 'combatProcessedSeq', schema.spec.combatProcessedSeq) >= schema.spec.attackSeq && (kstate(schema.status.game, 'poisonTurns', schema.spec.poisonTurns) > 0 || kstate(schema.status.game, 'burnTurns', schema.spec.burnTurns) > 0)}"
+        - "${schema.spec.attackSeq > kstate(schema.status.game, 'dotProcessedSeq', 0) && kstate(schema.status.game, 'combatProcessedSeq', 0) >= schema.spec.attackSeq && (kstate(schema.status.game, 'poisonTurns', 0) > 0 || kstate(schema.status.game, 'burnTurns', 0) > 0)}"
 
     # ===================================================================
     # advanceTaunt: 1→2 (protecting) → 0 (expired), once per attack turn.
@@ -393,10 +355,10 @@ spec:
         storeName: game
         fields:
           tauntActive: >-
-            ${kstate(schema.status.game, 'tauntActive', schema.spec.tauntActive) == 1 ? 2 : 0}
+            ${kstate(schema.status.game, 'tauntActive', 0) == 1 ? 2 : 0}
           tauntProcessedSeq: "${schema.spec.attackSeq}"
       includeWhen:
-        - "${schema.spec.attackSeq > kstate(schema.status.game, 'tauntProcessedSeq', schema.spec.tauntProcessedSeq) && kstate(schema.status.game, 'tauntActive', schema.spec.tauntActive) > 0 && kstate(schema.status.game, 'combatProcessedSeq', schema.spec.combatProcessedSeq) >= schema.spec.attackSeq}"
+        - "${schema.spec.attackSeq > kstate(schema.status.game, 'tauntProcessedSeq', 0) && kstate(schema.status.game, 'tauntActive', 0) > 0 && kstate(schema.status.game, 'combatProcessedSeq', 0) >= schema.spec.attackSeq}"
 
     # ===================================================================
     # tickCooldown: decrement backstab cooldown once per attack or action turn.
@@ -407,10 +369,10 @@ spec:
         storeName: game
         fields:
           backstabCooldown: >-
-            ${kstate(schema.status.game, 'backstabCooldown', schema.spec.backstabCooldown) - 1}
+            ${kstate(schema.status.game, 'backstabCooldown', 0) - 1}
           cooldownProcessedSeq: "${schema.spec.attackSeq + schema.spec.actionSeq}"
       includeWhen:
-        - "${schema.spec.attackSeq + schema.spec.actionSeq > kstate(schema.status.game, 'cooldownProcessedSeq', schema.spec.cooldownProcessedSeq) && kstate(schema.status.game, 'backstabCooldown', schema.spec.backstabCooldown) > 0 && (kstate(schema.status.game, 'combatProcessedSeq', schema.spec.combatProcessedSeq) >= schema.spec.attackSeq || kstate(schema.status.game, 'abilityProcessedSeq', schema.spec.abilityProcessedSeq) >= schema.spec.attackSeq)}"
+        - "${schema.spec.attackSeq + schema.spec.actionSeq > kstate(schema.status.game, 'cooldownProcessedSeq', 0) && kstate(schema.status.game, 'backstabCooldown', 0) > 0 && (kstate(schema.status.game, 'combatProcessedSeq', 0) >= schema.spec.attackSeq || kstate(schema.status.game, 'abilityProcessedSeq', 0) >= schema.spec.attackSeq)}"
 
     # ===================================================================
     # regenRing: restore ringBonus HP per attack turn, capped at class max.
@@ -421,14 +383,14 @@ spec:
         storeName: game
         fields:
           heroHP: >-
-            ${cel.bind(hp, kstate(schema.status.game, 'heroHP', schema.spec.heroHP),
-            cel.bind(ring, kstate(schema.status.game, 'ringBonus', schema.spec.ringBonus),
+            ${cel.bind(hp, kstate(schema.status.game, 'heroHP', 0),
+            cel.bind(ring, kstate(schema.status.game, 'ringBonus', 0),
             cel.bind(maxHP, schema.spec.heroClass == 'warrior' ? 200 : schema.spec.heroClass == 'mage' ? 120 : schema.spec.heroClass == 'rogue' ? 150 : 100,
               (hp + ring) > maxHP ? maxHP : (hp + ring)
             )))}
           ringProcessedSeq: "${schema.spec.attackSeq}"
       includeWhen:
-        - "${schema.spec.attackSeq > kstate(schema.status.game, 'ringProcessedSeq', schema.spec.ringProcessedSeq) && kstate(schema.status.game, 'ringBonus', schema.spec.ringBonus) > 0 && kstate(schema.status.game, 'combatProcessedSeq', schema.spec.combatProcessedSeq) >= schema.spec.attackSeq}"
+        - "${schema.spec.attackSeq > kstate(schema.status.game, 'ringProcessedSeq', 0) && kstate(schema.status.game, 'ringBonus', 0) > 0 && kstate(schema.status.game, 'combatProcessedSeq', 0) >= schema.spec.attackSeq}"
 
     # ===================================================================
     # combatResolve: compute all combat math in one atomic state write.
@@ -444,15 +406,15 @@ spec:
             ${!schema.spec.lastAttackIsBoss && schema.spec.lastAttackIndex >= 0 ?
               cel.bind(s, schema.spec.lastAttackSeed,
               cel.bind(diff, schema.spec.difficulty,
-              cel.bind(curMonsterHP, has(schema.status.game.monsterHP) ? schema.status.game.monsterHP : (has(schema.spec.monsterHP) ? schema.spec.monsterHP : []),
-              cel.bind(curModifier, kstate(schema.status.game, 'modifier', schema.spec.modifier),
+              cel.bind(curMonsterHP, has(schema.status.game.monsterHP) ? schema.status.game.monsterHP : [],
+              cel.bind(curModifier, kstate(schema.status.game, 'modifier', 'none'),
               cel.bind(baseDmg,
                 diff == 'easy' ? random.seededInt(0, 20, s + '-d1') + 3
                 : diff == 'hard' ? random.seededInt(0, 20, s + '-d1') + random.seededInt(0, 20, s + '-d2') + random.seededInt(0, 20, s + '-d3') + 8
                 : random.seededInt(0, 12, s + '-d1') + random.seededInt(0, 12, s + '-d2') + 6,
               cel.bind(classMult,
                 schema.spec.lastAttackIsBackstab ? baseDmg * 3
-                : schema.spec.heroClass == 'mage' ? (kstate(schema.status.game, 'heroMana', schema.spec.heroMana) > 0 ? baseDmg * 13 / 10 : baseDmg / 2)
+                : schema.spec.heroClass == 'mage' ? (kstate(schema.status.game, 'heroMana', 0) > 0 ? baseDmg * 13 / 10 : baseDmg / 2)
                 : schema.spec.heroClass == 'rogue' ? baseDmg * 11 / 10
                 : baseDmg,
               cel.bind(modMult,
@@ -460,17 +422,17 @@ spec:
                 : curModifier == 'blessing-strength' ? classMult * 3 / 2
                 : curModifier == 'blessing-fortune' && random.seededInt(0, 100, s + '-crit') < 20 ? classMult * 2
                 : classMult,
-              cel.bind(wpnDmg, kstate(schema.status.game, 'weaponUses', schema.spec.weaponUses) > 0 ? modMult + kstate(schema.status.game, 'weaponBonus', schema.spec.weaponBonus) : modMult,
-              cel.bind(helmDmg, kstate(schema.status.game, 'helmetBonus', schema.spec.helmetBonus) > 0 && random.seededInt(0, 100, s + '-helmet-crit') < kstate(schema.status.game, 'helmetBonus', schema.spec.helmetBonus) ? wpnDmg * 2 : wpnDmg,
-              cel.bind(amuDmg, kstate(schema.status.game, 'amuletBonus', schema.spec.amuletBonus) > 0 ? helmDmg * (100 + kstate(schema.status.game, 'amuletBonus', schema.spec.amuletBonus)) / 100 : helmDmg,
-              cel.bind(finalDmg, kstate(schema.status.game, 'stunTurns', schema.spec.stunTurns) > 0 ? 0 : amuDmg,
+              cel.bind(wpnDmg, kstate(schema.status.game, 'weaponUses', 0) > 0 ? modMult + kstate(schema.status.game, 'weaponBonus', 0) : modMult,
+              cel.bind(helmDmg, kstate(schema.status.game, 'helmetBonus', 0) > 0 && random.seededInt(0, 100, s + '-helmet-crit') < kstate(schema.status.game, 'helmetBonus', 0) ? wpnDmg * 2 : wpnDmg,
+              cel.bind(amuDmg, kstate(schema.status.game, 'amuletBonus', 0) > 0 ? helmDmg * (100 + kstate(schema.status.game, 'amuletBonus', 0)) / 100 : helmDmg,
+              cel.bind(finalDmg, kstate(schema.status.game, 'stunTurns', 0) > 0 ? 0 : amuDmg,
               cel.bind(idx, schema.spec.lastAttackIndex,
               cel.bind(oldHP, int(curMonsterHP[idx]),
               cel.bind(newHP, oldHP - finalDmg < 0 ? 0 : oldHP - finalDmg,
               cel.bind(postArr, lists.setAtIndex(curMonsterHP, idx, newHP),
               cel.bind(postAlive, postArr.filter(h, int(h) > 0).size(),
                 postAlive > 0 ?
-                  cel.bind(monsterTypes, has(schema.status.game.monsterTypes) ? schema.status.game.monsterTypes : (has(schema.spec.monsterTypes) ? schema.spec.monsterTypes : []),
+                  cel.bind(monsterTypes, has(schema.status.game.monsterTypes) ? schema.status.game.monsterTypes : [],
                   cel.bind(shamans, lists.range(size(curMonsterHP)).filter(i,
                     int(curMonsterHP[i]) > 0
                     && i < size(monsterTypes)
@@ -495,14 +457,14 @@ spec:
                   ))
                 : postArr
               ))))))))))))))))
-              : has(schema.status.game.monsterHP) ? schema.status.game.monsterHP : (has(schema.spec.monsterHP) ? schema.spec.monsterHP : [])}
+              : has(schema.status.game.monsterHP) ? schema.status.game.monsterHP : []}
 
           # --- Boss HP: apply hero damage to boss ---
           bossHP: >-
             ${schema.spec.lastAttackIsBoss ?
               cel.bind(s, schema.spec.lastAttackSeed,
               cel.bind(diff, schema.spec.difficulty,
-              cel.bind(curModifier, kstate(schema.status.game, 'modifier', schema.spec.modifier),
+              cel.bind(curModifier, kstate(schema.status.game, 'modifier', 'none'),
               cel.bind(baseDmg,
                 (diff == 'easy' ? random.seededInt(0, 20, s + '-d1') + 3
                  : diff == 'hard' ? random.seededInt(0, 20, s + '-d1') + random.seededInt(0, 20, s + '-d2') + random.seededInt(0, 20, s + '-d3') + 8
@@ -510,7 +472,7 @@ spec:
                 + random.seededInt(0, 20, s + '-dboss') + 3,
               cel.bind(classMult,
                 schema.spec.lastAttackIsBackstab ? baseDmg * 3
-                : schema.spec.heroClass == 'mage' ? (kstate(schema.status.game, 'heroMana', schema.spec.heroMana) > 0 ? baseDmg * 13 / 10 : baseDmg / 2)
+                : schema.spec.heroClass == 'mage' ? (kstate(schema.status.game, 'heroMana', 0) > 0 ? baseDmg * 13 / 10 : baseDmg / 2)
                 : schema.spec.heroClass == 'rogue' ? baseDmg * 11 / 10
                 : baseDmg,
               cel.bind(modMult,
@@ -518,30 +480,30 @@ spec:
                 : curModifier == 'blessing-strength' ? classMult * 3 / 2
                 : curModifier == 'blessing-fortune' && random.seededInt(0, 100, s + '-crit') < 20 ? classMult * 2
                 : classMult,
-              cel.bind(wpnDmg, kstate(schema.status.game, 'weaponUses', schema.spec.weaponUses) > 0 ? modMult + kstate(schema.status.game, 'weaponBonus', schema.spec.weaponBonus) : modMult,
-              cel.bind(helmDmg, kstate(schema.status.game, 'helmetBonus', schema.spec.helmetBonus) > 0 && random.seededInt(0, 100, s + '-helmet-crit') < kstate(schema.status.game, 'helmetBonus', schema.spec.helmetBonus) ? wpnDmg * 2 : wpnDmg,
-              cel.bind(amuDmg, kstate(schema.status.game, 'amuletBonus', schema.spec.amuletBonus) > 0 ? helmDmg * (100 + kstate(schema.status.game, 'amuletBonus', schema.spec.amuletBonus)) / 100 : helmDmg,
-              cel.bind(finalDmg, kstate(schema.status.game, 'stunTurns', schema.spec.stunTurns) > 0 ? 0 : amuDmg,
-              cel.bind(newBossHP, kstate(schema.status.game, 'bossHP', schema.spec.bossHP) - finalDmg < 0 ? 0 : kstate(schema.status.game, 'bossHP', schema.spec.bossHP) - finalDmg,
+              cel.bind(wpnDmg, kstate(schema.status.game, 'weaponUses', 0) > 0 ? modMult + kstate(schema.status.game, 'weaponBonus', 0) : modMult,
+              cel.bind(helmDmg, kstate(schema.status.game, 'helmetBonus', 0) > 0 && random.seededInt(0, 100, s + '-helmet-crit') < kstate(schema.status.game, 'helmetBonus', 0) ? wpnDmg * 2 : wpnDmg,
+              cel.bind(amuDmg, kstate(schema.status.game, 'amuletBonus', 0) > 0 ? helmDmg * (100 + kstate(schema.status.game, 'amuletBonus', 0)) / 100 : helmDmg,
+              cel.bind(finalDmg, kstate(schema.status.game, 'stunTurns', 0) > 0 ? 0 : amuDmg,
+              cel.bind(newBossHP, kstate(schema.status.game, 'bossHP', 0) - finalDmg < 0 ? 0 : kstate(schema.status.game, 'bossHP', 0) - finalDmg,
                 newBossHP
               )))))))))))
-              : kstate(schema.status.game, 'bossHP', schema.spec.bossHP)}
+              : kstate(schema.status.game, 'bossHP', 0)}
 
           # --- Weapon uses: decrement if weapon was used ---
           weaponUses: >-
-            ${kstate(schema.status.game, 'weaponUses', schema.spec.weaponUses) > 0 ? kstate(schema.status.game, 'weaponUses', schema.spec.weaponUses) - 1 : 0}
+            ${kstate(schema.status.game, 'weaponUses', 0) > 0 ? kstate(schema.status.game, 'weaponUses', 0) - 1 : 0}
 
           # --- Weapon bonus: zero out if weapon broke ---
           weaponBonus: >-
-            ${kstate(schema.status.game, 'weaponUses', schema.spec.weaponUses) > 0 && kstate(schema.status.game, 'weaponUses', schema.spec.weaponUses) - 1 == 0 ? 0 : kstate(schema.status.game, 'weaponBonus', schema.spec.weaponBonus)}
+            ${kstate(schema.status.game, 'weaponUses', 0) > 0 && kstate(schema.status.game, 'weaponUses', 0) - 1 == 0 ? 0 : kstate(schema.status.game, 'weaponBonus', 0)}
 
           # --- Hero mana: decrement if mage attacked with mana, regen on monster kill ---
           heroMana: >-
             ${cel.bind(s, schema.spec.lastAttackSeed,
-            cel.bind(mana, kstate(schema.status.game, 'heroMana', schema.spec.heroMana),
-            cel.bind(curModifier, kstate(schema.status.game, 'modifier', schema.spec.modifier),
+            cel.bind(mana, kstate(schema.status.game, 'heroMana', 0),
+            cel.bind(curModifier, kstate(schema.status.game, 'modifier', 'none'),
             cel.bind(usedMana,
-              schema.spec.heroClass == 'mage' && mana > 0 && !schema.spec.lastAttackIsBackstab && kstate(schema.status.game, 'stunTurns', schema.spec.stunTurns) == 0,
+              schema.spec.heroClass == 'mage' && mana > 0 && !schema.spec.lastAttackIsBackstab && kstate(schema.status.game, 'stunTurns', 0) == 0,
             cel.bind(manaAfterUse, usedMana ? mana - 1 : mana,
             cel.bind(diff, schema.spec.difficulty,
             cel.bind(baseDmg,
@@ -559,11 +521,11 @@ spec:
               : curModifier == 'blessing-strength' ? classMult * 3 / 2
               : curModifier == 'blessing-fortune' && random.seededInt(0, 100, s + '-crit') < 20 ? classMult * 2
               : classMult,
-            cel.bind(wpnDmg, kstate(schema.status.game, 'weaponUses', schema.spec.weaponUses) > 0 ? modMult + kstate(schema.status.game, 'weaponBonus', schema.spec.weaponBonus) : modMult,
-            cel.bind(helmDmg, kstate(schema.status.game, 'helmetBonus', schema.spec.helmetBonus) > 0 && random.seededInt(0, 100, s + '-helmet-crit') < kstate(schema.status.game, 'helmetBonus', schema.spec.helmetBonus) ? wpnDmg * 2 : wpnDmg,
-            cel.bind(amuDmg, kstate(schema.status.game, 'amuletBonus', schema.spec.amuletBonus) > 0 ? helmDmg * (100 + kstate(schema.status.game, 'amuletBonus', schema.spec.amuletBonus)) / 100 : helmDmg,
-            cel.bind(finalDmg, kstate(schema.status.game, 'stunTurns', schema.spec.stunTurns) > 0 ? 0 : amuDmg,
-            cel.bind(curMonsterHP, has(schema.status.game.monsterHP) ? schema.status.game.monsterHP : (has(schema.spec.monsterHP) ? schema.spec.monsterHP : []),
+            cel.bind(wpnDmg, kstate(schema.status.game, 'weaponUses', 0) > 0 ? modMult + kstate(schema.status.game, 'weaponBonus', 0) : modMult,
+            cel.bind(helmDmg, kstate(schema.status.game, 'helmetBonus', 0) > 0 && random.seededInt(0, 100, s + '-helmet-crit') < kstate(schema.status.game, 'helmetBonus', 0) ? wpnDmg * 2 : wpnDmg,
+            cel.bind(amuDmg, kstate(schema.status.game, 'amuletBonus', 0) > 0 ? helmDmg * (100 + kstate(schema.status.game, 'amuletBonus', 0)) / 100 : helmDmg,
+            cel.bind(finalDmg, kstate(schema.status.game, 'stunTurns', 0) > 0 ? 0 : amuDmg,
+            cel.bind(curMonsterHP, has(schema.status.game.monsterHP) ? schema.status.game.monsterHP : [],
             cel.bind(killedMonster,
               !schema.spec.lastAttackIsBoss && schema.spec.lastAttackIndex >= 0
               && size(curMonsterHP) > schema.spec.lastAttackIndex
@@ -578,10 +540,10 @@ spec:
           heroHP: >-
             ${cel.bind(s, schema.spec.lastAttackSeed,
             cel.bind(diff, schema.spec.difficulty,
-            cel.bind(curModifier, kstate(schema.status.game, 'modifier', schema.spec.modifier),
+            cel.bind(curModifier, kstate(schema.status.game, 'modifier', 'none'),
             cel.bind(maxHP, schema.spec.heroClass == 'warrior' ? 200 : schema.spec.heroClass == 'mage' ? 120 : schema.spec.heroClass == 'rogue' ? 150 : 100,
-            cel.bind(baseHP, kstate(schema.status.game, 'heroHP', schema.spec.heroHP),
-            cel.bind(hp, kstate(schema.status.game, 'ringBonus', schema.spec.ringBonus) > 0 ? (baseHP + kstate(schema.status.game, 'ringBonus', schema.spec.ringBonus) > maxHP ? maxHP : baseHP + kstate(schema.status.game, 'ringBonus', schema.spec.ringBonus)) : baseHP,
+            cel.bind(baseHP, kstate(schema.status.game, 'heroHP', 0),
+            cel.bind(hp, kstate(schema.status.game, 'ringBonus', 0) > 0 ? (baseHP + kstate(schema.status.game, 'ringBonus', 0) > maxHP ? maxHP : baseHP + kstate(schema.status.game, 'ringBonus', 0)) : baseHP,
             cel.bind(baseDmg,
               (diff == 'easy' ? random.seededInt(0, 20, s + '-d1') + 3
                : diff == 'hard' ? random.seededInt(0, 20, s + '-d1') + random.seededInt(0, 20, s + '-d2') + random.seededInt(0, 20, s + '-d3') + 8
@@ -589,7 +551,7 @@ spec:
               + (schema.spec.lastAttackIsBoss ? random.seededInt(0, 20, s + '-dboss') + 3 : 0),
             cel.bind(classMult,
               schema.spec.lastAttackIsBackstab ? baseDmg * 3
-              : schema.spec.heroClass == 'mage' ? (kstate(schema.status.game, 'heroMana', schema.spec.heroMana) > 0 ? baseDmg * 13 / 10 : baseDmg / 2)
+              : schema.spec.heroClass == 'mage' ? (kstate(schema.status.game, 'heroMana', 0) > 0 ? baseDmg * 13 / 10 : baseDmg / 2)
               : schema.spec.heroClass == 'rogue' ? baseDmg * 11 / 10
               : baseDmg,
             cel.bind(modMult,
@@ -597,12 +559,12 @@ spec:
               : curModifier == 'blessing-strength' ? classMult * 3 / 2
               : curModifier == 'blessing-fortune' && random.seededInt(0, 100, s + '-crit') < 20 ? classMult * 2
               : classMult,
-            cel.bind(wpnDmg, kstate(schema.status.game, 'weaponUses', schema.spec.weaponUses) > 0 ? modMult + kstate(schema.status.game, 'weaponBonus', schema.spec.weaponBonus) : modMult,
-            cel.bind(helmDmg, kstate(schema.status.game, 'helmetBonus', schema.spec.helmetBonus) > 0 && random.seededInt(0, 100, s + '-helmet-crit') < kstate(schema.status.game, 'helmetBonus', schema.spec.helmetBonus) ? wpnDmg * 2 : wpnDmg,
-            cel.bind(amuDmg, kstate(schema.status.game, 'amuletBonus', schema.spec.amuletBonus) > 0 ? helmDmg * (100 + kstate(schema.status.game, 'amuletBonus', schema.spec.amuletBonus)) / 100 : helmDmg,
-            cel.bind(finalDmg, kstate(schema.status.game, 'stunTurns', schema.spec.stunTurns) > 0 ? 0 : amuDmg,
+            cel.bind(wpnDmg, kstate(schema.status.game, 'weaponUses', 0) > 0 ? modMult + kstate(schema.status.game, 'weaponBonus', 0) : modMult,
+            cel.bind(helmDmg, kstate(schema.status.game, 'helmetBonus', 0) > 0 && random.seededInt(0, 100, s + '-helmet-crit') < kstate(schema.status.game, 'helmetBonus', 0) ? wpnDmg * 2 : wpnDmg,
+            cel.bind(amuDmg, kstate(schema.status.game, 'amuletBonus', 0) > 0 ? helmDmg * (100 + kstate(schema.status.game, 'amuletBonus', 0)) / 100 : helmDmg,
+            cel.bind(finalDmg, kstate(schema.status.game, 'stunTurns', 0) > 0 ? 0 : amuDmg,
             cel.bind(isBoss, schema.spec.lastAttackIsBoss,
-            cel.bind(newBossHP, isBoss ? (kstate(schema.status.game, 'bossHP', schema.spec.bossHP) - finalDmg < 0 ? 0 : kstate(schema.status.game, 'bossHP', schema.spec.bossHP) - finalDmg) : kstate(schema.status.game, 'bossHP', schema.spec.bossHP),
+            cel.bind(newBossHP, isBoss ? (kstate(schema.status.game, 'bossHP', 0) - finalDmg < 0 ? 0 : kstate(schema.status.game, 'bossHP', 0) - finalDmg) : kstate(schema.status.game, 'bossHP', 0),
             cel.bind(maxBossHP, diff == 'easy' ? 200 : diff == 'hard' ? 800 : 400,
             cel.bind(bossCounter,
               isBoss && newBossHP > 0 ?
@@ -614,20 +576,20 @@ spec:
                   curModifier == 'curse-fury' ? phased * 2
                   : curModifier == 'blessing-resilience' ? phased / 2
                   : phased,
-                cel.bind(armored, kstate(schema.status.game, 'armorBonus', schema.spec.armorBonus) > 0 ? modded * (100 - kstate(schema.status.game, 'armorBonus', schema.spec.armorBonus)) / 100 : modded,
-                cel.bind(shielded, kstate(schema.status.game, 'shieldBonus', schema.spec.shieldBonus) > 0 && armored > 0 && random.seededInt(0, 100, s + '-shield') < kstate(schema.status.game, 'shieldBonus', schema.spec.shieldBonus) ? 0 : armored,
+                cel.bind(armored, kstate(schema.status.game, 'armorBonus', 0) > 0 ? modded * (100 - kstate(schema.status.game, 'armorBonus', 0)) / 100 : modded,
+                cel.bind(shielded, kstate(schema.status.game, 'shieldBonus', 0) > 0 && armored > 0 && random.seededInt(0, 100, s + '-shield') < kstate(schema.status.game, 'shieldBonus', 0) ? 0 : armored,
                 cel.bind(classed,
                   schema.spec.heroClass == 'warrior' ? shielded * 3 / 4
                   : schema.spec.heroClass == 'rogue' && random.seededInt(0, 100, s + '-dodge-boss') < 25 ? 0
                   : shielded,
-                cel.bind(pantsed, kstate(schema.status.game, 'pantsBonus', schema.spec.pantsBonus) > 0 && classed > 0 && random.seededInt(0, 100, s + '-pants-dodge') < kstate(schema.status.game, 'pantsBonus', schema.spec.pantsBonus) ? 0 : classed,
-                cel.bind(taunted, kstate(schema.status.game, 'tauntActive', schema.spec.tauntActive) == 2 && pantsed > 0 ? pantsed * 2 / 5 : pantsed,
+                cel.bind(pantsed, kstate(schema.status.game, 'pantsBonus', 0) > 0 && classed > 0 && random.seededInt(0, 100, s + '-pants-dodge') < kstate(schema.status.game, 'pantsBonus', 0) ? 0 : classed,
+                cel.bind(taunted, kstate(schema.status.game, 'tauntActive', 0) == 2 && pantsed > 0 ? pantsed * 2 / 5 : pantsed,
                 cel.bind(oneshotProtected, hp - taunted < 1 && taunted < hp ? hp - 1 : taunted,
                   oneshotProtected
                 )))))))))))
               : 0,
             cel.bind(idx, schema.spec.lastAttackIndex,
-            cel.bind(curMonsterHP, has(schema.status.game.monsterHP) ? schema.status.game.monsterHP : (has(schema.spec.monsterHP) ? schema.spec.monsterHP : []),
+            cel.bind(curMonsterHP, has(schema.status.game.monsterHP) ? schema.status.game.monsterHP : [],
             cel.bind(newMonsterArr,
               (!isBoss && idx >= 0 && size(curMonsterHP) > idx) ?
                 lists.setAtIndex(curMonsterHP, idx, (int(curMonsterHP[idx]) - finalDmg < 0 ? 0 : int(curMonsterHP[idx]) - finalDmg))
@@ -639,14 +601,14 @@ spec:
                 cel.bind(mbc, diff == 'easy' ? 1 : diff == 'hard' ? 3 : 2,
                 cel.bind(mtotal, aliveCount * mbc,
                 cel.bind(mModded, curModifier == 'blessing-resilience' ? mtotal / 2 : mtotal,
-                cel.bind(mArmored, kstate(schema.status.game, 'armorBonus', schema.spec.armorBonus) > 0 ? mModded * (100 - kstate(schema.status.game, 'armorBonus', schema.spec.armorBonus)) / 100 : mModded,
-                cel.bind(mShielded, kstate(schema.status.game, 'shieldBonus', schema.spec.shieldBonus) > 0 && mArmored > 0 && random.seededInt(0, 100, s + '-shield-m') < kstate(schema.status.game, 'shieldBonus', schema.spec.shieldBonus) ? 0 : mArmored,
+                cel.bind(mArmored, kstate(schema.status.game, 'armorBonus', 0) > 0 ? mModded * (100 - kstate(schema.status.game, 'armorBonus', 0)) / 100 : mModded,
+                cel.bind(mShielded, kstate(schema.status.game, 'shieldBonus', 0) > 0 && mArmored > 0 && random.seededInt(0, 100, s + '-shield-m') < kstate(schema.status.game, 'shieldBonus', 0) ? 0 : mArmored,
                 cel.bind(mClassed,
                   schema.spec.heroClass == 'warrior' ? mShielded * 3 / 4
                   : schema.spec.heroClass == 'rogue' && random.seededInt(0, 100, s + '-dodge-monster') < 25 ? 0
                   : mShielded,
-                cel.bind(mPantsed, kstate(schema.status.game, 'pantsBonus', schema.spec.pantsBonus) > 0 && mClassed > 0 && random.seededInt(0, 100, s + '-pants-dodge') < kstate(schema.status.game, 'pantsBonus', schema.spec.pantsBonus) ? 0 : mClassed,
-                cel.bind(mTaunted, kstate(schema.status.game, 'tauntActive', schema.spec.tauntActive) == 2 && mPantsed > 0 ? mPantsed * 2 / 5 : mPantsed,
+                cel.bind(mPantsed, kstate(schema.status.game, 'pantsBonus', 0) > 0 && mClassed > 0 && random.seededInt(0, 100, s + '-pants-dodge') < kstate(schema.status.game, 'pantsBonus', 0) ? 0 : mClassed,
+                cel.bind(mTaunted, kstate(schema.status.game, 'tauntActive', 0) == 2 && mPantsed > 0 ? mPantsed * 2 / 5 : mPantsed,
                 cel.bind(mOSP, hp - mTaunted < 1 && mTaunted < hp ? hp - 1 : mTaunted,
                   mOSP
                 )))))))))
@@ -661,13 +623,13 @@ spec:
           # --- Status effects from boss/monster counter-attacks ---
           poisonTurns: >-
             ${cel.bind(s, schema.spec.lastAttackSeed,
-            cel.bind(pt, kstate(schema.status.game, 'poisonTurns', schema.spec.poisonTurns),
+            cel.bind(pt, kstate(schema.status.game, 'poisonTurns', 0),
             cel.bind(isBoss, schema.spec.lastAttackIsBoss,
             cel.bind(effectRoll, random.seededInt(0, 100, s + '-fx'),
             cel.bind(resistRoll, random.seededInt(0, 100, s + '-boots-resist'),
-            cel.bind(resisted, kstate(schema.status.game, 'bootsBonus', schema.spec.bootsBonus) > 0 && resistRoll < kstate(schema.status.game, 'bootsBonus', schema.spec.bootsBonus),
+            cel.bind(resisted, kstate(schema.status.game, 'bootsBonus', 0) > 0 && resistRoll < kstate(schema.status.game, 'bootsBonus', 0),
               isBoss ?
-                (kstate(schema.status.game, 'currentRoom', schema.spec.currentRoom) == 2 ?
+                (kstate(schema.status.game, 'currentRoom', 1) == 2 ?
                   (effectRoll >= 15 && effectRoll < 45 && pt == 0 && !resisted ? 3 : pt)
                   : pt)
               : (!isBoss && pt == 0 && effectRoll < 20 && !resisted ? 3 : pt)
@@ -675,12 +637,12 @@ spec:
 
           burnTurns: >-
             ${cel.bind(s, schema.spec.lastAttackSeed,
-            cel.bind(bt, kstate(schema.status.game, 'burnTurns', schema.spec.burnTurns),
+            cel.bind(bt, kstate(schema.status.game, 'burnTurns', 0),
             cel.bind(isBoss, schema.spec.lastAttackIsBoss,
             cel.bind(effectRoll, random.seededInt(0, 100, s + '-fx'),
             cel.bind(resistRoll, random.seededInt(0, 100, s + '-boots-resist'),
-            cel.bind(resisted, kstate(schema.status.game, 'bootsBonus', schema.spec.bootsBonus) > 0 && resistRoll < kstate(schema.status.game, 'bootsBonus', schema.spec.bootsBonus),
-              isBoss && kstate(schema.status.game, 'currentRoom', schema.spec.currentRoom) == 1 ?
+            cel.bind(resisted, kstate(schema.status.game, 'bootsBonus', 0) > 0 && resistRoll < kstate(schema.status.game, 'bootsBonus', 0),
+              isBoss && kstate(schema.status.game, 'currentRoom', 1) == 1 ?
                 (effectRoll >= 15 && effectRoll < 40 && bt == 0 && !resisted ? 2 : bt)
               : bt
             ))))))}
@@ -688,25 +650,25 @@ spec:
           # --- Stun: consume existing stun OR apply new stun ---
           stunTurns: >-
             ${cel.bind(s, schema.spec.lastAttackSeed,
-            cel.bind(st, kstate(schema.status.game, 'stunTurns', schema.spec.stunTurns),
+            cel.bind(st, kstate(schema.status.game, 'stunTurns', 0),
             cel.bind(wasStunned, st > 0,
             cel.bind(isBoss, schema.spec.lastAttackIsBoss,
             cel.bind(effectRoll, random.seededInt(0, 100, s + '-fx'),
             cel.bind(resistRoll, random.seededInt(0, 100, s + '-boots-resist'),
-            cel.bind(resisted, kstate(schema.status.game, 'bootsBonus', schema.spec.bootsBonus) > 0 && resistRoll < kstate(schema.status.game, 'bootsBonus', schema.spec.bootsBonus),
+            cel.bind(resisted, kstate(schema.status.game, 'bootsBonus', 0) > 0 && resistRoll < kstate(schema.status.game, 'bootsBonus', 0),
               wasStunned ? st - 1
               : isBoss ?
                 (effectRoll < 15 && !resisted ? 1 : st)
               : cel.bind(idx, schema.spec.lastAttackIndex,
                 cel.bind(diff, schema.spec.difficulty,
-                cel.bind(curModifier, kstate(schema.status.game, 'modifier', schema.spec.modifier),
+                cel.bind(curModifier, kstate(schema.status.game, 'modifier', 'none'),
                 cel.bind(baseDmg,
                   diff == 'easy' ? random.seededInt(0, 20, s + '-d1') + 3
                   : diff == 'hard' ? random.seededInt(0, 20, s + '-d1') + random.seededInt(0, 20, s + '-d2') + random.seededInt(0, 20, s + '-d3') + 8
                   : random.seededInt(0, 12, s + '-d1') + random.seededInt(0, 12, s + '-d2') + 6,
                 cel.bind(classMult,
                   schema.spec.lastAttackIsBackstab ? baseDmg * 3
-                  : schema.spec.heroClass == 'mage' ? (kstate(schema.status.game, 'heroMana', schema.spec.heroMana) > 0 ? baseDmg * 13 / 10 : baseDmg / 2)
+                  : schema.spec.heroClass == 'mage' ? (kstate(schema.status.game, 'heroMana', 0) > 0 ? baseDmg * 13 / 10 : baseDmg / 2)
                   : schema.spec.heroClass == 'rogue' ? baseDmg * 11 / 10
                   : baseDmg,
                 cel.bind(modMult,
@@ -714,20 +676,20 @@ spec:
                   : curModifier == 'blessing-strength' ? classMult * 3 / 2
                   : curModifier == 'blessing-fortune' && random.seededInt(0, 100, s + '-crit') < 20 ? classMult * 2
                   : classMult,
-                cel.bind(wpnDmg, kstate(schema.status.game, 'weaponUses', schema.spec.weaponUses) > 0 ? modMult + kstate(schema.status.game, 'weaponBonus', schema.spec.weaponBonus) : modMult,
-                cel.bind(helmDmg, kstate(schema.status.game, 'helmetBonus', schema.spec.helmetBonus) > 0 && random.seededInt(0, 100, s + '-helmet-crit') < kstate(schema.status.game, 'helmetBonus', schema.spec.helmetBonus) ? wpnDmg * 2 : wpnDmg,
-                cel.bind(amuDmg, kstate(schema.status.game, 'amuletBonus', schema.spec.amuletBonus) > 0 ? helmDmg * (100 + kstate(schema.status.game, 'amuletBonus', schema.spec.amuletBonus)) / 100 : helmDmg,
-                cel.bind(finalDmg, kstate(schema.status.game, 'stunTurns', schema.spec.stunTurns) > 0 ? 0 : amuDmg,
-                cel.bind(curMonsterHP, has(schema.status.game.monsterHP) ? schema.status.game.monsterHP : (has(schema.spec.monsterHP) ? schema.spec.monsterHP : []),
+                cel.bind(wpnDmg, kstate(schema.status.game, 'weaponUses', 0) > 0 ? modMult + kstate(schema.status.game, 'weaponBonus', 0) : modMult,
+                cel.bind(helmDmg, kstate(schema.status.game, 'helmetBonus', 0) > 0 && random.seededInt(0, 100, s + '-helmet-crit') < kstate(schema.status.game, 'helmetBonus', 0) ? wpnDmg * 2 : wpnDmg,
+                cel.bind(amuDmg, kstate(schema.status.game, 'amuletBonus', 0) > 0 ? helmDmg * (100 + kstate(schema.status.game, 'amuletBonus', 0)) / 100 : helmDmg,
+                cel.bind(finalDmg, kstate(schema.status.game, 'stunTurns', 0) > 0 ? 0 : amuDmg,
+                cel.bind(curMonsterHP, has(schema.status.game.monsterHP) ? schema.status.game.monsterHP : [],
                 cel.bind(postArr,
                   idx >= 0 && size(curMonsterHP) > idx ? lists.setAtIndex(curMonsterHP, idx,
                     int(curMonsterHP[idx]) - finalDmg < 0 ? 0 : int(curMonsterHP[idx]) - finalDmg)
                   : curMonsterHP,
-                cel.bind(monsterTypes, has(schema.status.game.monsterTypes) ? schema.status.game.monsterTypes : (has(schema.spec.monsterTypes) ? schema.spec.monsterTypes : []),
+                cel.bind(monsterTypes, has(schema.status.game.monsterTypes) ? schema.status.game.monsterTypes : [],
                 cel.bind(postAlive, postArr.filter(h, int(h) > 0).size(),
                   postAlive > 0 ?
                     cel.bind(archerResistRoll, random.seededInt(0, 100, s + '-boots-resist-archer'),
-                    cel.bind(archerResisted, kstate(schema.status.game, 'bootsBonus', schema.spec.bootsBonus) > 0 && archerResistRoll < kstate(schema.status.game, 'bootsBonus', schema.spec.bootsBonus),
+                    cel.bind(archerResisted, kstate(schema.status.game, 'bootsBonus', 0) > 0 && archerResistRoll < kstate(schema.status.game, 'bootsBonus', 0),
                     cel.bind(archerHit,
                       lists.range(size(curMonsterHP)).exists(i,
                         int(curMonsterHP[i]) > 0
@@ -747,11 +709,11 @@ spec:
           backstabCooldown: >-
             ${schema.spec.lastAttackIsBackstab
               ? 3
-              : kstate(schema.status.game, 'backstabCooldown', schema.spec.backstabCooldown)}
+              : kstate(schema.status.game, 'backstabCooldown', 0)}
           cooldownProcessedSeq: >-
             ${schema.spec.lastAttackIsBackstab
               ? schema.spec.attackSeq + schema.spec.actionSeq
-              : kstate(schema.status.game, 'cooldownProcessedSeq', schema.spec.cooldownProcessedSeq)}
+              : kstate(schema.status.game, 'cooldownProcessedSeq', 0)}
 
           # --- Loot drop: compute on kill transition (monster or boss) ---
           lastLootDrop: >-
@@ -761,7 +723,7 @@ spec:
             cel.bind(idx, schema.spec.lastAttackIndex,
             cel.bind(alpha, 'abcdefghijklmnopqrstuvwxyz0123456789',
             cel.bind(name, schema.metadata.name,
-            cel.bind(curModifier, kstate(schema.status.game, 'modifier', schema.spec.modifier),
+            cel.bind(curModifier, kstate(schema.status.game, 'modifier', 'none'),
             cel.bind(baseDmg,
               (diff == 'easy' ? random.seededInt(0, 20, s + '-d1') + 3
                : diff == 'hard' ? random.seededInt(0, 20, s + '-d1') + random.seededInt(0, 20, s + '-d2') + random.seededInt(0, 20, s + '-d3') + 8
@@ -769,7 +731,7 @@ spec:
               + (isBoss ? random.seededInt(0, 20, s + '-dboss') + 3 : 0),
             cel.bind(classMult,
               schema.spec.lastAttackIsBackstab ? baseDmg * 3
-              : schema.spec.heroClass == 'mage' ? (kstate(schema.status.game, 'heroMana', schema.spec.heroMana) > 0 ? baseDmg * 13 / 10 : baseDmg / 2)
+              : schema.spec.heroClass == 'mage' ? (kstate(schema.status.game, 'heroMana', 0) > 0 ? baseDmg * 13 / 10 : baseDmg / 2)
               : schema.spec.heroClass == 'rogue' ? baseDmg * 11 / 10
               : baseDmg,
             cel.bind(modMult,
@@ -777,15 +739,15 @@ spec:
               : curModifier == 'blessing-strength' ? classMult * 3 / 2
               : curModifier == 'blessing-fortune' && random.seededInt(0, 100, s + '-crit') < 20 ? classMult * 2
               : classMult,
-            cel.bind(wpnDmg, kstate(schema.status.game, 'weaponUses', schema.spec.weaponUses) > 0 ? modMult + kstate(schema.status.game, 'weaponBonus', schema.spec.weaponBonus) : modMult,
-            cel.bind(helmDmg, kstate(schema.status.game, 'helmetBonus', schema.spec.helmetBonus) > 0 && random.seededInt(0, 100, s + '-helmet-crit') < kstate(schema.status.game, 'helmetBonus', schema.spec.helmetBonus) ? wpnDmg * 2 : wpnDmg,
-            cel.bind(amuDmg, kstate(schema.status.game, 'amuletBonus', schema.spec.amuletBonus) > 0 ? helmDmg * (100 + kstate(schema.status.game, 'amuletBonus', schema.spec.amuletBonus)) / 100 : helmDmg,
-            cel.bind(finalDmg, kstate(schema.status.game, 'stunTurns', schema.spec.stunTurns) > 0 ? 0 : amuDmg,
-            cel.bind(curMonsterHP, has(schema.status.game.monsterHP) ? schema.status.game.monsterHP : (has(schema.spec.monsterHP) ? schema.spec.monsterHP : []),
+            cel.bind(wpnDmg, kstate(schema.status.game, 'weaponUses', 0) > 0 ? modMult + kstate(schema.status.game, 'weaponBonus', 0) : modMult,
+            cel.bind(helmDmg, kstate(schema.status.game, 'helmetBonus', 0) > 0 && random.seededInt(0, 100, s + '-helmet-crit') < kstate(schema.status.game, 'helmetBonus', 0) ? wpnDmg * 2 : wpnDmg,
+            cel.bind(amuDmg, kstate(schema.status.game, 'amuletBonus', 0) > 0 ? helmDmg * (100 + kstate(schema.status.game, 'amuletBonus', 0)) / 100 : helmDmg,
+            cel.bind(finalDmg, kstate(schema.status.game, 'stunTurns', 0) > 0 ? 0 : amuDmg,
+            cel.bind(curMonsterHP, has(schema.status.game.monsterHP) ? schema.status.game.monsterHP : [],
             cel.bind(monsterKill, !isBoss && idx >= 0 && size(curMonsterHP) > idx && int(curMonsterHP[idx]) > 0
               && int(curMonsterHP[idx]) - finalDmg <= 0,
-            cel.bind(bossKill, isBoss && kstate(schema.status.game, 'bossHP', schema.spec.bossHP) > 0
-              && kstate(schema.status.game, 'bossHP', schema.spec.bossHP) - finalDmg <= 0,
+            cel.bind(bossKill, isBoss && kstate(schema.status.game, 'bossHP', 0) > 0
+              && kstate(schema.status.game, 'bossHP', 0) - finalDmg <= 0,
             cel.bind(types8, ['weapon','armor','hppotion','manapotion','shield','helmet','pants','boots'],
             cel.bind(types7, ['weapon','armor','hppotion','shield','helmet','pants','boots'],
               bossKill ?
@@ -817,8 +779,8 @@ spec:
             cel.bind(idx, schema.spec.lastAttackIndex,
             cel.bind(alpha, 'abcdefghijklmnopqrstuvwxyz0123456789',
             cel.bind(name, schema.metadata.name,
-            cel.bind(curModifier, kstate(schema.status.game, 'modifier', schema.spec.modifier),
-            cel.bind(curInventory, kstate(schema.status.game, 'inventory', schema.spec.inventory),
+            cel.bind(curModifier, kstate(schema.status.game, 'modifier', 'none'),
+            cel.bind(curInventory, kstate(schema.status.game, 'inventory', ''),
             cel.bind(baseDmg,
               (diff == 'easy' ? random.seededInt(0, 20, s + '-d1') + 3
                : diff == 'hard' ? random.seededInt(0, 20, s + '-d1') + random.seededInt(0, 20, s + '-d2') + random.seededInt(0, 20, s + '-d3') + 8
@@ -826,7 +788,7 @@ spec:
               + (isBoss ? random.seededInt(0, 20, s + '-dboss') + 3 : 0),
             cel.bind(classMult,
               schema.spec.lastAttackIsBackstab ? baseDmg * 3
-              : schema.spec.heroClass == 'mage' ? (kstate(schema.status.game, 'heroMana', schema.spec.heroMana) > 0 ? baseDmg * 13 / 10 : baseDmg / 2)
+              : schema.spec.heroClass == 'mage' ? (kstate(schema.status.game, 'heroMana', 0) > 0 ? baseDmg * 13 / 10 : baseDmg / 2)
               : schema.spec.heroClass == 'rogue' ? baseDmg * 11 / 10
               : baseDmg,
             cel.bind(modMult,
@@ -834,15 +796,15 @@ spec:
               : curModifier == 'blessing-strength' ? classMult * 3 / 2
               : curModifier == 'blessing-fortune' && random.seededInt(0, 100, s + '-crit') < 20 ? classMult * 2
               : classMult,
-            cel.bind(wpnDmg, kstate(schema.status.game, 'weaponUses', schema.spec.weaponUses) > 0 ? modMult + kstate(schema.status.game, 'weaponBonus', schema.spec.weaponBonus) : modMult,
-            cel.bind(helmDmg, kstate(schema.status.game, 'helmetBonus', schema.spec.helmetBonus) > 0 && random.seededInt(0, 100, s + '-helmet-crit') < kstate(schema.status.game, 'helmetBonus', schema.spec.helmetBonus) ? wpnDmg * 2 : wpnDmg,
-            cel.bind(amuDmg, kstate(schema.status.game, 'amuletBonus', schema.spec.amuletBonus) > 0 ? helmDmg * (100 + kstate(schema.status.game, 'amuletBonus', schema.spec.amuletBonus)) / 100 : helmDmg,
-            cel.bind(finalDmg, kstate(schema.status.game, 'stunTurns', schema.spec.stunTurns) > 0 ? 0 : amuDmg,
-            cel.bind(curMonsterHP, has(schema.status.game.monsterHP) ? schema.status.game.monsterHP : (has(schema.spec.monsterHP) ? schema.spec.monsterHP : []),
+            cel.bind(wpnDmg, kstate(schema.status.game, 'weaponUses', 0) > 0 ? modMult + kstate(schema.status.game, 'weaponBonus', 0) : modMult,
+            cel.bind(helmDmg, kstate(schema.status.game, 'helmetBonus', 0) > 0 && random.seededInt(0, 100, s + '-helmet-crit') < kstate(schema.status.game, 'helmetBonus', 0) ? wpnDmg * 2 : wpnDmg,
+            cel.bind(amuDmg, kstate(schema.status.game, 'amuletBonus', 0) > 0 ? helmDmg * (100 + kstate(schema.status.game, 'amuletBonus', 0)) / 100 : helmDmg,
+            cel.bind(finalDmg, kstate(schema.status.game, 'stunTurns', 0) > 0 ? 0 : amuDmg,
+            cel.bind(curMonsterHP, has(schema.status.game.monsterHP) ? schema.status.game.monsterHP : [],
             cel.bind(monsterKill, !isBoss && idx >= 0 && size(curMonsterHP) > idx && int(curMonsterHP[idx]) > 0
               && int(curMonsterHP[idx]) - finalDmg <= 0,
-            cel.bind(bossKill, isBoss && kstate(schema.status.game, 'bossHP', schema.spec.bossHP) > 0
-              && kstate(schema.status.game, 'bossHP', schema.spec.bossHP) - finalDmg <= 0,
+            cel.bind(bossKill, isBoss && kstate(schema.status.game, 'bossHP', 0) > 0
+              && kstate(schema.status.game, 'bossHP', 0) - finalDmg <= 0,
             cel.bind(types8, ['weapon','armor','hppotion','manapotion','shield','helmet','pants','boots'],
             cel.bind(types7, ['weapon','armor','hppotion','shield','helmet','pants','boots'],
             cel.bind(lootItem,
@@ -873,7 +835,7 @@ spec:
             )))))))))))))))))))))}
 
       includeWhen:
-        - "${schema.spec.attackSeq > kstate(schema.status.game, 'combatProcessedSeq', schema.spec.combatProcessedSeq) && schema.spec.lastAttackTarget != ''}"
+        - "${schema.spec.attackSeq > kstate(schema.status.game, 'combatProcessedSeq', 0) && schema.spec.lastAttackTarget != ''}"
 
     # ===================================================================
     # actionResolve: handles use/equip/treasure/door scalar state mutations.
@@ -887,7 +849,7 @@ spec:
           # --- Inventory: remove item on use/equip ---
           inventory: >-
             ${cel.bind(a, schema.spec.lastAction,
-            cel.bind(inv, kstate(schema.status.game, 'inventory', schema.spec.inventory),
+            cel.bind(inv, kstate(schema.status.game, 'inventory', ''),
               a.startsWith('use-') || a.startsWith('equip-') ?
                 cel.bind(item, a.startsWith('use-') ? a.substring(4) : a.substring(6),
                   json.marshal(json.unmarshal(inv == '' ? '[]' : inv).filter(x, x != item))
@@ -898,7 +860,7 @@ spec:
           # --- heroHP: HP potion healing ---
           heroHP: >-
             ${cel.bind(a, schema.spec.lastAction,
-            cel.bind(hp, kstate(schema.status.game, 'heroHP', schema.spec.heroHP),
+            cel.bind(hp, kstate(schema.status.game, 'heroHP', 0),
             cel.bind(maxHP,
               schema.spec.heroClass == 'warrior' ? 200
               : schema.spec.heroClass == 'mage' ? 120
@@ -912,7 +874,7 @@ spec:
           # --- heroMana: mana potion restore + room 2 mana refill ---
           heroMana: >-
             ${cel.bind(a, schema.spec.lastAction,
-            cel.bind(mana, kstate(schema.status.game, 'heroMana', schema.spec.heroMana),
+            cel.bind(mana, kstate(schema.status.game, 'heroMana', 0),
               a == 'use-manapotion-common' ? (mana + 2 > 8 ? 8 : mana + 2)
               : a == 'use-manapotion-rare' ? (mana + 3 > 8 ? 8 : mana + 3)
               : a == 'use-manapotion-epic' ? 8
@@ -926,61 +888,61 @@ spec:
               a == 'equip-weapon-common' ? 5
               : a == 'equip-weapon-rare' ? 10
               : a == 'equip-weapon-epic' ? 20
-              : kstate(schema.status.game, 'weaponBonus', schema.spec.weaponBonus)
+              : kstate(schema.status.game, 'weaponBonus', 0)
             )}
           weaponUses: >-
             ${cel.bind(a, schema.spec.lastAction,
               a == 'equip-weapon-common' || a == 'equip-weapon-rare' || a == 'equip-weapon-epic' ? 3
-              : kstate(schema.status.game, 'weaponUses', schema.spec.weaponUses)
+              : kstate(schema.status.game, 'weaponUses', 0)
             )}
           armorBonus: >-
             ${cel.bind(a, schema.spec.lastAction,
               a == 'equip-armor-common' ? 10
               : a == 'equip-armor-rare' ? 20
               : a == 'equip-armor-epic' ? 30
-              : kstate(schema.status.game, 'armorBonus', schema.spec.armorBonus)
+              : kstate(schema.status.game, 'armorBonus', 0)
             )}
           shieldBonus: >-
             ${cel.bind(a, schema.spec.lastAction,
               a == 'equip-shield-common' ? 10
               : a == 'equip-shield-rare' ? 15
               : a == 'equip-shield-epic' ? 25
-              : kstate(schema.status.game, 'shieldBonus', schema.spec.shieldBonus)
+              : kstate(schema.status.game, 'shieldBonus', 0)
             )}
           helmetBonus: >-
             ${cel.bind(a, schema.spec.lastAction,
               a == 'equip-helmet-common' ? 5
               : a == 'equip-helmet-rare' ? 10
               : a == 'equip-helmet-epic' ? 15
-              : kstate(schema.status.game, 'helmetBonus', schema.spec.helmetBonus)
+              : kstate(schema.status.game, 'helmetBonus', 0)
             )}
           pantsBonus: >-
             ${cel.bind(a, schema.spec.lastAction,
               a == 'equip-pants-common' ? 5
               : a == 'equip-pants-rare' ? 10
               : a == 'equip-pants-epic' ? 15
-              : kstate(schema.status.game, 'pantsBonus', schema.spec.pantsBonus)
+              : kstate(schema.status.game, 'pantsBonus', 0)
             )}
           bootsBonus: >-
             ${cel.bind(a, schema.spec.lastAction,
               a == 'equip-boots-common' ? 20
               : a == 'equip-boots-rare' ? 40
               : a == 'equip-boots-epic' ? 60
-              : kstate(schema.status.game, 'bootsBonus', schema.spec.bootsBonus)
+              : kstate(schema.status.game, 'bootsBonus', 0)
             )}
           ringBonus: >-
             ${cel.bind(a, schema.spec.lastAction,
               a == 'equip-ring-common' ? 5
               : a == 'equip-ring-rare' ? 8
               : a == 'equip-ring-epic' ? 12
-              : kstate(schema.status.game, 'ringBonus', schema.spec.ringBonus)
+              : kstate(schema.status.game, 'ringBonus', 0)
             )}
           amuletBonus: >-
             ${cel.bind(a, schema.spec.lastAction,
               a == 'equip-amulet-common' ? 10
               : a == 'equip-amulet-rare' ? 20
               : a == 'equip-amulet-epic' ? 30
-              : kstate(schema.status.game, 'amuletBonus', schema.spec.amuletBonus)
+              : kstate(schema.status.game, 'amuletBonus', 0)
             )}
 
           # --- Treasure and door ---
@@ -988,18 +950,18 @@ spec:
             ${cel.bind(a, schema.spec.lastAction,
               a == 'open-treasure' ? 1
               : a == 'enter-room-2' ? 0
-              : kstate(schema.status.game, 'treasureOpened', schema.spec.treasureOpened)
+              : kstate(schema.status.game, 'treasureOpened', 0)
             )}
           doorUnlocked: >-
             ${cel.bind(a, schema.spec.lastAction,
               a == 'unlock-door' ? 1
               : a == 'enter-room-2' ? 0
-              : kstate(schema.status.game, 'doorUnlocked', schema.spec.doorUnlocked)
+              : kstate(schema.status.game, 'doorUnlocked', 0)
             )}
 
           # --- Room 2 scalar transition ---
           currentRoom: >-
-            ${schema.spec.lastAction == 'enter-room-2' ? 2 : kstate(schema.status.game, 'currentRoom', schema.spec.currentRoom)}
+            ${schema.spec.lastAction == 'enter-room-2' ? 2 : kstate(schema.status.game, 'currentRoom', 1)}
 
           # --- Loot cleared on every action ---
           lastLootDrop: "${''}"
@@ -1008,7 +970,7 @@ spec:
           actionProcessedSeq: "${schema.spec.actionSeq}"
 
       includeWhen:
-        - "${schema.spec.actionSeq > kstate(schema.status.game, 'actionProcessedSeq', schema.spec.actionProcessedSeq) && schema.spec.lastAction != ''}"
+        - "${schema.spec.actionSeq > kstate(schema.status.game, 'actionProcessedSeq', 0) && schema.spec.lastAction != ''}"
 
     # ===================================================================
     # enterRoom2Resolve: handles ONLY the array fields for room 2 transition.
@@ -1020,7 +982,7 @@ spec:
         fields:
           monsterHP: >-
             ${cel.bind(diff, schema.spec.difficulty,
-            cel.bind(mod, kstate(schema.status.game, 'modifier', schema.spec.modifier),
+            cel.bind(mod, kstate(schema.status.game, 'modifier', 'none'),
               cel.bind(r1m, diff == 'easy' ? 30 : diff == 'hard' ? 80 : 50,
               cel.bind(r2m, r1m * 3 / 2,
               cel.bind(adj,
@@ -1032,7 +994,7 @@ spec:
 
           bossHP: >-
             ${cel.bind(diff, schema.spec.difficulty,
-            cel.bind(mod, kstate(schema.status.game, 'modifier', schema.spec.modifier),
+            cel.bind(mod, kstate(schema.status.game, 'modifier', 'none'),
               cel.bind(r1b, diff == 'easy' ? 200 : diff == 'hard' ? 800 : 400,
               cel.bind(r2b, r1b * 13 / 10,
                 mod.startsWith('blessing') ? r2b * 9 / 10
@@ -1042,7 +1004,7 @@ spec:
 
           room2MonsterHP: >-
             ${cel.bind(diff, schema.spec.difficulty,
-            cel.bind(mod, kstate(schema.status.game, 'modifier', schema.spec.modifier),
+            cel.bind(mod, kstate(schema.status.game, 'modifier', 'none'),
               cel.bind(r1m, diff == 'easy' ? 30 : diff == 'hard' ? 80 : 50,
               cel.bind(r2m, r1m * 3 / 2,
               cel.bind(adj,
@@ -1054,7 +1016,7 @@ spec:
 
           room2BossHP: >-
             ${cel.bind(diff, schema.spec.difficulty,
-            cel.bind(mod, kstate(schema.status.game, 'modifier', schema.spec.modifier),
+            cel.bind(mod, kstate(schema.status.game, 'modifier', 'none'),
               cel.bind(r1b, diff == 'easy' ? 200 : diff == 'hard' ? 800 : 400,
               cel.bind(r2b, r1b * 13 / 10,
                 mod.startsWith('blessing') ? r2b * 9 / 10
@@ -1069,4 +1031,4 @@ spec:
           room2ProcessedSeq: "${schema.spec.actionSeq}"
 
       includeWhen:
-        - "${kstate(schema.status.game, 'currentRoom', schema.spec.currentRoom) == 2 && kstate(schema.status.game, 'room2ProcessedSeq', schema.spec.room2ProcessedSeq) == 0}"
+        - "${kstate(schema.status.game, 'currentRoom', 1) == 2 && kstate(schema.status.game, 'room2ProcessedSeq', 0) == 0}"

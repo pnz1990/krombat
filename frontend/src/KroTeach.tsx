@@ -1600,16 +1600,16 @@ export function KroOnboardingOverlay({ onDismiss, isAuthenticated }: { onDismiss
 // ─── CEL Playground ──────────────────────────────────────────────────────────
 
 const CEL_EXAMPLES = [
-  { label: 'Hero HP check', expr: 'schema.spec.heroHP > 100' },
+  { label: 'Hero HP check', expr: 'schema.status.game.heroHP > 100' },
   { label: 'Difficulty branch', expr: 'schema.spec.difficulty == "hard" ? "big dice" : "small dice"' },
-  { label: 'Mage mana', expr: 'schema.spec.heroClass == "mage" && schema.spec.heroMana > 0' },
-  // #453: schema.spec.monsterHP.all(...) — correct check for all-monsters-dead (schema.spec.monsters is immutable count, not current state)
-  { label: 'Boss state ternary', expr: 'schema.spec.bossHP > 0 ? (schema.spec.monsterHP.all(hp, hp <= 0) ? "ready" : "pending") : "defeated"' },
-  { label: 'Damage × 1.3 (mage)', expr: 'schema.spec.heroClass == "mage" ? schema.spec.heroHP * 13 / 10 : schema.spec.heroHP' },
+  { label: 'Mage mana', expr: 'schema.spec.heroClass == "mage" && schema.status.game.heroMana > 0' },
+  // game state lives in status.game after KREP-023 migration
+  { label: 'Boss state ternary', expr: 'schema.status.game.bossHP > 0 ? (schema.status.game.monsterHP.all(hp, hp <= 0) ? "ready" : "pending") : "defeated"' },
+  { label: 'Damage × 1.3 (mage)', expr: 'schema.spec.heroClass == "mage" ? schema.status.game.heroHP * 13 / 10 : schema.status.game.heroHP' },
   // #453: self → schema (kro binds root as 'schema', not 'self')
-  { label: 'Optional field', expr: 'schema.spec.?modifier.orValue("none")' },
-  { label: 'String concat', expr: 'string(schema.spec.heroHP) + " / " + string(schema.spec.monsters)' },
-  { label: 'Room 2 check', expr: 'schema.spec.currentRoom == 2' },
+  { label: 'Optional field', expr: 'schema.status.game.?modifier.orValue("none")' },
+  { label: 'String concat', expr: 'string(schema.status.game.heroHP) + " / " + string(schema.spec.monsters)' },
+  { label: 'Room 2 check', expr: 'schema.status.game.currentRoom == 2' },
 ]
 
 export interface KroCelPlaygroundProps {
@@ -1620,7 +1620,7 @@ export interface KroCelPlaygroundProps {
 }
 
 export function KroCelPlayground({ dungeonNs, dungeonName, onLearnConcept, onClose }: KroCelPlaygroundProps) {
-  const [expr, setExpr] = useState('schema.spec.heroHP > 100')
+  const [expr, setExpr] = useState('schema.status.game.heroHP > 100')
   const [result, setResult] = useState<string | null>(null)
   const [evalError, setEvalError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -1706,7 +1706,7 @@ export function KroCelPlayground({ dungeonNs, dungeonName, onLearnConcept, onClo
               rows={4}
               spellCheck={false}
               aria-label="CEL expression input"
-              placeholder="schema.spec.heroHP > 100"
+              placeholder="schema.status.game.heroHP > 100"
             />
             <button
               className="btn btn-primary kro-playground-run"

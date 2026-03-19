@@ -3160,7 +3160,7 @@ spec:
 		name, ns,
 		heroClass, difficulty,
 		monsters,
-		getInt(spec, "heroHP"),
+		getInt(game, "heroHP"),
 		bossHP,
 		attackSeq, currentRoom,
 		modifier, inventory,
