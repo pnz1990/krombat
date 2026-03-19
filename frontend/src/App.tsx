@@ -453,9 +453,10 @@ export default function App() {
       let updated = detail!
 
       if (isItem) {
-        // Poll until actionSeq > prevSeq AND lastAction is cleared (kro finished processing).
-        // The backend writes trigger fields (lastAction, actionSeq, etc.) and kro's
-        // actionResolve specPatch computes the actual state mutations, then clears lastAction.
+        // Poll until actionSeq > prevSeq AND kro has processed it
+        // (status.game.actionProcessedSeq reaches the new actionSeq).
+        // State nodes write results to status.game — spec trigger fields are NOT
+        // cleared, so we compare ProcessedSeq values instead.
         // For enter-room-2: also wait for room2ProcessedSeq to advance (enterRoom2Resolve fires
         // on the next reconcile after actionResolve sets currentRoom=2).
         const prevSeq = detail?.spec.actionSeq ?? 0
@@ -464,7 +465,7 @@ export default function App() {
           await new Promise(r => setTimeout(r, 1500))
           const current = await getDungeon(selected.ns, selected.name)
           const currentGame = getGame(current)
-          const seqAdvanced = (current.spec.actionSeq || 0) > prevSeq && !current.spec.lastAction
+          const seqAdvanced = (current.spec.actionSeq || 0) > prevSeq && (currentGame.actionProcessedSeq || 0) >= (current.spec.actionSeq || 0)
           const room2Ready = target !== 'enter-room-2' || (currentGame.room2ProcessedSeq || 0) >= (current.spec.actionSeq || 0)
           if (seqAdvanced && room2Ready) {
             updated = current
@@ -505,15 +506,18 @@ export default function App() {
           setCombatModal({ phase: 'rolling', formula, heroAction: '', enemyAction: '', spec: detail?.spec, game: getGame(detail), oldHP })
         }
 
-        // Poll until attackSeq > prevSeq AND all kro triggers are cleared:
-        // - lastAttackTarget cleared by combatResolve (normal combat)
-        // - lastAbility cleared by abilityResolve (mage heal, warrior taunt)
-        // The backend writes trigger fields and kro's specPatch nodes compute
-        // the actual state mutations, then clear the triggers.
+        // Poll until kro has processed the attack: status.game.combatProcessedSeq
+        // (or abilityProcessedSeq for abilities) reaches the new attackSeq.
+        // State nodes write results to status.game — spec trigger fields are NOT
+        // cleared, so we compare ProcessedSeq values instead.
         for (let attempt = 0; attempt < 20; attempt++) {
           await new Promise(r => setTimeout(r, 1000))
           const current = await getDungeon(selected.ns, selected.name)
-          if ((current.spec.attackSeq || 0) > prevSeq && !current.spec.lastAttackTarget && !current.spec.lastAbility) {
+          const cg = getGame(current)
+          const newAttackSeq = current.spec.attackSeq || 0
+          const combatDone = (cg.combatProcessedSeq || 0) >= newAttackSeq
+          const abilityDone = !isAbility || (cg.abilityProcessedSeq || 0) >= newAttackSeq
+          if (newAttackSeq > prevSeq && combatDone && abilityDone) {
             updated = current
             const currentGame = getGame(current)
             addK8s(`kubectl get dungeon ${selected.name}`, `heroHP:${currentGame.heroHP} bossHP:${currentGame.bossHP}`,
