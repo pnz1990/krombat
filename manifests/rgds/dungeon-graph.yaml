@@ -358,8 +358,8 @@ spec:
     # ===================================================================
     # tickDoT: decrement poison/burn and apply HP damage, once per attack turn.
     # Gate: attackSeq advanced past dotProcessedSeq AND combatResolve already
-    # fired (dotProcessedSeq < combatProcessedSeq) AND at least one DoT active
-    # AND lastAbility is empty (not an ability turn).
+    # fired (combatProcessedSeq >= attackSeq) AND at least one DoT active.
+    # Only fires on combat turns (combatResolve done), not ability turns.
     # ===================================================================
     - id: tickDoT
       state:
@@ -382,7 +382,7 @@ spec:
             )}
           dotProcessedSeq: "${schema.spec.attackSeq}"
       includeWhen:
-        - "${schema.spec.attackSeq > kstate(schema.status.game, 'dotProcessedSeq', schema.spec.dotProcessedSeq) && kstate(schema.status.game, 'dotProcessedSeq', schema.spec.dotProcessedSeq) < kstate(schema.status.game, 'combatProcessedSeq', schema.spec.combatProcessedSeq) && (kstate(schema.status.game, 'poisonTurns', schema.spec.poisonTurns) > 0 || kstate(schema.status.game, 'burnTurns', schema.spec.burnTurns) > 0) && schema.spec.lastAttackTarget == '' && schema.spec.lastAbility == ''}"
+        - "${schema.spec.attackSeq > kstate(schema.status.game, 'dotProcessedSeq', schema.spec.dotProcessedSeq) && kstate(schema.status.game, 'combatProcessedSeq', schema.spec.combatProcessedSeq) >= schema.spec.attackSeq && (kstate(schema.status.game, 'poisonTurns', schema.spec.poisonTurns) > 0 || kstate(schema.status.game, 'burnTurns', schema.spec.burnTurns) > 0)}"
 
     # ===================================================================
     # advanceTaunt: 1→2 (protecting) → 0 (expired), once per attack turn.
@@ -396,7 +396,7 @@ spec:
             ${kstate(schema.status.game, 'tauntActive', schema.spec.tauntActive) == 1 ? 2 : 0}
           tauntProcessedSeq: "${schema.spec.attackSeq}"
       includeWhen:
-        - "${schema.spec.attackSeq > kstate(schema.status.game, 'tauntProcessedSeq', schema.spec.tauntProcessedSeq) && kstate(schema.status.game, 'tauntActive', schema.spec.tauntActive) > 0 && schema.spec.lastAttackTarget == '' && schema.spec.lastAbility == ''}"
+        - "${schema.spec.attackSeq > kstate(schema.status.game, 'tauntProcessedSeq', schema.spec.tauntProcessedSeq) && kstate(schema.status.game, 'tauntActive', schema.spec.tauntActive) > 0 && kstate(schema.status.game, 'combatProcessedSeq', schema.spec.combatProcessedSeq) >= schema.spec.attackSeq}"
 
     # ===================================================================
     # tickCooldown: decrement backstab cooldown once per attack or action turn.
@@ -410,7 +410,7 @@ spec:
             ${kstate(schema.status.game, 'backstabCooldown', schema.spec.backstabCooldown) - 1}
           cooldownProcessedSeq: "${schema.spec.attackSeq + schema.spec.actionSeq}"
       includeWhen:
-        - "${schema.spec.attackSeq + schema.spec.actionSeq > kstate(schema.status.game, 'cooldownProcessedSeq', schema.spec.cooldownProcessedSeq) && kstate(schema.status.game, 'backstabCooldown', schema.spec.backstabCooldown) > 0 && schema.spec.lastAttackTarget == '' && schema.spec.lastAbility == ''}"
+        - "${schema.spec.attackSeq + schema.spec.actionSeq > kstate(schema.status.game, 'cooldownProcessedSeq', schema.spec.cooldownProcessedSeq) && kstate(schema.status.game, 'backstabCooldown', schema.spec.backstabCooldown) > 0 && (kstate(schema.status.game, 'combatProcessedSeq', schema.spec.combatProcessedSeq) >= schema.spec.attackSeq || kstate(schema.status.game, 'abilityProcessedSeq', schema.spec.abilityProcessedSeq) >= schema.spec.attackSeq)}"
 
     # ===================================================================
     # regenRing: restore ringBonus HP per attack turn, capped at class max.
@@ -428,7 +428,7 @@ spec:
             )))}
           ringProcessedSeq: "${schema.spec.attackSeq}"
       includeWhen:
-        - "${schema.spec.attackSeq > kstate(schema.status.game, 'ringProcessedSeq', schema.spec.ringProcessedSeq) && kstate(schema.status.game, 'ringBonus', schema.spec.ringBonus) > 0 && schema.spec.lastAttackTarget == '' && schema.spec.lastAbility == ''}"
+        - "${schema.spec.attackSeq > kstate(schema.status.game, 'ringProcessedSeq', schema.spec.ringProcessedSeq) && kstate(schema.status.game, 'ringBonus', schema.spec.ringBonus) > 0 && kstate(schema.status.game, 'combatProcessedSeq', schema.spec.combatProcessedSeq) >= schema.spec.attackSeq}"
 
     # ===================================================================
     # combatResolve: compute all combat math in one atomic state write.
