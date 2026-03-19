@@ -510,14 +510,17 @@ export default function App() {
         // (or abilityProcessedSeq for abilities) reaches the new attackSeq.
         // State nodes write results to status.game — spec trigger fields are NOT
         // cleared, so we compare ProcessedSeq values instead.
+        // For abilities: only abilityResolve fires (not combatResolve).
+        // For combat: only combatResolve fires (not abilityResolve).
         for (let attempt = 0; attempt < 20; attempt++) {
           await new Promise(r => setTimeout(r, 1000))
           const current = await getDungeon(selected.ns, selected.name)
           const cg = getGame(current)
           const newAttackSeq = current.spec.attackSeq || 0
-          const combatDone = (cg.combatProcessedSeq || 0) >= newAttackSeq
-          const abilityDone = !isAbility || (cg.abilityProcessedSeq || 0) >= newAttackSeq
-          if (newAttackSeq > prevSeq && combatDone && abilityDone) {
+          const processed = isAbility
+            ? (cg.abilityProcessedSeq || 0) >= newAttackSeq
+            : (cg.combatProcessedSeq || 0) >= newAttackSeq
+          if (newAttackSeq > prevSeq && processed) {
             updated = current
             const currentGame = getGame(current)
             addK8s(`kubectl get dungeon ${selected.name}`, `heroHP:${currentGame.heroHP} bossHP:${currentGame.bossHP}`,
