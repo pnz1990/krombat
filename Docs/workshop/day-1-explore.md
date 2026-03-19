@@ -126,7 +126,7 @@ Complete the five questions in [exercises/day-1-exercises.md](exercises/day-1-ex
 You have now:
 - Applied a real Kubernetes CR and watched kro orchestrate 16 resources from it
 - Observed kro reconciling the resource graph in real time during combat
-- Identified `forEach`, `readyWhen`, `specPatch`, and `status-aggregation` patterns in the wild
+- Identified `forEach`, `readyWhen`, state nodes, and `status-aggregation` patterns in the wild
 - Unlocked at least 15 of 27 kro concepts
 
 Proceed to [Day 2 — Read the RGDs](day-2-read-the-rgds.md).

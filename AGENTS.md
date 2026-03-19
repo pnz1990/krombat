@@ -26,12 +26,12 @@ A turn-based dungeon RPG where game state lives in Kubernetes Custom Resources o
   - `attack-graph`: defines the Attack CRD (no resources — CRD only)
   - `action-graph`: defines the Action CRD (no resources — CRD only)
 - **Argo CD** (EKS Managed Capability) — GitOps from `manifests/`. GitHub webhook for ~6s sync
-- **Go Backend** — REST API + WebSocket in `rpg-system`. For combat, the backend writes trigger fields only (`attackSeq`, `lastAttackTarget`, `lastAttackSeed`, `lastAttackIndex`, `lastAttackIsBoss`, `lastAttackIsBackstab`) then polls until kro's `combatResolve` specPatch fires — kro CEL is the authoritative combat engine. For actions (equip, use-item, abilities), the backend writes trigger fields only (`actionSeq`, `lastAction`, `lastAbility`) and kro's `actionResolve`/`abilityResolve` specPatch nodes compute the result. The backend computes: loot drop chance/selection (writes `lastLootDrop`), log text (reads kro's post-state diff, no math), XP delta, leaderboard entries, and room transition triggers (writes `enterRoom2` trigger; kro's `enterRoom2Resolve` computes the new HP values).
-- **React Frontend** — 8-bit pixel art with circular dungeon arena, Tibia-style equipment panel, combat modal with dice rolling. All state from Dungeon CR `spec` (not `status` — status can be stale after room transitions)
+- **Go Backend** — REST API + WebSocket in `rpg-system`. For combat, the backend writes trigger fields only (`attackSeq`, `lastAttackTarget`, `lastAttackSeed`, `lastAttackIndex`, `lastAttackIsBoss`, `lastAttackIsBackstab`) then polls until kro's `combatResolve` state node fires and writes results to `status.game` — kro CEL is the authoritative combat engine. For actions (equip, use-item, abilities), the backend writes trigger fields only (`actionSeq`, `lastAction`, `lastAbility`) and kro's `actionResolve`/`abilityResolve` state nodes compute the result and write to `status.game`. The backend computes: loot drop chance/selection (writes `lastLootDrop`), log text (reads kro's post-state diff from `status.game`, no math), XP delta, leaderboard entries, and room transition triggers (writes `enterRoom2` trigger; kro's `enterRoom2Resolve` computes the new HP values).
+- **React Frontend** — 8-bit pixel art with circular dungeon arena, Tibia-style equipment panel, combat modal with dice rolling. All game state from Dungeon CR `status.game` (via `getGame()` helper with spec fallback for old dungeons)
 
 ### What kro actually computes (authoritative — the game engine)
 
-| RGD / specPatch | What kro CEL computes |
+| RGD / state node | What kro CEL computes |
 |---|---|
 | `dungeon-graph` → `combatResolve` | All combat math: hero damage (dice, weapon, helmet, amulet, class multipliers, backstab), boss/monster counter-attack chains (armor, shield, class defense, pants dodge, taunt 60% reduction, one-shot floor), status effect infliction (poison/burn/stun), ring regen, monsterHP array mutation, heroHP mutation |
 | `dungeon-graph` → `abilityResolve` | Mage heal (heroHP clamp, mana cost), warrior taunt activation (tauntActive=1) |
@@ -54,13 +54,13 @@ A turn-based dungeon RPG where game state lives in Kubernetes Custom Resources o
 - Log text: reads kro's post-state diff (pre/post heroHP, monsterHP, bossHP) and generates `lastHeroAction`/`lastEnemyAction` strings — no math, kro's results are authoritative
 - XP delta: kill/boss-kill/victory/defeat outcomes from post-spec, writes `xpEarned`
 - Leaderboard: outcome derivation, turn counting, ConfigMap storage (`krombat-leaderboard` in `rpg-system` — plain ConfigMap, no kro interface)
-- Room 2 trigger: writes `enterRoom2` trigger field; kro's `enterRoom2Resolve` specPatch computes all the HP scaling, modifier adjustments, and state resets
-- Dungeon creation: writes initial spec fields; kro's `dungeonInit` specPatch computes monster HP arrays and all derived initial values
+- Room 2 trigger: writes `enterRoom2` trigger field; kro's `enterRoom2Resolve` state node computes all the HP scaling, modifier adjustments, and state resets
+- Dungeon creation: writes initial spec fields; kro's `dungeonInit` state node computes monster HP arrays and all derived initial values
 
 ### What the frontend computes (display + necessary spec re-derivation)
 
 - `gameOver`, `isVictory`, `bossState`, `allMonstersDead` — re-derived from `spec` fields (intentional: `status` is stale after room transitions)
-- `bossPhase` fallback — re-derives from `spec.bossHP / maxBossHP` when `status.bossPhase` is `phase1` (matches boss-graph thresholds: 50% / 25%)
+- `bossPhase` fallback — re-derives from `status.game.bossHP / maxBossHP` when `status.bossPhase` is `phase1` (matches boss-graph thresholds: 50% / 25%)
 - Achievement badges — 8 conditions derived client-side only, not persisted to K8s
 - `maxHeroHP` — read from `status.maxHeroHP` (from hero-graph); fallback is wrong (uses current HP, not class default)
 

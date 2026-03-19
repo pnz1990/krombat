@@ -189,7 +189,7 @@ The damage you just dealt was computed by CEL inside a state node in dungeon-gra
     body: `CEL does not have if/else blocks, but nested ternary expressions (\`condition ? a : b\`) create powerful state machines.
 The boss transitions between three states — pending, ready, and defeated — using a single two-level ternary. No controller code, no webhook: pure CEL evaluated by kro on every reconcile.`,
     snippet: `# boss-graph — entityState CEL ternary
-# Reads monstersAlive (computed by dungeon-graph, forwarded as spec field)
+# schema.spec.hp and schema.spec.monstersAlive are fields on the Boss CR spec (not Dungeon CR)
 data:
   entityState: >-
     \${schema.spec.hp > 0
@@ -264,12 +264,12 @@ resources:
     id: 'include-when-sibling',
     title: 'includeWhen — Sibling Resource References',
     tagline: 'Gate a resource on the live state of another resource in the same graph.',
-    body: `By default, \`includeWhen\` can only read \`schema.spec.*\` fields from the instance CR. kro now also supports referencing the **observed state of already-reconciled sibling resources** in the same RGD.
+    body: `By default, \`includeWhen\` reads \`schema.spec.*\` trigger fields and \`schema.status.game.*\` game state from the Dungeon CR. kro now also supports referencing the **observed state of already-reconciled sibling resources** in the same RGD.
 
-This means resource inclusion can be driven by real cluster data — not just what the operator wrote into the CR spec.
+This means resource inclusion can be driven by real cluster data — not just what the operator wrote into the CR.
 
-**Before (spec-only):**
-A dungeon specPatch fires because a counter field in spec was incremented by the backend.
+**Before (trigger field only):**
+A dungeon state node fires because a trigger counter in spec was incremented by the backend.
 
 **Now also valid (resource-backed):**
 A resource is conditionally created based on whether a sibling ConfigMap or CR has reached a specific state — without the backend having to write a trigger field.
@@ -393,7 +393,7 @@ resources:
     title: 'Empty RGD — CRD Factory Pattern',
     tagline: 'An RGD with resources:[] creates a CRD with no managed children.',
     body: `attack-graph and action-graph have \`resources: []\` — they manage no child resources at all. Their sole purpose is to define the Attack and Action custom resource types (CRDs).
-This is the "CRD factory" pattern: use kro to get a typed, validated CRD for free, without writing a controller. The actual logic lives in dungeon-graph's specPatch nodes (CEL expressions that fire on spec changes) and in the Go backend.`,
+This is the "CRD factory" pattern: use kro to get a typed, validated CRD for free, without writing a controller. The actual logic lives in dungeon-graph's state nodes (CEL expressions that fire when trigger fields in spec are incremented) and in the Go backend.`,
     snippet: `# attack-graph — empty RGD, defines Attack CRD only
 apiVersion: kro.run/v1alpha1
 kind: ResourceGraphDefinition
@@ -579,20 +579,21 @@ metadata:
 
   'spec-mutation': {
     id: 'spec-mutation',
-    title: 'Spec Mutation Triggers Full Reconcile',
-    tagline: 'One patch to spec → kro reconciles the entire resource graph.',
-    body: `When you enter Room 2, the Go backend calls the Kubernetes API to patch the Dungeon CR spec with \`lastAction: 'enter-room-2'\` and increments \`actionSeq\`. kro watches the Dungeon CR and immediately re-evaluates all CEL expressions in dungeon-graph.
-kro's \`enterRoom2Resolve\` specPatch node detects the action and computes the new \`monsterHP\`, \`bossHP\`, \`room2MonsterHP\`, \`room2BossHP\` values via CEL — writing them back to \`spec.*\` directly. New Monster CRs and an updated Boss CR are then created from those spec values. Kubernetes becomes the state machine.`,
+    title: 'Trigger Fields Drive Full Reconcile',
+    tagline: 'One patch to spec trigger fields → kro reconciles the entire resource graph.',
+    body: `When you enter Room 2, the Go backend patches the Dungeon CR spec with \`lastAction: 'enter-room-2'\` and increments \`actionSeq\`. kro watches the Dungeon CR and immediately re-evaluates all CEL expressions in dungeon-graph.
+kro's \`enterRoom2Resolve\` state node detects the action and computes the new \`monsterHP\`, \`bossHP\`, \`room2MonsterHP\`, \`room2BossHP\` values via CEL — writing them to \`status.game\`. New Monster CRs and an updated Boss CR are then reconciled from those state values. Kubernetes becomes the state machine.`,
     snippet: `# Backend writes only the trigger — kro does the rest
 patch := map[string]interface{}{
   "spec": map[string]interface{}{
     "lastAction": "enter-room-2",
     "actionSeq":  newSeq,
-    // kro's enterRoom2Resolve specPatch computes new HP values via CEL
+    // kro's enterRoom2Resolve state node computes new HP values via CEL
+    // and writes them to status.game
   },
 }
 // manifests/rgds/dungeon-graph.yaml reacts automatically`,
-    learnMore: 'manifests/rgds/dungeon-graph.yaml — enterRoom2Resolve specPatch node',
+    learnMore: 'manifests/rgds/dungeon-graph.yaml — enterRoom2Resolve state node',
   },
 
   'cel-playground': {
@@ -756,7 +757,7 @@ This is a **3-state CEL counter** implemented entirely in kro state nodes writin
     tauntActive: "\${kstate(schema.status.game, 'tauntActive', 0) == 1 ? 2 : 0}"
 # combatResolve reads tauntActive == 2 to apply 60% damage reduction (2/5 of damage taken):
 # taunted: "\${tauntActive == 2 && pantsed > 0 ? pantsed * 2 / 5 : pantsed}"`,
-    learnMore: 'manifests/rgds/dungeon-graph.yaml — advanceTaunt and combatResolve specPatch nodes',
+    learnMore: 'manifests/rgds/dungeon-graph.yaml — advanceTaunt and combatResolve state nodes',
   },
   'mana-lifecycle': {
     id: 'mana-lifecycle',
@@ -799,13 +800,13 @@ cel.bind(dodgeRoll, random.seededInt(0, 99, attackUID + "dodge"),
 The seed is the Attack CR UID concatenated with \`"dodge"\` — making every dodge roll **deterministic and reproducible** for a given attack. Re-running the same Attack CR with the same UID always produces the same dodge outcome. This is how kro implements game-quality randomness: seeded random, not cryptographic, but deterministic and auditable.
 
 The same pattern applies to backstab critical hits, boss status effect chances (poison/burn/stun), and loot rarity rolls throughout the RGDs.`,
-    snippet: `# dungeon-graph.yaml — combatResolve specPatch (rogue dodge)
+    snippet: `# dungeon-graph.yaml — combatResolve state node (rogue dodge)
 cel.bind(isRogue, schema.spec.heroClass == 'rogue',
   cel.bind(dodgeRoll, random.seededInt(0, 99, attackCR.metadata.uid + "dodge"),
     cel.bind(dodged, isRogue && dodgeRoll < 25,
       # dodged == true: hero takes 0 damage from this counter-attack
       dodged ? int(0) : int(baseDmg))))`,
-    learnMore: 'manifests/rgds/dungeon-graph.yaml — combatResolve specPatch, kro random.seededInt extension',
+    learnMore: 'manifests/rgds/dungeon-graph.yaml — combatResolve state node, kro random.seededInt extension',
   },
 }
 // ─── end KRO_CONCEPTS ────────────────────────────────────────────────────────
@@ -816,7 +817,7 @@ export function getInsightForEvent(event: string): InsightTrigger | null {
   if (event === 'spec-schema') return { conceptId: 'spec-schema', headline: 'kro validated your difficulty/heroClass fields against spec.schema enums' }
   if (event === 'schema-validated') return { conceptId: 'schema-validation', headline: 'kro compiled your spec.schema into a CRD — the API server now rejects invalid dungeons' }
   if (event === 'resource-chaining') return { conceptId: 'resource-chaining', headline: 'Hero CR status (maxHP, class) flowed up through dungeon-graph resource chaining' }
-   if (event === 'first-attack') return { conceptId: 'cel-basics', headline: 'Your damage was computed by a CEL expression in the combatResolve specPatch node' }
+   if (event === 'first-attack') return { conceptId: 'cel-basics', headline: 'Your damage was computed by a CEL expression in the combatResolve state node — result written to status.game' }
   if (event === 'monster-killed') return { conceptId: 'includeWhen', headline: 'A Loot CR appeared because monster HP hit 0 (includeWhen)' }
   if (event === 'boss-ready') return { conceptId: 'cel-ternary', headline: 'Boss transitioned pending → ready via a CEL ternary in boss-graph' }
   if (event === 'boss-killed') return { conceptId: 'cel-filter', headline: 'kro ran .filter() on all Monster CRs to re-aggregate livingMonsters to 0' }
@@ -835,11 +836,11 @@ export function getInsightForEvent(event: string): InsightTrigger | null {
    if (event === 'boots-equipped') return { conceptId: 'cel-has-macro', headline: 'has() lets CEL safely access optional spec fields — used throughout dungeon-graph readyWhen' }
   if (event === 'dungeon-deleted') return { conceptId: 'ownerReferences', headline: 'Deleting the Dungeon CR triggered cascading deletion of all 9 child resources via ownerReferences' }
   if (event === 'cel-playground-unlocked') return { conceptId: 'cel-playground', headline: 'Open the CEL Playground to write and evaluate live kro expressions against your dungeon' }
-  // #450: spec-patch concept fires on first DoT tick — most visible specPatch in action
-  if (event === 'dot-applied') return { conceptId: 'spec-patch', headline: 'tickDoT specPatch fired: CEL decremented heroHP and poisonTurns/burnTurns directly in spec' }
+  // #450: spec-patch concept fires on first DoT tick — most visible state node in action
+  if (event === 'dot-applied') return { conceptId: 'spec-patch', headline: 'tickDoT state node fired: CEL decremented status.game.heroHP and poisonTurns/burnTurns' }
   // #459: class-specific kro deep dives
-  if (event === 'warrior-taunt-used') return { conceptId: 'taunt-state-machine', headline: 'Taunt activated — advanceTaunt specPatch will count down tauntActive from 2→1→0 each turn' }
-  if (event === 'mage-heal-used') return { conceptId: 'mana-lifecycle', headline: 'Heal used — cel.bind() clamps heroMana and heroHP to their maxima in abilityResolve specPatch' }
+  if (event === 'warrior-taunt-used') return { conceptId: 'taunt-state-machine', headline: 'Taunt activated — advanceTaunt state node counts down status.game.tauntActive 2→1→0 each turn' }
+  if (event === 'mage-heal-used') return { conceptId: 'mana-lifecycle', headline: 'Heal used — cel.bind() clamps heroMana and heroHP to their maxima in abilityResolve state node' }
   if (event === 'rogue-dodge-fired') return { conceptId: 'cel-probability', headline: 'Dodge fired — random.seededInt(0,99,uid+"dodge") < 25: a 25% chance gate in pure CEL' }
   return null
 }
@@ -1340,7 +1341,7 @@ export function CelTrace({ data, onLearnMore }: { data: CelTraceData; onLearnMor
       </button>
       {open && (
         <div className="cel-trace-body">
-          <div className="cel-trace-header">dungeon-graph → combatResolve specPatch <span style={{ fontSize: 10, color: '#888', marginLeft: 6 }}>post-reconcile state</span></div>
+          <div className="cel-trace-header">dungeon-graph → combatResolve state node <span style={{ fontSize: 10, color: '#888', marginLeft: 6 }}>post-reconcile state</span></div>
           <table className="cel-trace-table">
             <thead>
               <tr>
@@ -1450,7 +1451,7 @@ spec:
   {
     title: 'kro Creates 16 Resources From One CR',
     // #451: updated from "7 resources + 2 ConfigMaps" to reflect current architecture
-    body: "kro's dungeon-graph RGD watches your Dungeon CR. The moment you apply it, kro automatically creates a Namespace, Hero CR, Monster CRs, Boss CR, Treasure CR, 1 GameConfig CM, and 9 specPatch nodes (combatResolve, actionResolve, etc.) that write CEL-computed values directly back to spec — all from a single CR.",
+    body: "kro's dungeon-graph RGD watches your Dungeon CR. The moment you apply it, kro automatically creates a Namespace, Hero CR, Monster CRs, Boss CR, Treasure CR, 1 GameConfig CM, and state nodes (combatResolve, actionResolve, etc.) that write CEL-computed values to status.game — all from a single CR.",
     snippet: `# dungeon-graph RGD orchestrates:
 resources:
   - id: ns           # Namespace

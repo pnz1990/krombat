@@ -11,7 +11,7 @@ No local cluster required. You will read the RGD YAML files on GitHub and use th
 By the end of Day 2 you will be able to:
 
 - Read a kro RGD YAML file and explain what every section does
-- Explain `cel.bind()`, `readyWhen`, `includeWhen`, `specPatch`, and `forEach` from first principles
+- Explain `cel.bind()`, `readyWhen`, `includeWhen`, state nodes, and `forEach` from first principles
 - Trace a CEL expression from the RGD to its effect on game state
 - Use the CEL Playground to evaluate expressions interactively
 
@@ -29,7 +29,7 @@ Or browse them directly:
 
 | RGD | File | What it manages |
 |---|---|---|
-| `dungeon-graph` | `dungeon-graph.yaml` | Root graph: Namespace, all child CRs, GameConfig, specPatch nodes |
+| `dungeon-graph` | `dungeon-graph.yaml` | Root graph: Namespace, all child CRs, GameConfig, state nodes (write to `status.game`) |
 | `hero-graph` | `hero-graph.yaml` | Hero CR → ConfigMap with maxHP, maxMana, classNote |
 | `monster-graph` | `monster-graph.yaml` | Monster CR → ConfigMap with `entityState` (alive/dead) |
 | `boss-graph` | `boss-graph.yaml` | Boss CR → ConfigMap with `entityState`, `bossPhase`, `damageMultiplier` |
@@ -206,7 +206,7 @@ Complete the five questions in [exercises/day-2-exercises.md](exercises/day-2-ex
 
 You have now:
 - Read all 9 production kro RGDs
-- Understood `readyWhen`, `includeWhen`, `forEach`, and `specPatch` from real examples
+- Understood `readyWhen`, `includeWhen`, `forEach`, and state nodes from real examples
 - Used the CEL Playground to verify expressions interactively
 - Identified the real constraints of CEL (no `let` bindings, no stateful iteration)
 

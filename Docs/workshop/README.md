@@ -26,7 +26,7 @@ By the end of this workshop you will be able to:
 
 - Explain what a ResourceGraphDefinition (RGD) is and why it exists
 - Read real production kro RGDs and understand every CEL expression
-- Use `readyWhen`, `includeWhen`, `forEach`, and `specPatch` in practice
+- Use `readyWhen`, `includeWhen`, `forEach`, and state nodes in practice
 - Write your first kro RGD from scratch and deploy it via ArgoCD
 - Describe the kro reconcile loop and how CEL expressions drive derived state
 

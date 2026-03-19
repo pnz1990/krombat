@@ -32,7 +32,7 @@ Open the game at `https://learn-kro.eks.aws.dev`. Click **New Dungeon**, fill in
 
 Open the **K8s Logs tab** in the event log panel. You can see the creation events flowing in.
 
-> "Here are the Kubernetes events as kro reconciles the Dungeon CR in real time. kro created 16 resources from that one CR: a Namespace, a Hero CR, Monster CRs, a Boss CR, a Treasure CR, 9 specPatch nodes. All from a single RGD — a ResourceGraphDefinition."
+> "Here are the Kubernetes events as kro reconciles the Dungeon CR in real time. kro created 16 resources from that one CR: a Namespace, a Hero CR, Monster CRs, a Boss CR, a Treasure CR, and state nodes that run the game engine. All from a single RGD — a ResourceGraphDefinition."
 
 ---
 
