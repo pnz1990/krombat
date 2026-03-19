@@ -9,7 +9,7 @@ export interface DungeonSummary {
   modifier?: string | null; runCount?: number | null
 }
 
-// GetDungeon now returns the raw Dungeon CR — all state is in spec + status
+// GetDungeon now returns the raw Dungeon CR — game state in status.game, trigger fields in spec
 export interface KroCondition {
   type: string       // e.g. "Ready", "Error"
   status: string     // "True" or "False"
@@ -21,25 +21,17 @@ export interface KroCondition {
 export interface DungeonCR {
   metadata: { name: string; namespace: string; creationTimestamp?: string; labels?: Record<string, string> }
   spec: {
-    monsters: number; difficulty: string
-    monsterHP: number[]; bossHP: number; heroHP: number
-    currentTurn: string; turnRound: number
-    heroClass?: string; heroMana?: number
-    tauntActive?: number; backstabCooldown?: number
-    modifier?: string; inventory?: string
-    weaponBonus?: number; weaponUses?: number; armorBonus?: number; shieldBonus?: number
-    helmetBonus?: number; pantsBonus?: number; bootsBonus?: number
-    ringBonus?: number; amuletBonus?: number
-    poisonTurns?: number; burnTurns?: number; stunTurns?: number
-    treasureOpened?: number
-    currentRoom?: number; doorUnlocked?: number; room2BossHP?: number; room2MonsterHP?: number[]
-    monsterTypes?: string[]
-    runCount?: number
-    lastHeroAction?: string; lastEnemyAction?: string; lastCombatLog?: string; lastLootDrop?: string
+    // Immutable creation-time config (written once by backend on dungeon creation)
+    monsters: number; difficulty: string; heroClass?: string; runCount?: number
+    // Trigger fields — written by backend to drive kro state-node reconciliation
     attackSeq?: number; actionSeq?: number
-    lastAttackTarget?: string; lastAction?: string; lastAbility?: string
-    initProcessedSeq?: number; room2ProcessedSeq?: number
-    combatProcessedSeq?: number
+    lastAttackTarget?: string; lastAttackSeed?: number; lastAttackIndex?: number
+    lastAttackIsBoss?: number; lastAttackIsBackstab?: number
+    lastAction?: string; lastAbility?: string
+    lastHeroAction?: string; lastEnemyAction?: string; lastCombatLog?: string
+    lastLootDrop?: string
+    inventory?: string
+    enterRoom2?: number
     xpEarned?: number
   }
   status?: {

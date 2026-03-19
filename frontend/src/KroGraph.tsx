@@ -48,16 +48,24 @@ interface GraphEdge {
 
 // ─── Build graph from DungeonCR ──────────────────────────────────────────────
 
+// KREP-023: game state lives in status.game after migration; fall back to spec for old dungeons.
+function getGame(cr: DungeonCR): any {
+  const game = cr.status?.game
+  if (game && Object.keys(game).length > 0) return game
+  return cr.spec || {}
+}
+
 export function buildGraph(cr: DungeonCR, reconciling: boolean): { nodes: GraphNode[]; edges: GraphEdge[] } {
   const spec = cr.spec
   const status = cr.status
+  const game = getGame(cr)
   const name = cr.metadata.name
-  const monsterHP: number[] = spec.monsterHP || []
-  const allMonstersDead = monsterHP.length > 0 && monsterHP.every(hp => hp <= 0)
-  const bossHP = spec.bossHP ?? 0
+  const monsterHP: number[] = game.monsterHP || []
+  const allMonstersDead = monsterHP.length > 0 && monsterHP.every((hp: number) => hp <= 0)
+  const bossHP = game.bossHP ?? 0
   const bossDefeated = bossHP <= 0 && allMonstersDead
-  const hasModifier = !!spec.modifier && spec.modifier !== 'none'
-  const treasureOpened = (spec.treasureOpened ?? 0) === 1
+  const hasModifier = !!game.modifier && game.modifier !== 'none'
+  const treasureOpened = (game.treasureOpened ?? 0) === 1
 
   const nodes: GraphNode[] = []
   const edges: GraphEdge[] = []
@@ -77,7 +85,7 @@ export function buildGraph(cr: DungeonCR, reconciling: boolean): { nodes: GraphN
   // Root: Dungeon CR
   const dungeonState: NodeState = reconciling ? 'reconciling'
     : status?.victory ? 'alive'
-    : spec.heroHP <= 0 ? 'dead'
+    : (game.heroHP ?? 100) <= 0 ? 'dead'
     : 'alive'
   nodes.push({
     id: 'dungeon',
@@ -103,7 +111,7 @@ export function buildGraph(cr: DungeonCR, reconciling: boolean): { nodes: GraphN
   edges.push({ from: 'dungeon', to: 'namespace' })
 
   // Hero CR
-  const heroState: NodeState = (spec.heroHP ?? 100) <= 0 ? 'defeated' : reconciling ? 'reconciling' : 'alive'
+  const heroState: NodeState = (game.heroHP ?? 100) <= 0 ? 'defeated' : reconciling ? 'reconciling' : 'alive'
   nodes.push({
     id: 'hero',
     label: `Hero`,
@@ -111,7 +119,7 @@ export function buildGraph(cr: DungeonCR, reconciling: boolean): { nodes: GraphN
     state: heroState,
     exists: true,
     concept: 'resource-chaining',
-    detail: `HP: ${spec.heroHP}/${status?.maxHeroHP ?? '?'} · ${spec.heroClass || 'warrior'}`,
+    detail: `HP: ${game.heroHP}/${status?.maxHeroHP ?? '?'} · ${spec.heroClass || 'warrior'}`,
     pulse: reconciling,
   })
   edges.push({ from: 'dungeon', to: 'hero' })
@@ -320,7 +328,7 @@ export function buildGraph(cr: DungeonCR, reconciling: boolean): { nodes: GraphN
   // Modifier CR (includeWhen: modifier != "none")
   nodes.push({
     id: 'modifier',
-    label: hasModifier ? (spec.modifier || 'modifier').slice(0, 8) : 'Modifier',
+    label: hasModifier ? (game.modifier || 'modifier').slice(0, 8) : 'Modifier',
     kind: 'Modifier CR',
     state: hasModifier ? 'ok' : 'locked',
     exists: hasModifier,
@@ -787,15 +795,18 @@ interface DiffEntry {
 function computeRGDDiff(prev: DungeonCR | null | undefined, curr: DungeonCR): DiffEntry[] {
   if (!prev) return []
   const diff: DiffEntry[] = []
+  // KREP-023: game state lives in status.game; use getGame() for the migrated fields.
+  const pg: any = getGame(prev)
+  const cg: any = getGame(curr)
   const ps: any = prev.spec || {}
   const cs: any = curr.spec || {}
   const pst: any = prev.status || {}
   const cst: any = curr.status || {}
 
-  const check = (field: string, note?: string) => {
-    const a = ps[field], b = cs[field]
+  const checkGame = (field: string, displayField: string, note?: string) => {
+    const a = pg[field], b = cg[field]
     if (a !== b && (a !== undefined || b !== undefined)) {
-      diff.push({ field, from: String(a ?? '—'), to: String(b ?? '—'), note })
+      diff.push({ field: displayField, from: String(a ?? '—'), to: String(b ?? '—'), note })
     }
   }
   const checkSt = (field: string, note?: string) => {
@@ -805,34 +816,38 @@ function computeRGDDiff(prev: DungeonCR | null | undefined, curr: DungeonCR): Di
     }
   }
 
-  check('heroHP', 'spec.heroHP')
-  check('bossHP', 'spec.bossHP')
-  check('heroMana', 'spec.heroMana')
-  check('poisonTurns', 'spec.poisonTurns')
-  check('burnTurns', 'spec.burnTurns')
-  check('stunTurns', 'spec.stunTurns')
-  check('weaponBonus', 'spec.weaponBonus')
-  check('weaponUses', 'spec.weaponUses')
-  check('armorBonus', 'spec.armorBonus')
-  check('shieldBonus', 'spec.shieldBonus')
-  check('helmetBonus', 'spec.helmetBonus')
-  check('pantsBonus', 'spec.pantsBonus')
-  check('bootsBonus', 'spec.bootsBonus')
-  check('ringBonus', 'spec.ringBonus')
-  check('amuletBonus', 'spec.amuletBonus')
-  check('currentRoom', 'spec.currentRoom')
-  check('treasureOpened', 'spec.treasureOpened')
-  check('doorUnlocked', 'spec.doorUnlocked')
-  check('lastLootDrop', 'spec.lastLootDrop')
+  checkGame('heroHP', 'status.game.heroHP')
+  checkGame('bossHP', 'status.game.bossHP')
+  checkGame('heroMana', 'status.game.heroMana')
+  checkGame('poisonTurns', 'status.game.poisonTurns')
+  checkGame('burnTurns', 'status.game.burnTurns')
+  checkGame('stunTurns', 'status.game.stunTurns')
+  checkGame('weaponBonus', 'status.game.weaponBonus')
+  checkGame('weaponUses', 'status.game.weaponUses')
+  checkGame('armorBonus', 'status.game.armorBonus')
+  checkGame('shieldBonus', 'status.game.shieldBonus')
+  checkGame('helmetBonus', 'status.game.helmetBonus')
+  checkGame('pantsBonus', 'status.game.pantsBonus')
+  checkGame('bootsBonus', 'status.game.bootsBonus')
+  checkGame('ringBonus', 'status.game.ringBonus')
+  checkGame('amuletBonus', 'status.game.amuletBonus')
+  checkGame('currentRoom', 'status.game.currentRoom')
+  checkGame('treasureOpened', 'status.game.treasureOpened')
+  checkGame('doorUnlocked', 'status.game.doorUnlocked')
+  // lastLootDrop is still in spec (not migrated to status.game)
+  const a = ps['lastLootDrop'], b = cs['lastLootDrop']
+  if (a !== b && (a !== undefined || b !== undefined)) {
+    diff.push({ field: 'spec.lastLootDrop', from: String(a ?? '—'), to: String(b ?? '—') })
+  }
 
   // monsterHP array — show per-index changes
-  const pm: number[] = (ps.monsterHP as number[]) || []
-  const cm: number[] = (cs.monsterHP as number[]) || []
+  const pm: number[] = (pg.monsterHP as number[]) || []
+  const cm: number[] = (cg.monsterHP as number[]) || []
   const maxM = Math.max(pm.length, cm.length)
   for (let i = 0; i < maxM; i++) {
     if ((pm[i] ?? -1) !== (cm[i] ?? -1)) {
       const killed = (pm[i] ?? 0) > 0 && (cm[i] ?? 0) === 0
-      diff.push({ field: `spec.monsterHP[${i}]`, from: String(pm[i] ?? '—'), to: String(cm[i] ?? '—'), note: killed ? '→ Loot CR includeWhen fires' : undefined, conceptLink: killed ? 'includeWhen' : 'forEach' })
+      diff.push({ field: `status.game.monsterHP[${i}]`, from: String(pm[i] ?? '—'), to: String(cm[i] ?? '—'), note: killed ? '→ Loot CR includeWhen fires' : undefined, conceptLink: killed ? 'includeWhen' : 'forEach' })
     }
   }
 
@@ -842,17 +857,17 @@ function computeRGDDiff(prev: DungeonCR | null | undefined, curr: DungeonCR): Di
   checkSt('victory', 'dungeon-graph status')
   checkSt('defeat', 'dungeon-graph status')
 
-  // Attach concept links to status diff entries
+  // Attach concept links to diff entries
   for (const d of diff) {
     if (!d.conceptLink) {
       if (d.field === 'status.livingMonsters') d.conceptLink = 'forEach'
       else if (d.field === 'status.bossState') d.conceptLink = 'cel-ternary'
       else if (d.field === 'status.bossPhase') d.conceptLink = 'cel-ternary'
       else if (d.field === 'status.victory' || d.field === 'status.defeat') d.conceptLink = 'status-aggregation'
-      else if (d.field === 'spec.treasureOpened') d.conceptLink = 'secret-output'
-      else if (d.field === 'spec.currentRoom') d.conceptLink = 'spec-mutation'
-      else if (['spec.weaponBonus','spec.weaponUses','spec.armorBonus','spec.shieldBonus',
-                'spec.helmetBonus','spec.pantsBonus','spec.bootsBonus','spec.ringBonus','spec.amuletBonus'].includes(d.field))
+      else if (d.field === 'status.game.treasureOpened') d.conceptLink = 'secret-output'
+      else if (d.field === 'status.game.currentRoom') d.conceptLink = 'spec-mutation'
+      else if (['status.game.weaponBonus','status.game.weaponUses','status.game.armorBonus','status.game.shieldBonus',
+                'status.game.helmetBonus','status.game.pantsBonus','status.game.bootsBonus','status.game.ringBonus','status.game.amuletBonus'].includes(d.field))
         d.conceptLink = 'spec-mutation'
     }
   }
