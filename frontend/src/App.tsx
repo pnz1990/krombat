@@ -815,6 +815,26 @@ export default function App() {
     } catch (e: any) { reportError('create-new-game-plus', e); setError(e.message) }
   }
 
+  // ─── Maintenance mode ─────────────────────────────────────────────────────
+  // Temporarily show a maintenance page while migrating to the new kro fork.
+  // Remove this block to restore normal operation.
+  return (
+    <div className="app">
+      <header className="header">
+        <img src="/logo.png" alt="Kubernetes RPG" className="logo" />
+        <p>Powered by kro ResourceGraphDefinitions on EKS</p>
+      </header>
+      <div className="card" style={{ textAlign: 'center', padding: '48px 16px', maxWidth: 480, margin: '60px auto' }}>
+        <div style={{ fontSize: '14px', marginBottom: 16 }}>&#9888;</div>
+        <div style={{ fontSize: '10px', color: 'var(--gold)', marginBottom: 16 }}>Under Maintenance</div>
+        <div style={{ fontSize: '8px', color: 'var(--text-dim)', marginBottom: 8, lineHeight: 1.8 }}>
+          Working on a new kro feature. We will be back soon.
+        </div>
+      </div>
+    </div>
+  )
+  // ─── End maintenance mode ───────────────────────────────────────────────────
+
   // Auth not yet checked — show nothing to avoid flash
   if (authUser === null) {
     return <div className="app"><div className="loading">Checking session...</div></div>
