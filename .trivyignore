@@ -1,10 +1,6 @@
 # .trivyignore — accepted / false-positive CVE findings with justification.
 # Each entry must include a justification comment explaining the risk acceptance.
 # Regenerate with: trivy image --severity CRITICAL --ignore-unfixed <image>
-
-# CVE-2026-22184: zlib CRITICAL in nginxinc/nginx-unprivileged:1.29-alpine (installed: 1.3.1-r2, fixed: 1.3.2-r0)
-# Justification: Fix exists in Alpine package repo but nginx-unprivileged image has not yet been
-# rebuilt with updated packages. The container serves only static files with no user-supplied
-# compressed input; zlib is only used internally by nginx for gzip responses.
-# Track: update Dockerfile once nginx-unprivileged is rebuilt with zlib 1.3.2-r0.
-CVE-2026-22184
+#
+# No entries — Dockerfile now runs `apk upgrade --no-cache` to pick up Alpine
+# security fixes (zlib CVE-2026-22184, libexpat CVE-2026-32767, etc.).
