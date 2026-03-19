@@ -31,8 +31,8 @@ Each dungeon instance gets its own Namespace for isolation and clean teardown.
 ## How It Works
 
 1. **Create a Dungeon** — specify a name, monster count (1–10), difficulty (easy/normal/hard), and hero class (warrior/mage/rogue)
-2. **kro reconciles** — dungeon-graph creates a Namespace, Hero CR, Monster CRs (one per monster, via forEach), Boss CR, Treasure CR, Modifier CR, and a `gameConfig` ConfigMap — all wired together via CEL expressions. Virtual `specPatch` and `stateWrite` nodes in dungeon-graph write computed state back to the Dungeon CR spec.
-3. **Attack monsters** — the frontend submits a POST to the backend; the backend writes trigger fields (`attackSeq`, `lastAttackTarget`, `lastAttackSeed`, `lastAttackIndex`, `lastAttackIsBoss`, `lastAttackIsBackstab`) to the Dungeon CR and polls until kro's `combatResolve` specPatch fires — kro CEL is the authoritative combat engine. The backend then reads the result, computes loot drops and log text, and writes `lastLootDrop` and `xpEarned`.
+2. **kro reconciles** — dungeon-graph creates a Namespace, Hero CR, Monster CRs (one per monster, via forEach), Boss CR, Treasure CR, Modifier CR, and a `gameConfig` ConfigMap — all wired together via CEL expressions. State nodes (`stateNode` / `stateWrite`) in dungeon-graph write computed game state (HP, bonuses, cooldowns, status effects) to `status.game` on the Dungeon CR.
+3. **Attack monsters** — the frontend submits a POST to the backend; the backend writes trigger fields (`attackSeq`, `lastAttackTarget`, `lastAttackSeed`, `lastAttackIndex`, `lastAttackIsBoss`, `lastAttackIsBackstab`) to the Dungeon CR and polls until kro's `combatResolve` state node fires — kro CEL is the authoritative combat engine. The backend then reads the result from `status.game`, computes loot drops and log text, and writes `lastLootDrop` and `xpEarned`.
 4. **Use items** — same pattern via Action CR; the backend runs item/equip/room logic and patches the spec directly
 5. **Boss unlocks** — when all monster HP = 0, kro's CEL in `boss-graph` transitions `bossState` to `ready`; the Dungeon CR status aggregates this via `dungeon-graph` CEL
 6. **Defeat the boss** — boss has three phases driven by HP thresholds in `boss-graph` CEL (Phase 1 → Phase 2 ENRAGED → Phase 3 BERSERK), each with higher counter damage and special attack chance
@@ -88,11 +88,11 @@ All nine ResourceGraphDefinitions live in `manifests/rgds/`:
 - **forEach dynamic fan-out** — Monster CRs created from the `monsterHP` array spec field using a named loop variable (`idx`)
 - **includeWhen conditional resources** — Loot CRs only created when HP = 0; treasure Secret only when opened = 1; Modifier CR only when modifier ≠ "none"
 - **readyWhen readiness gates** — Modifier CR gates its readyWhen on `modifierType != ""`
-- **specPatch write-back** — `dungeon-graph` uses custom `specPatch` virtual nodes to write computed state (HP mutations, cooldowns, DoT ticks, loot drops) back into the Dungeon CR spec — turning kro into a stateful CEL state machine
+- **stateNode write-back** — `dungeon-graph` uses custom `stateNode` entries to write computed game state (HP mutations, cooldowns, DoT ticks, loot drops) to `status.game` on the Dungeon CR — turning kro into a stateful CEL state machine
 - **CEL state machines** — Boss phase (normal → ENRAGED → BERSERK → defeated) computed entirely in CEL from HP thresholds
 - **Deterministic randomness** — `random.seededString()` in `monster-graph` pre-rolls loot type/rarity at monster spawn; no imperative code
 - **Status aggregation** — `dungeon-graph` aggregates child CR statuses (livingMonsters, bossState, bossPhase, bossDamageMultiplier) via CEL `.filter()` and `.size()`
-- **CRD factory pattern** — `attack-graph` and `action-graph` are empty RGDs used purely to register CRDs; all logic lives in the Go backend and dungeon-graph specPatch nodes
+- **CRD factory pattern** — `attack-graph` and `action-graph` are empty RGDs used purely to register CRDs; all logic lives in the Go backend and dungeon-graph state nodes
 
 ## Project Structure
 
@@ -175,10 +175,10 @@ curl -X POST http://localhost:8080/api/v1/dungeons/default/my-dungeon/attacks \
   -H "Content-Type: application/json" \
   -d '{"target":"my-dungeon-monster-0","damage":0}'
 
-# Evaluate a CEL expression against live dungeon spec
+# Evaluate a CEL expression against live dungeon state
 curl -X POST http://localhost:8080/api/v1/dungeons/default/my-dungeon/cel-eval \
   -H "Content-Type: application/json" \
-  -d '{"expr":"schema.spec.heroHP > 0"}'
+  -d '{"expr":"schema.status.game.heroHP > 0"}'
 
 # View leaderboard (top 20 runs by fewest turns)
 curl http://localhost:8080/api/v1/leaderboard

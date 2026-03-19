@@ -40,8 +40,8 @@ kubectl delete attack <attack-name>
 ### Monster ConfigMap not updating state after attack
 kro reconciles on a loop. Wait 10-15 seconds. If still stuck:
 ```bash
-# Check the Dungeon CR spec — HP values should reflect the attack
-kubectl get dungeon <name> -o jsonpath='{.spec.monsterHP}'
+# Check the Dungeon CR status.game — HP values should reflect the attack
+kubectl get dungeon <name> -o jsonpath='{.status.game.monsterHP}'
 
 # Force reconciliation
 kubectl annotate dungeon <name> kro.run/force-reconcile=$(date +%s) --overwrite
@@ -196,8 +196,8 @@ kubectl delete rgd <name>
 ### Dungeon status shows wrong values
 The dungeon status is derived from child CR statuses. If it's wrong:
 ```bash
-# Check the chain: Dungeon spec → child CR spec → child CR status → Dungeon status
-kubectl get dungeon <name> -o jsonpath='{.spec.monsterHP}'
+# Check the chain: Dungeon spec triggers → status.game → child CR spec → child CR status → Dungeon status
+kubectl get dungeon <name> -o jsonpath='{.status.game.monsterHP}'
 kubectl get monster <name>-monster-0 -n <name> -o jsonpath='{.spec.hp} {.status.entityState}'
 kubectl get dungeon <name> -o jsonpath='{.status.livingMonsters}'
 ```
@@ -207,19 +207,19 @@ kubectl get dungeon <name> -o jsonpath='{.status.livingMonsters}'
 
 ### Debug Mage heal
 ```bash
-kubectl get dungeon <name> -o jsonpath='HP:{.spec.heroHP} Mana:{.spec.heroMana}'
+kubectl get dungeon <name> -o jsonpath='HP:{.status.game.heroHP} Mana:{.status.game.heroMana}'
 # Heal requires mana >= 2, HP < 80
 ```
 
 ### Debug Warrior taunt
 ```bash
-kubectl get dungeon <name> -o jsonpath='Taunt:{.spec.tauntActive}'
+kubectl get dungeon <name> -o jsonpath='Taunt:{.status.game.tauntActive}'
 # tauntActive=1 means 60% damage reduction active
 ```
 
 ### Debug Rogue backstab
 ```bash
-kubectl get dungeon <name> -o jsonpath='CD:{.spec.backstabCooldown}'
+kubectl get dungeon <name> -o jsonpath='CD:{.status.game.backstabCooldown}'
 # backstabCooldown > 0 means backstab unavailable
 ```
 
@@ -227,7 +227,7 @@ kubectl get dungeon <name> -o jsonpath='CD:{.spec.backstabCooldown}'
 
 ### Check active modifier
 ```bash
-kubectl get dungeon <name> -o jsonpath='Modifier:{.spec.modifier} Effect:{.status.modifier}'
+kubectl get dungeon <name> -o jsonpath='Modifier:{.status.game.modifier} Effect:{.status.modifier}'
 kubectl get modifier -n <dungeon-name>
 ```
 
@@ -243,7 +243,7 @@ kubectl get modifier <name>-modifier -n <name> -o yaml
 
 ### Check inventory
 ```bash
-kubectl get dungeon <name> -o jsonpath='Inv:{.spec.inventory} Wpn:{.spec.weaponBonus}({.spec.weaponUses}) Armor:{.spec.armorBonus}'
+kubectl get dungeon <name> -o jsonpath='Inv:{.status.game.inventory} Wpn:{.status.game.weaponBonus}({.status.game.weaponUses}) Armor:{.status.game.armorBonus}'
 ```
 
 ### Use item via kubectl
@@ -266,10 +266,11 @@ EOF
 
 ### Check active effects
 ```bash
-kubectl get dungeon <name> -o jsonpath='Poison:{.spec.poisonTurns} Burn:{.spec.burnTurns} Stun:{.spec.stunTurns}'
+kubectl get dungeon <name> -o jsonpath='Poison:{.status.game.poisonTurns} Burn:{.status.game.burnTurns} Stun:{.status.game.stunTurns}'
 ```
 
 ### Manually clear effects
 ```bash
-kubectl patch dungeon <name> --type=merge -p '{"spec":{"poisonTurns":0,"burnTurns":0,"stunTurns":0}}'
+kubectl patch dungeon <name> --type=merge -p '{"spec":{"attackSeq":0}}'
+# Note: status.game fields are written by kro state nodes — trigger a reconcile instead
 ```

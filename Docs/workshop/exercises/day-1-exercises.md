@@ -22,11 +22,11 @@ Kill one of your three monsters. Open the kro panel and click the dead monster's
 
 ---
 
-## Q3 — combatResolve specPatch
+## Q3 — combatResolve state node
 
 After attacking, open the K8s log tab and find the most recent attack entry. Expand the **[kro]** annotation block.
 
-**List 3 fields that the `combatResolve` specPatch node writes back to the Dungeon CR spec after a combat turn.**
+**List 3 fields that the `combatResolve` state node writes to `status.game` on the Dungeon CR after a combat turn.**
 
 ---
 
@@ -43,7 +43,7 @@ Open the Reconcile Stream tab and watch it during an attack. Then open the kro c
 Open the CEL Playground and evaluate this expression (replace `400` with your boss's actual max HP if it differs):
 
 ```
-schema.spec.bossHP * 100 / 400 > 50 ? "phase1" : schema.spec.bossHP * 100 / 400 > 25 ? "phase2" : "phase3"
+schema.status.game.bossHP * 100 / 400 > 50 ? "phase1" : schema.status.game.bossHP * 100 / 400 > 25 ? "phase2" : "phase3"
 ```
 
 **What phase is the boss in right now? At what HP threshold does it transition to phase2?**

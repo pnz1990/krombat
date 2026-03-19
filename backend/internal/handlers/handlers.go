@@ -211,9 +211,9 @@ func (h *Handler) CreateDungeon(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Backend writes only the player choices. kro dungeonInit specPatch computes
+	// Backend writes only the player choices. kro's dungeonInit state node computes
 	// heroHP, heroMana, monsterHP, bossHP, modifier, and monsterTypes from these
-	// fields deterministically via CEL.
+	// fields deterministically via CEL and writes them to status.game.
 	dungeonSpec := map[string]interface{}{
 		"monsters":   req.Monsters,
 		"difficulty": req.Difficulty,
@@ -1224,8 +1224,8 @@ func (h *Handler) CreateAttack(w http.ResponseWriter, r *http.Request) {
 // 1. Read current dungeon spec to get current attackSeq and room
 // 2. If clientSeq >= 0 and clientSeq != attackSeq, return 409 Conflict (stale request)
 // 3. Upsert fixed-name Attack CR (SSA) with new seq = attackSeq+1 and targetRoom
-// 4. kro re-reconciles dungeon-graph, writes combatResult ConfigMap
-// 5. Backend reads combatResult ConfigMap, runs full combat math, patches Dungeon spec
+// 4. kro re-reconciles dungeon-graph, combatResolve state node writes results to status.game
+// 5. Backend polls until status.game.combatProcessedSeq reaches attackSeq, reads post-state
 func (h *Handler) processCombat(ctx context.Context, r *http.Request, ns, name, target string, clientDamage int64, clientSeq int64, w http.ResponseWriter) error {
 	start := time.Now()
 	// These vars are captured by the defer to emit rich log + metrics at end.
@@ -2020,9 +2020,9 @@ func (h *Handler) processAction(ctx context.Context, r *http.Request, ns, name, 
 		"lastAbility":      "",
 	}
 
-	// MIGRATION: state mutations (inventory, heroHP, heroMana, equipment bonuses,
-	// treasureOpened, doorUnlocked, room transition fields) are now computed by
-	// kro's actionResolve specPatch. Backend writes only trigger + log text.
+	// State mutations (inventory, heroHP, heroMana, equipment bonuses,
+	// treasureOpened, doorUnlocked, room transition fields) are computed by
+	// kro's actionResolve state node and written to status.game. Backend writes only trigger + log text.
 	// Validation stays here (returns 400 errors before setting trigger).
 
 	switch {
@@ -2712,7 +2712,7 @@ func (h *Handler) GetDungeonResource(w http.ResponseWriter, r *http.Request) {
 	case "gameconfig":
 		def = &resourceDef{schema.GroupVersionResource{Group: coreGrp, Version: coreVer, Resource: "configmaps"}, name + "-game-config"}
 	// #441: combatresult, combatcm, actioncm cases removed — these ConfigMaps no longer exist
-	// after combat/action resolution migrated to specPatch nodes in dungeon-graph.
+	// after combat/action resolution migrated to state nodes writing to status.game.
 	case "modifiercm":
 		def = &resourceDef{schema.GroupVersionResource{Group: coreGrp, Version: coreVer, Resource: "configmaps"}, name + "-modifier-state"}
 	case "treasurecm":

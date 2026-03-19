@@ -16,7 +16,7 @@ Use this as a Q&A cheat sheet after the 5-minute demo. Each entry has a short an
 
 **Short:** kro is a Kubernetes controller that lets you declare a graph of resources — and CEL expressions to compute their values — in a single YAML file called a ResourceGraphDefinition.
 
-**Long:** kro watches for instances of your RGD (which it registers as a CRD automatically) and creates all the child resources defined in the graph. It evaluates CEL expressions to compute field values, handle conditional inclusion, manage readiness gates, and (in this fork) write computed values back into the parent spec via `specPatch`. The upstream project is at `github.com/kubernetes-sigs/kro`.
+**Long:** kro watches for instances of your RGD (which it registers as a CRD automatically) and creates all the child resources defined in the graph. It evaluates CEL expressions to compute field values, handle conditional inclusion, manage readiness gates, and (in this fork) write computed values to `status.game` on the parent CR via `stateNode`. The upstream project is at `github.com/kubernetes-sigs/kro`.
 
 ---
 
@@ -24,7 +24,7 @@ Use this as a Q&A cheat sheet after the 5-minute demo. Each entry has a short an
 
 **Short:** Yes — that's the point. If kro can run a real-time game engine, it can definitely run your platform's provisioning workflows.
 
-**Long:** Krombat is a teaching tool, not a production game. The point is to make kro's reconcile loop *viscerally tangible*. When you attack a monster and see the HP drop in the K8s log tab, you've just watched a Kubernetes reconcile loop complete a state transition in real time. That mental model — spec → reconcile → new spec — is exactly what you need to understand kro for real use cases like provisioning multi-tenant environments, managing feature flag rollouts, or orchestrating complex service graphs.
+**Long:** Krombat is a teaching tool, not a production game. The point is to make kro's reconcile loop *viscerally tangible*. When you attack a monster and see the HP drop in the K8s log tab, you've just watched a Kubernetes reconcile loop complete a state transition in real time. That mental model — spec trigger → reconcile → status.game update — is exactly what you need to understand kro for real use cases like provisioning multi-tenant environments, managing feature flag rollouts, or orchestrating complex service graphs.
 
 ---
 
@@ -38,17 +38,17 @@ Use this as a Q&A cheat sheet after the 5-minute demo. Each entry has a short an
 
 ## Q5: How does the game engine work without backend logic?
 
-**Short:** The Go backend writes trigger fields to the Dungeon CR spec and polls until kro's `combatResolve` specPatch fires. kro CEL is the authoritative combat engine. The backend then reads the result and computes loot drops and log text.
+**Short:** The Go backend writes trigger fields to the Dungeon CR spec and polls until kro's `combatResolve` state node fires. kro CEL is the authoritative combat engine. The backend then reads the result from `status.game` and computes loot drops and log text.
 
-**Long:** The architecture has a clean split: the backend writes trigger fields (`attackSeq`, `lastAttackTarget`, `lastAttackSeed`, etc.) to the Dungeon CR spec, then polls for the `combatResolve` specPatch result. kro evaluates CEL expressions that compute all game math — dice rolls, damage calculations (weapon/helmet/amulet/class multipliers, backstab), counter-attack chains (armor/shield/class defense/pants dodge/taunt reduction), status effect infliction (poison/burn/stun), ring regen, and HP mutations. The backend reads back kro's post-state diff (pre/post heroHP, monsterHP, bossHP) and generates log text. It never does the math itself. The frontend reads only from `spec` (not `status`) because status can be stale after room transitions — a real kro limitation the game surfaces explicitly in InsightCards.
+**Long:** The architecture has a clean split: the backend writes trigger fields (`attackSeq`, `lastAttackTarget`, `lastAttackSeed`, etc.) to the Dungeon CR spec, then polls until `status.game.combatProcessedSeq` matches `attackSeq`. kro evaluates CEL expressions that compute all game math — dice rolls, damage calculations (weapon/helmet/amulet/class multipliers, backstab), counter-attack chains (armor/shield/class defense/pants dodge/taunt reduction), status effect infliction (poison/burn/stun), ring regen, and HP mutations — and writes results to `status.game`. The backend reads back kro's post-state diff (pre/post heroHP, monsterHP, bossHP from `status.game`) and generates log text. It never does the math itself. The frontend reads game state from `status.game` (via the `getGame()` helper with a spec fallback for old dungeons).
 
 ---
 
-## Q6: What is a specPatch node?
+## Q6: What is a state node / stateNode?
 
-**Short:** A specPatch is a kro RGD resource that writes CEL-computed values back into the parent CR's spec, rather than creating a new child resource.
+**Short:** A state node is a kro RGD resource that writes CEL-computed values to `status.game` on the parent CR, rather than creating a new child resource.
 
-**Long:** Normally, kro resources create or update child Kubernetes objects (Namespaces, ConfigMaps, CRDs, etc.). A specPatch resource instead patches fields back onto the parent CR's spec. This lets kro act as a pure CEL state machine: you write `spec.attackSeq`, kro evaluates `combatResolve.specPatch` which computes `heroHP_after = heroHP - damage`, and writes `spec.heroHP = heroHP_after`. The game uses 9 specPatch nodes in dungeon-graph. This feature is a krombat-patched fork extension; the upstream kro community discussion is ongoing.
+**Long:** Normally, kro resources create or update child Kubernetes objects (Namespaces, ConfigMaps, CRDs, etc.). A `stateNode` resource instead writes computed fields to `status.game` on the parent CR. This lets kro act as a pure CEL state machine: you write `spec.attackSeq`, kro evaluates `combatResolve` which computes `heroHP_after = heroHP - damage`, and writes `status.game.heroHP = heroHP_after`. The game uses 9 state nodes in dungeon-graph. This feature is a krombat-patched fork extension (`specPatch`/`stateWrite`); the upstream kro community discussion is ongoing.
 
 ---
 

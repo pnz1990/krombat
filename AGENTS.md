@@ -72,7 +72,7 @@ A turn-based dungeon RPG where game state lives in Kubernetes Custom Resources o
 |---|---|
 | `manifests/rgds/` | All 9 RGD YAML files (kro resource graph) |
 | `manifests/rbac/rbac.yaml` | ServiceAccounts, ClusterRoles, Bindings |
-| `backend/internal/handlers/handlers.go` | REST API handlers: writes trigger fields, polls for kro specPatch results, computes loot/log/XP/leaderboard |
+| `backend/internal/handlers/handlers.go` | REST API handlers: writes trigger fields, polls for kro state node results in status.game, computes loot/log/XP/leaderboard |
 | `backend/internal/k8s/watchers.go` | GVR definitions (DungeonGVR, AttackGVR, ActionGVR) |
 | `frontend/src/App.tsx` | Main React app (~1000 lines) |
 | `frontend/src/Sprite.tsx` | Sprite components (hurt=6→1→6, dead=6 with 0.35 opacity) |
