@@ -10,12 +10,14 @@ package handlers
 //   - library.Maps()  (maps.*)
 //   - library.JSON()  (json.*)
 //   - library.Lists() (lists.setAtIndex, lists.insertAtIndex, lists.removeAtIndex)
-//   - library.CSV()   (csv.add, csv.remove, csv.contains)
+//   - library.KState() (kstate(scope, field, default) for safe state access)
 //
 // Variable bindings follow the same schema as kro RGD expressions:
-//   schema.spec.<field>     — from the dungeon spec
-//   schema.metadata.name    — dungeon name
-//   schema.metadata.namespace — dungeon namespace
+//   schema.spec.<field>          — from the dungeon spec (triggers, config)
+//   schema.status.game.<field>   — from the dungeon status.game (kro-computed game state)
+//   schema.status.<field>        — from the dungeon status (child CR projections)
+//   schema.metadata.name         — dungeon name
+//   schema.metadata.namespace    — dungeon namespace
 //
 // Max expression length: 2000 chars (playground, not production CEL).
 // Returns (result string, errMsg string). errMsg is empty on success.
@@ -46,18 +48,18 @@ func init() {
 	}
 }
 
-// EvalCEL evaluates expr against the provided dungeon spec bindings.
+// EvalCEL evaluates expr against the provided dungeon bindings.
 // spec is a map of field-name → value from the dungeon spec (flat, k8s types).
-// metadata is {"name": ..., "namespace": ...}.
+// status is the full status map (including status.game for state-node fields).
 // Returns (result, errMsg). errMsg is empty on success.
-func EvalCEL(expr string, spec map[string]interface{}) (string, string) {
+func EvalCEL(expr string, spec map[string]interface{}, status map[string]interface{}) (string, string) {
 	expr = strings.TrimSpace(expr)
 	if len(expr) > maxCelExprLen {
 		return "", fmt.Sprintf("expression too long (max %d chars)", maxCelExprLen)
 	}
 
 	// Build the schema variable as a nested map matching kro RGD variable layout:
-	// schema = { "spec": { field: value, ... }, "metadata": { "name": ..., "namespace": ... } }
+	// schema = { "spec": { ... }, "status": { "game": { ... }, ... }, "metadata": { ... } }
 	name, _ := spec["name"].(string)
 	namespace, _ := spec["namespace"].(string)
 
@@ -70,9 +72,16 @@ func EvalCEL(expr string, spec map[string]interface{}) (string, string) {
 		specMap[k] = v
 	}
 
+	// Build status map — include game state and other status fields
+	statusMap := make(map[string]interface{}, len(status))
+	for k, v := range status {
+		statusMap[k] = v
+	}
+
 	activation := map[string]interface{}{
 		"schema": map[string]interface{}{
-			"spec": specMap,
+			"spec":   specMap,
+			"status": statusMap,
 			"metadata": map[string]interface{}{
 				"name":      name,
 				"namespace": namespace,

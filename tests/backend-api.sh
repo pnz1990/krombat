@@ -96,20 +96,21 @@ RESP=$(curl -s "${AUTH_H[@]}" "$BASE/api/v1/dungeons/default/$DUNGEON")
 CODE=$(curl -s -o /dev/null -w "%{http_code}" "${AUTH_H[@]}" "$BASE/api/v1/dungeons/default/$DUNGEON")
 [ "$CODE" = "200" ] && pass "GET /dungeons/default/$DUNGEON -> 200" || fail "GET dungeon -> $CODE"
 
-# Verify response is a raw Dungeon CR (has metadata.name, spec, not wrapped in {dungeon:...})
+# Verify response is a raw Dungeon CR (has metadata.name, spec, status.game with game state)
 echo "$RESP" | python3 -c "
 import json,sys
 d=json.load(sys.stdin)
 assert 'metadata' in d, 'missing metadata'
 assert d['metadata']['name'] == '$DUNGEON', f'wrong name: {d[\"metadata\"][\"name\"]}'
 assert 'spec' in d, 'missing spec'
-assert 'monsterHP' in d['spec'], 'missing monsterHP'
-assert 'bossHP' in d['spec'], 'missing bossHP'
+game=d.get('status',{}).get('game',{})
+assert 'monsterHP' in game, 'missing monsterHP in status.game'
+assert 'bossHP' in game, 'missing bossHP in status.game'
 assert 'dungeon' not in d, 'response should not be wrapped in dungeon key'
 assert 'pods' not in d, 'response should not contain pods'
 print('OK')
 " 2>/dev/null \
-  && pass "Response is raw Dungeon CR (metadata, spec, no pods)" \
+  && pass "Response is raw Dungeon CR (metadata, spec, status.game, no pods)" \
   || fail "Response shape incorrect — backend may be returning wrapped/old format"
 
 # --- Test 7: Get nonexistent dungeon ---
@@ -176,8 +177,8 @@ curl -s -X POST "$BASE/api/v1/dungeons" \
   -H "Content-Type: application/json" "${AUTH_H[@]}" \
   -d "{\"name\":\"$MAGE_DUNGEON\",\"monsters\":1,\"difficulty\":\"easy\",\"heroClass\":\"mage\"}" -o /dev/null
 sleep 15
-# Drain mage mana to 0 by patching the dungeon CR directly
-kctl patch dungeon "$MAGE_DUNGEON" -n default --type=merge -p '{"spec":{"heroMana":0}}' &>/dev/null || true
+# Drain mage mana to 0 by patching the dungeon status.game directly
+kctl patch dungeon "$MAGE_DUNGEON" -n default --subresource=status --type=merge -p '{"status":{"game":{"heroMana":0}}}' &>/dev/null || true
 sleep 3
 # Attempt heal with 0 mana — should be 400
 # Target is "hero" (mage-heal is handled via target="hero" in processCombat)
@@ -201,7 +202,7 @@ CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeons/def
 [ "$CODE" = "400" ] && pass "Non-warrior taunt attempt rejected -> 400" || fail "Non-warrior taunt -> $CODE (expected 400)"
 kctl delete dungeon "$MAGE_TAUNT" --ignore-not-found --wait=false 2>/dev/null || true
 
-# --- Test 15: lastLootDrop field present in spec after kill ---
+# --- Test 15: lastLootDrop field present in status.game after kill ---
 log "Test 15: lastLootDrop field present after kill"
 LOOT_TEST="api-test-loot-$(date +%s)"
 curl -s -X POST "$BASE/api/v1/dungeons" \
@@ -217,24 +218,24 @@ RESP=$(curl -s "${AUTH_H[@]}" "$BASE/api/v1/dungeons/default/$LOOT_TEST")
 echo "$RESP" | python3 -c "
 import json,sys
 d=json.load(sys.stdin)
-spec=d.get('spec',{})
-assert 'lastLootDrop' in spec, 'lastLootDrop field missing from spec'
+game=d.get('status',{}).get('game',{})
+assert 'lastLootDrop' in game, 'lastLootDrop field missing from status.game'
 # lastLootDrop is either empty string (no drop) or an item name — both are valid
-print('lastLootDrop:', repr(spec['lastLootDrop']))
+print('lastLootDrop:', repr(game['lastLootDrop']))
 " 2>/dev/null \
-  && pass "lastLootDrop field present in spec after kill (may be empty if no drop)" \
-  || fail "lastLootDrop field missing from dungeon spec after kill"
+  && pass "lastLootDrop field present in status.game after kill (may be empty if no drop)" \
+  || fail "lastLootDrop field missing from dungeon status.game after kill"
 kctl delete dungeon "$LOOT_TEST" --ignore-not-found --wait=false 2>/dev/null || true
 
 # --- Test 16: Ability rejection — backstab on cooldown (direct patch) ---
-log "Test 16: Backstab-on-cooldown rejection (direct spec patch)"
+log "Test 16: Backstab-on-cooldown rejection (direct status.game patch)"
 ROGUE_CD_DUNGEON="api-test-rogue-cd-$(date +%s)"
 curl -s -X POST "$BASE/api/v1/dungeons" \
   -H "Content-Type: application/json" "${AUTH_H[@]}" \
   -d "{\"name\":\"$ROGUE_CD_DUNGEON\",\"monsters\":2,\"difficulty\":\"easy\",\"heroClass\":\"rogue\"}" -o /dev/null
 sleep 15
-# Patch backstabCooldown to 1 directly on the spec
-kctl patch dungeon "$ROGUE_CD_DUNGEON" -n default --type=merge -p '{"spec":{"backstabCooldown":1}}' &>/dev/null || true
+# Patch backstabCooldown to 1 directly on status.game
+kctl patch dungeon "$ROGUE_CD_DUNGEON" -n default --subresource=status --type=merge -p '{"status":{"game":{"backstabCooldown":1}}}' &>/dev/null || true
 sleep 3
 # Attempt backstab — should be rejected with 400 (cooldown active)
 CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeons/default/$ROGUE_CD_DUNGEON/attacks" \
@@ -244,14 +245,14 @@ CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeons/def
 kctl delete dungeon "$ROGUE_CD_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
 
 # --- Test 17: Ability rejection — mage heal with 0 mana (direct patch, correct target) ---
-log "Test 17: Mage heal no-mana rejection (direct spec patch, target=hero)"
+log "Test 17: Mage heal no-mana rejection (direct status.game patch, target=hero)"
 MAGE_NOMANA_DUNGEON="api-test-mage-nm-$(date +%s)"
 curl -s -X POST "$BASE/api/v1/dungeons" \
   -H "Content-Type: application/json" "${AUTH_H[@]}" \
   -d "{\"name\":\"$MAGE_NOMANA_DUNGEON\",\"monsters\":1,\"difficulty\":\"easy\",\"heroClass\":\"mage\"}" -o /dev/null
 sleep 15
-# Drain heroMana to 0 by patching the dungeon CR directly
-kctl patch dungeon "$MAGE_NOMANA_DUNGEON" -n default --type=merge -p '{"spec":{"heroMana":0}}' &>/dev/null || true
+# Drain heroMana to 0 by patching dungeon status.game directly
+kctl patch dungeon "$MAGE_NOMANA_DUNGEON" -n default --subresource=status --type=merge -p '{"status":{"game":{"heroMana":0}}}' &>/dev/null || true
 sleep 3
 # Attempt heal with 0 mana (target="hero" is the heal trigger) — should be 400
 CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeons/default/$MAGE_NOMANA_DUNGEON/attacks" \
@@ -261,14 +262,14 @@ CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeons/def
 kctl delete dungeon "$MAGE_NOMANA_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
 
 # --- Test 18: Ability rejection — taunt already active (direct patch) ---
-log "Test 18: Taunt-already-active rejection (direct spec patch)"
+log "Test 18: Taunt-already-active rejection (direct status.game patch)"
 WARRIOR_TAUNT_DUNGEON="api-test-warrior-taunt-$(date +%s)"
 curl -s -X POST "$BASE/api/v1/dungeons" \
   -H "Content-Type: application/json" "${AUTH_H[@]}" \
   -d "{\"name\":\"$WARRIOR_TAUNT_DUNGEON\",\"monsters\":1,\"difficulty\":\"easy\",\"heroClass\":\"warrior\"}" -o /dev/null
 sleep 15
-# Patch tauntActive to true (non-zero) directly on the spec
-kctl patch dungeon "$WARRIOR_TAUNT_DUNGEON" -n default --type=merge -p '{"spec":{"tauntActive":1}}' &>/dev/null || true
+# Patch tauntActive to true (non-zero) directly on status.game
+kctl patch dungeon "$WARRIOR_TAUNT_DUNGEON" -n default --subresource=status --type=merge -p '{"status":{"game":{"tauntActive":1}}}' &>/dev/null || true
 sleep 3
 # Attempt taunt while already active — should be rejected with 400
 CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeons/default/$WARRIOR_TAUNT_DUNGEON/attacks" \
@@ -309,7 +310,7 @@ curl -s -X POST "$BASE/api/v1/dungeons" \
   -d "{\"name\":\"$BASE_DUNGEON\",\"monsters\":2,\"difficulty\":\"easy\",\"heroClass\":\"warrior\"}" -o /dev/null
 sleep 15
 BASE_SPEC=$(curl -s "${AUTH_H[@]}" "$BASE/api/v1/dungeons/default/$BASE_DUNGEON")
-BASE_MONSTER_HP=$(echo "$BASE_SPEC" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['spec']['monsterHP'][0])" 2>/dev/null || echo "0")
+BASE_MONSTER_HP=$(echo "$BASE_SPEC" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['status']['game']['monsterHP'][0])" 2>/dev/null || echo "0")
 
 # Create New Game+ dungeon with runCount=1 — bonus fields are ignored by backend (#555)
 NG_RESP=$(curl -s -w "\n%{http_code}" -X POST "$BASE/api/v1/dungeons" \
@@ -324,30 +325,31 @@ echo "$NG_SPEC" | python3 -c "
 import json,sys
 d=json.load(sys.stdin)
 spec=d.get('spec',{})
+game=d.get('status',{}).get('game',{})
 
-# runCount must be set
+# runCount must be set (stays in spec)
 assert spec.get('runCount') == 1, f'runCount should be 1, got {spec.get(\"runCount\")}'
 print('runCount=1 OK')
 
 # #555: weaponBonus must NOT be pre-set at dungeon creation (items in inventory, equip manually)
-wb = spec.get('weaponBonus', 0)
+wb = game.get('weaponBonus', 0)
 assert wb == 0, f'weaponBonus should be 0 at NG+ creation (inventory-only model), got {wb}'
 print('weaponBonus=0 (inventory-only) OK')
 
 # #555: armorBonus must NOT be pre-set at dungeon creation
-ab = spec.get('armorBonus', 0)
+ab = game.get('armorBonus', 0)
 assert ab == 0, f'armorBonus should be 0 at NG+ creation (inventory-only model), got {ab}'
 print('armorBonus=0 (inventory-only) OK')
 
 # Hero HP must be boosted (110% of base for warrior=200)
 base_hp = 200
 expected_hp = 200 * 110 // 100  # 220
-actual_hp = spec.get('heroHP', 0)
+actual_hp = game.get('heroHP', 0)
 assert actual_hp == expected_hp, f'heroHP should be {expected_hp} for NG+1 warrior, got {actual_hp}'
 print(f'heroHP={actual_hp} (expected {expected_hp}) OK')
 " 2>/dev/null \
-  && pass "NG+ spec fields correct (runCount, no bonus pre-set, heroHP scaled) (#555)" \
-  || fail "NG+ spec fields incorrect — check runCount/inventory-only carry-over/HP scaling"
+  && pass "NG+ fields correct (runCount in spec, game state in status.game, heroHP scaled) (#555)" \
+  || fail "NG+ fields incorrect — check runCount/inventory-only carry-over/HP scaling"
 
 # Monster HP must be scaled 125% vs base
 echo "$BASE_MONSTER_HP $NG_SPEC" | python3 -c "
@@ -355,7 +357,7 @@ import json,sys
 parts=sys.stdin.read().split('\n',1)
 base_hp=int(parts[0].strip())
 ng_spec=json.loads(parts[1])
-ng_hp=ng_spec['spec']['monsterHP'][0]
+ng_hp=ng_spec['status']['game']['monsterHP'][0]
 # curse-fortitude can add 50%, so check within range (1.2x - 1.9x base)
 ratio = ng_hp / base_hp if base_hp > 0 else 0
 assert 1.0 <= ratio <= 2.5, f'NG+ monster HP ratio {ratio:.2f} out of expected range (base={base_hp}, ng={ng_hp})'
@@ -367,8 +369,8 @@ print(f'NG+ monster HP ratio {ratio:.2f} (base={base_hp} -> ng={ng_hp}) OK')
 kctl delete dungeon "$BASE_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
 kctl delete dungeon "$NG_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
 
-# --- Test 21: monsterTypes field in created dungeon spec ---
-log "Test 21: monsterTypes field in dungeon spec"
+# --- Test 21: monsterTypes field in created dungeon ---
+log "Test 21: monsterTypes field in dungeon status.game"
 MT_DUNGEON="api-test-mt-$(date +%s)"
 curl -s -X POST "$BASE/api/v1/dungeons" \
   -H "Content-Type: application/json" "${AUTH_H[@]}" \
@@ -378,9 +380,9 @@ MT_SPEC=$(curl -s "${AUTH_H[@]}" "$BASE/api/v1/dungeons/default/$MT_DUNGEON")
 echo "$MT_SPEC" | python3 -c "
 import json,sys
 d=json.load(sys.stdin)
-spec=d.get('spec',{})
-mt=spec.get('monsterTypes')
-assert mt is not None, 'monsterTypes field missing from spec'
+game=d.get('status',{}).get('game',{})
+mt=game.get('monsterTypes')
+assert mt is not None, 'monsterTypes field missing from status.game'
 assert len(mt) == 4, f'Expected 4 monsterTypes, got {len(mt)}'
 assert mt[0] == 'goblin',   f'monsterTypes[0] should be goblin, got {mt[0]}'
 assert mt[1] == 'skeleton', f'monsterTypes[1] should be skeleton, got {mt[1]}'
@@ -389,7 +391,7 @@ assert mt[3] == 'shaman',   f'monsterTypes[3] should be shaman, got {mt[3]}'
 print('monsterTypes:', mt)
 " 2>/dev/null \
   && pass "monsterTypes field has correct values (goblin/skeleton/archer/shaman)" \
-  || fail "monsterTypes field missing or incorrect in dungeon spec"
+  || fail "monsterTypes field missing or incorrect in dungeon status.game"
 kctl delete dungeon "$MT_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
 
 # --- Test 22: mana potion rejected for non-Mage hero ---
@@ -399,8 +401,8 @@ curl -s -X POST "$BASE/api/v1/dungeons" \
   -H "Content-Type: application/json" "${AUTH_H[@]}" \
   -d "{\"name\":\"$MANA_DUNGEON\",\"monsters\":1,\"difficulty\":\"easy\",\"heroClass\":\"warrior\"}" -o /dev/null
 sleep 15
-# Inject a manapotion-common into the warrior's inventory via kubectl patch
-kctl patch dungeon "$MANA_DUNGEON" --type merge -p '{"spec":{"inventory":"manapotion-common"}}' 2>/dev/null || true
+# Inject a manapotion-common into the warrior's inventory via status subresource
+kctl patch dungeon "$MANA_DUNGEON" --subresource=status --type merge -p '{"status":{"game":{"inventory":"manapotion-common"}}}' 2>/dev/null || true
 sleep 3
 MP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeons/default/$MANA_DUNGEON/attacks" \
   -H "Content-Type: application/json" "${AUTH_H[@]}" \
@@ -446,11 +448,11 @@ sleep 8
 BOOTS_SPEC=$(curl -s "${AUTH_H[@]}" "$BASE/api/v1/dungeons/default/$BOOTS_DUNGEON")
 echo "$BOOTS_SPEC" | python3 -c "
 import json,sys
-spec=json.load(sys.stdin).get('spec',{})
-bb=spec.get('bootsBonus',0)
+game=json.load(sys.stdin).get('status',{}).get('game',{})
+bb=game.get('bootsBonus',0)
 assert bb == 0, f'bootsBonus should be 0 (ignored per #555 inventory-only), got {bb}'
 print('bootsBonus=0 (correctly ignored) OK')
-" 2>/dev/null && pass "bootsBonus ignored on create: not pre-equipped (#555)" || fail "bootsBonus pre-set in NG+ dungeon spec (should be 0 per #555)"
+" 2>/dev/null && pass "bootsBonus ignored on create: not pre-equipped (#555)" || fail "bootsBonus pre-set in NG+ dungeon (should be 0 per #555)"
 kctl delete dungeon "$BOOTS_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
 
 # --- Test 26: NG+ ring/amulet NOT pre-equipped (#555 — inventory-only carry-over) ---
@@ -465,13 +467,13 @@ sleep 8
 RING_SPEC=$(curl -s "${AUTH_H[@]}" "$BASE/api/v1/dungeons/default/$RING_DUNGEON")
 echo "$RING_SPEC" | python3 -c "
 import json,sys
-spec=json.load(sys.stdin).get('spec',{})
-rb=spec.get('ringBonus',0)
-ab=spec.get('amuletBonus',0)
+game=json.load(sys.stdin).get('status',{}).get('game',{})
+rb=game.get('ringBonus',0)
+ab=game.get('amuletBonus',0)
 assert rb == 0, f'ringBonus should be 0 (ignored per #555 inventory-only), got {rb}'
 assert ab == 0, f'amuletBonus should be 0 (ignored per #555 inventory-only), got {ab}'
 print(f'ringBonus={rb} amuletBonus={ab} (correctly ignored) OK')
-" 2>/dev/null && pass "ringBonus/amuletBonus ignored on create: not pre-equipped (#555)" || fail "ringBonus/amuletBonus pre-set in NG+ dungeon spec (should be 0 per #555)"
+" 2>/dev/null && pass "ringBonus/amuletBonus ignored on create: not pre-equipped (#555)" || fail "ringBonus/amuletBonus pre-set in NG+ dungeon (should be 0 per #555)"
 kctl delete dungeon "$RING_DUNGEON" --ignore-not-found --wait=false 2>/dev/null || true
 
 # --- Test 27: enter-room-2 rejected when door not yet unlocked ---
@@ -495,9 +497,9 @@ curl -s -X POST "$BASE/api/v1/dungeons" \
   -H "Content-Type: application/json" "${AUTH_H[@]}" \
   -d "{\"name\":\"$R2B_DUNGEON\",\"monsters\":1,\"difficulty\":\"easy\",\"heroClass\":\"warrior\"}" -o /dev/null
 sleep 8
-# Manually patch to simulate already being in room 2 with door unlocked
-kctl patch dungeon "$R2B_DUNGEON" -n default --type=merge \
-  -p '{"spec":{"currentRoom":2,"doorUnlocked":1,"treasureOpened":1}}' &>/dev/null || true
+# Manually patch status.game to simulate already being in room 2 with door unlocked
+kctl patch dungeon "$R2B_DUNGEON" -n default --subresource=status --type=merge \
+  -p '{"status":{"game":{"currentRoom":2,"doorUnlocked":1,"treasureOpened":1}}}' &>/dev/null || true
 sleep 5
 R2B_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeons/default/$R2B_DUNGEON/attacks" \
   -H "Content-Type: application/json" "${AUTH_H[@]}" \
@@ -520,10 +522,10 @@ curl -s -X POST "$BASE/api/v1/dungeons" \
   -d "{\"name\":\"$BP1_DUNGEON\",\"monsters\":1,\"difficulty\":\"easy\",\"heroClass\":\"warrior\"}" -o /dev/null
 sleep 8
 # Patch monsterHP:[0] (monster dead → boss ready) and bossHP=100 (50% of 200) → ENRAGED (phase2, ×1.5)
-# Use kubectl patch directly (no PATCH HTTP endpoint — backend uses kube SSA)
-kctl patch dungeon "$BP1_DUNGEON" -n default \
-  --type=merge -p '{"spec":{"bossHP":100,"monsterHP":[0]}}' &>/dev/null || true
-# Wait for kro to reconcile: monsterHP[0]=0 → monster-graph dead → dungeon monstersAlive=0
+# Game state lives in status.game — patch via status subresource
+kctl patch dungeon "$BP1_DUNGEON" -n default --subresource=status \
+  --type=merge -p '{"status":{"game":{"bossHP":100,"monsterHP":[0]}}}' &>/dev/null || true
+# Wait for kro to reconcile: status.game.monsterHP[0]=0 → monster-graph dead → dungeon monstersAlive=0
 # → boss-graph entityState=ready, phase2, damageMultiplier=15 → dungeon status.bossDamageMultiplier=15
 sleep 12
 BP1_RESP=$(curl -s -X POST "$BASE/api/v1/dungeons/default/$BP1_DUNGEON/attacks" \
@@ -552,8 +554,8 @@ curl -s -X POST "$BASE/api/v1/dungeons" \
   -d "{\"name\":\"$BP2_DUNGEON\",\"monsters\":1,\"difficulty\":\"easy\",\"heroClass\":\"warrior\"}" -o /dev/null
 sleep 8
 # Patch monsterHP:[0] + bossHP=50 (25% of 200) — triggers BERSERK (phase3, ×2.0)
-kctl patch dungeon "$BP2_DUNGEON" -n default \
-  --type=merge -p '{"spec":{"bossHP":50,"monsterHP":[0]}}' &>/dev/null || true
+kctl patch dungeon "$BP2_DUNGEON" -n default --subresource=status \
+  --type=merge -p '{"status":{"game":{"bossHP":50,"monsterHP":[0]}}}' &>/dev/null || true
 # Wait for kro to reconcile Boss CR hp → boss-graph CEL → dungeon status.bossDamageMultiplier=20
 sleep 12
 BP2_RESP=$(curl -s -X POST "$BASE/api/v1/dungeons/default/$BP2_DUNGEON/attacks" \
@@ -605,7 +607,7 @@ sleep 5
 # CEL eval without auth
 RESP_CEL_UNAUTH=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/v1/dungeons/default/$CEL_DUNGEON/cel-eval" \
   -H "Content-Type: application/json" \
-  -d '{"expr":"schema.spec.heroHP"}')
+  -d '{"expr":"schema.status.game.heroHP"}')
 [ "$RESP_CEL_UNAUTH" = "401" ] && pass "Test 33: unauthenticated cel-eval returns 401" || fail "Test 33: unauthenticated cel-eval returned $RESP_CEL_UNAUTH (expected 401)"
 # CEL eval with auth but expression too long
 LONG_EXPR=$(python3 -c "print('x' * 501)")

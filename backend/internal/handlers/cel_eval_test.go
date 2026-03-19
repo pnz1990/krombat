@@ -9,12 +9,17 @@ import (
 
 func TestEvalCEL(t *testing.T) {
 	spec := map[string]interface{}{
-		"heroHP":    int64(150),
-		"heroClass": "warrior",
-		"bossHP":    int64(200),
-		"inventory": "sword,shield",
-		"name":      "test-dungeon",
-		"namespace": "default",
+		"heroClass":  "warrior",
+		"difficulty": "easy",
+		"name":       "test-dungeon",
+		"namespace":  "default",
+	}
+	status := map[string]interface{}{
+		"game": map[string]interface{}{
+			"heroHP":    int64(150),
+			"bossHP":    int64(200),
+			"inventory": "sword,shield",
+		},
 	}
 
 	tests := []struct {
@@ -22,29 +27,30 @@ func TestEvalCEL(t *testing.T) {
 		want    string
 		wantErr bool
 	}{
-		// Basic field access
-		{"schema.spec.heroHP > 100", "true", false},
+		// Spec field access (config/triggers stay in spec)
 		{"schema.spec.heroClass == \"warrior\"", "true", false},
-		{"schema.spec.bossHP == 0", "false", false},
+		// Status.game field access (kro-computed game state)
+		{"schema.status.game.heroHP > 100", "true", false},
+		{"schema.status.game.bossHP == 0", "false", false},
 		// Metadata
 		{"schema.metadata.name", "test-dungeon", false},
 		// cel.bind() macro — the core test
-		{"cel.bind(x, schema.spec.heroHP, x * 2)", "300", false},
-		{"cel.bind(hp, schema.spec.heroHP, hp > 100 ? \"alive\" : \"dead\")", "alive", false},
-		// Arithmetic
-		{"schema.spec.heroHP + schema.spec.bossHP", "350", false},
+		{"cel.bind(x, schema.status.game.heroHP, x * 2)", "300", false},
+		{"cel.bind(hp, schema.status.game.heroHP, hp > 100 ? \"alive\" : \"dead\")", "alive", false},
+		// Arithmetic across spec and status.game
+		{"schema.status.game.heroHP + schema.status.game.bossHP", "350", false},
 		// String operations (ext.Strings)
 		{"schema.spec.heroClass.startsWith(\"war\")", "true", false},
 		// random.seededInt — deterministic
 		{"random.seededInt(0, 100, \"test-seed\")", "", false}, // just check no error
-		// csv.add — library.CSV
-		{"csv.add(schema.spec.inventory, \"potion\", 5)", "", false}, // just check no error
+		// kstate() — safe state access
+		{"kstate(schema.status.game, 'heroHP', 0)", "150", false},
 		// Error case: invalid expression
 		{"schema.spec.nonexistent.deep.access + 1", "", true},
 	}
 
 	for _, tt := range tests {
-		result, errMsg := handlers.EvalCEL(tt.expr, spec)
+		result, errMsg := handlers.EvalCEL(tt.expr, spec, status)
 		if tt.wantErr {
 			if errMsg == "" {
 				t.Errorf("[%s]: expected error but got result %q", tt.expr, result)
@@ -66,9 +72,12 @@ func TestEvalCEL(t *testing.T) {
 }
 
 func TestEvalCELTooLong(t *testing.T) {
-	spec := map[string]interface{}{"heroHP": int64(100)}
+	spec := map[string]interface{}{}
+	status := map[string]interface{}{
+		"game": map[string]interface{}{"heroHP": int64(100)},
+	}
 	longExpr := strings.Repeat("a", 2001)
-	_, errMsg := handlers.EvalCEL(longExpr, spec)
+	_, errMsg := handlers.EvalCEL(longExpr, spec, status)
 	if errMsg == "" {
 		t.Error("expected error for too-long expression")
 	}

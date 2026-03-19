@@ -42,15 +42,26 @@ const ICO = {
   heart: '♥', gem: '♦', sword: '/', armor: '□', potion: '○',
 } as const
 
+// ─── Game State Helper ────────────────────────────────────────────────────────
+// KREP-023: kro-computed game state now lives in status.game (state nodes).
+// During rolling migration, fall back to spec for old dungeons.
+function getGame(cr: DungeonCR | null | undefined): any {
+  if (!cr) return {}
+  const game = cr.status?.game
+  if (game && Object.keys(game).length > 0) return game
+  // Fallback: old dungeon with game state in spec (pre-migration)
+  return cr.spec || {}
+}
+
 // ─── Achievement System ───────────────────────────────────────────────────────
 
-function computeAchievements(spec: any, maxHeroHP: number) {
+function computeAchievements(spec: any, game: any, maxHeroHP: number) {
   const turns = spec.attackSeq ?? 0
-  const heroHP = spec.heroHP ?? 0
+  const heroHP = game.heroHP ?? 0
   const heroClass = spec.heroClass ?? 'warrior'
   const difficulty = spec.difficulty ?? 'normal'
-  const weaponBonus = spec.weaponBonus ?? 0
-  const equippedCount = [spec.weaponBonus, spec.armorBonus, spec.shieldBonus, spec.helmetBonus, spec.pantsBonus, spec.bootsBonus, spec.ringBonus, spec.amuletBonus].filter(v => (v ?? 0) > 0).length
+  const weaponBonus = game.weaponBonus ?? 0
+  const equippedCount = [game.weaponBonus, game.armorBonus, game.shieldBonus, game.helmetBonus, game.pantsBonus, game.bootsBonus, game.ringBonus, game.amuletBonus].filter(v => (v ?? 0) > 0).length
 
   return [
     { id: 'speedrun', name: 'Speedrunner', icon: 'lightning', earned: turns <= 30, desc: `Won in ${turns} turns (≤30 needed)` },
@@ -310,7 +321,7 @@ export default function App() {
               setDetail(d)
               setLoading(false)
               // Teach modifier concept if this dungeon has one
-              if (d.spec.modifier && d.spec.modifier !== 'none') triggerInsight('modifier-present')
+              if (getGame(d).modifier && getGame(d).modifier !== 'none') triggerInsight('modifier-present')
               // Teach resource chaining once status is populated (Hero CR → dungeon status)
               if (d.status?.maxHeroHP) triggerInsight('resource-chaining')
               // Teach status.conditions when kro reports a genuine (non-transient) error condition
@@ -392,7 +403,7 @@ export default function App() {
   const [floatingDmg, setFloatingDmg] = useState<{ target: string; amount: string; color: string } | null>(null)
   const [bossPhaseFlash, setBossPhaseFlash] = useState<'enraged' | 'berserk' | null>(null)
 
-  const [combatModal, setCombatModal] = useState<{ phase: 'rolling' | 'resolved'; formula: string; heroAction: string; enemyAction: string; spec: any; oldHP: number } | null>(null)
+  const [combatModal, setCombatModal] = useState<{ phase: 'rolling' | 'resolved'; formula: string; heroAction: string; enemyAction: string; spec: any; game: any; oldHP: number } | null>(null)
   const pendingLootRef = useRef<string | null>(null)
 
   const handleAttack = async (target: string, damage: number) => {
@@ -400,9 +411,10 @@ export default function App() {
     attackingRef.current = true
     // Prevent attacking dead targets
     if (detail?.spec) {
+      const detailGame = getGame(detail)
       const mMatch = target.match(/monster-(\d+)$/)
-      if (mMatch && (detail.spec.monsterHP || [])[parseInt(mMatch[1])] <= 0) { attackingRef.current = false; return }
-      if (target.endsWith('-boss') && detail.spec.bossHP <= 0) { attackingRef.current = false; return }
+      if (mMatch && (detailGame.monsterHP || [])[parseInt(mMatch[1])] <= 0) { attackingRef.current = false; return }
+      if (target.endsWith('-boss') && detailGame.bossHP <= 0) { attackingRef.current = false; return }
     }
     setError('')
     const isAbility = target === 'hero' || target === 'activate-taunt'
@@ -414,7 +426,7 @@ export default function App() {
       setAttackPhase('attacking')
 
       if (!isAbility && !isItem) {
-        setCombatModal({ phase: 'rolling', formula: detail?.status?.diceFormula || '2d12+6', heroAction: '', enemyAction: '', spec: detail?.spec, oldHP: detail?.spec.heroHP ?? 100 })
+        setCombatModal({ phase: 'rolling', formula: detail?.status?.diceFormula || '2d12+6', heroAction: '', enemyAction: '', spec: detail?.spec, game: getGame(detail), oldHP: getGame(detail).heroHP ?? 100 })
       }
 
       await submitAttack(selected.ns, selected.name, target, damage,
@@ -451,8 +463,9 @@ export default function App() {
         for (let attempt = 0; attempt < 40; attempt++) {
           await new Promise(r => setTimeout(r, 1500))
           const current = await getDungeon(selected.ns, selected.name)
+          const currentGame = getGame(current)
           const seqAdvanced = (current.spec.actionSeq || 0) > prevSeq && !current.spec.lastAction
-          const room2Ready = target !== 'enter-room-2' || (current.spec.room2ProcessedSeq || 0) >= (current.spec.actionSeq || 0)
+          const room2Ready = target !== 'enter-room-2' || (currentGame.room2ProcessedSeq || 0) >= (current.spec.actionSeq || 0)
           if (seqAdvanced && room2Ready) {
             updated = current
             break
@@ -469,8 +482,9 @@ export default function App() {
         if (target === 'enter-room-2') {
           triggerInsight('enter-room-2')
           // #444: K8s log entry for room transition — enterRoom2Resolve specPatch fired
-          const newMonHP = updated.spec.room2MonsterHP?.join(',') ?? '...'
-          const newBossHP = updated.spec.room2BossHP ?? '...'
+          const updatedGame = getGame(updated)
+          const newMonHP = updatedGame.room2MonsterHP?.join(',') ?? '...'
+          const newBossHP = updatedGame.room2BossHP ?? '...'
           addK8s(
             `kubectl patch dungeon ${selected.name} --type=merge -p '{"spec":{"currentRoom":2}}'`,
             `enterRoom2Resolve specPatch fired — monsterHP: [${newMonHP}], bossHP: ${newBossHP}`,
@@ -483,12 +497,12 @@ export default function App() {
       } else {
         // Combat: backend is synchronous — attackSeq increments before API returns.
         // Capture prevSeq from the pre-attack state (detail), not after a wait.
-        const oldHP = detail?.spec.heroHP ?? 100
+        const oldHP = getGame(detail).heroHP ?? 100
         const formula = detail?.status?.diceFormula || '2d12+6'
         const prevSeq = detail?.spec.attackSeq || 0
 
         if (!isAbility) {
-          setCombatModal({ phase: 'rolling', formula, heroAction: '', enemyAction: '', spec: detail?.spec, oldHP })
+          setCombatModal({ phase: 'rolling', formula, heroAction: '', enemyAction: '', spec: detail?.spec, game: getGame(detail), oldHP })
         }
 
         // Poll until attackSeq > prevSeq AND all kro triggers are cleared:
@@ -501,7 +515,8 @@ export default function App() {
           const current = await getDungeon(selected.ns, selected.name)
           if ((current.spec.attackSeq || 0) > prevSeq && !current.spec.lastAttackTarget && !current.spec.lastAbility) {
             updated = current
-            addK8s(`kubectl get dungeon ${selected.name}`, `heroHP:${current.spec.heroHP} bossHP:${current.spec.bossHP}`,
+            const currentGame = getGame(current)
+            addK8s(`kubectl get dungeon ${selected.name}`, `heroHP:${currentGame.heroHP} bossHP:${currentGame.bossHP}`,
               JSON.stringify({ spec: current.spec, status: current.status }, null, 2))
             break
           }
@@ -518,18 +533,18 @@ export default function App() {
       if (!isAbility && !isItem) {
         const displayHero = pollSucceeded ? heroAction : 'Attack processing... (dismiss and check game state)'
         const displayEnemy = pollSucceeded ? enemyAction : ''
-        setCombatModal({ phase: 'resolved', formula: detail?.status?.diceFormula || '2d12+6', heroAction: displayHero, enemyAction: displayEnemy, spec: updated.spec, oldHP: detail?.spec.heroHP ?? 100 })
+        setCombatModal({ phase: 'resolved', formula: detail?.status?.diceFormula || '2d12+6', heroAction: displayHero, enemyAction: displayEnemy, spec: updated.spec, game: getGame(updated), oldHP: getGame(detail).heroHP ?? 100 })
         setAnimPhase('enemy-attack')
       } else if (!isItem) {
         // Ability (heal/taunt)
         const healMatch = heroAction.match(/heals for (\d+)/)
-        if (healMatch) setCombatModal({ phase: 'resolved', formula: '', heroAction, enemyAction: 'No counter-attack during ability', spec: updated.spec, oldHP: detail?.spec.heroHP ?? 100 })
-        else setCombatModal({ phase: 'resolved', formula: '', heroAction, enemyAction, spec: updated.spec, oldHP: detail?.spec.heroHP ?? 100 })
+        if (healMatch) setCombatModal({ phase: 'resolved', formula: '', heroAction, enemyAction: 'No counter-attack during ability', spec: updated.spec, game: getGame(updated), oldHP: getGame(detail).heroHP ?? 100 })
+        else setCombatModal({ phase: 'resolved', formula: '', heroAction, enemyAction, spec: updated.spec, game: getGame(updated), oldHP: getGame(detail).heroHP ?? 100 })
       }
 
       // Loot drop — stash until combat modal is dismissed so it's a surprise
-      if (!isItem && pollSucceeded && updated.spec.lastLootDrop) {
-        pendingLootRef.current = updated.spec.lastLootDrop
+      if (!isItem && pollSucceeded && getGame(updated).lastLootDrop) {
+        pendingLootRef.current = getGame(updated).lastLootDrop
       }
       await new Promise(r => setTimeout(r, 100))
 
@@ -554,17 +569,17 @@ export default function App() {
         } else {
           addEvent(icon, heroAction)
         }
-        // Loot: use lastLootDrop from spec (kro-authoritative), not Go log text
-        if (pollSucceeded && updated.spec.lastLootDrop && updated.spec.lastLootDrop !== detail?.spec.lastLootDrop) {
-          addEvent('chest', `Loot dropped: ${updated.spec.lastLootDrop}`)
+        // Loot: use lastLootDrop from game (kro-authoritative), not Go log text
+        if (pollSucceeded && getGame(updated).lastLootDrop && getGame(updated).lastLootDrop !== getGame(detail).lastLootDrop) {
+          addEvent('chest', `Loot dropped: ${getGame(updated).lastLootDrop}`)
         }
-        // Kill detection: use actual monsterHP spec change, not Go log text
+        // Kill detection: use actual monsterHP game change, not Go log text
           if (pollSucceeded) {
-            const prevMonHP: number[] = detail?.spec.monsterHP || []
-            const newMonHP: number[] = updated.spec.monsterHP || []
+            const prevMonHP: number[] = getGame(detail).monsterHP || []
+            const newMonHP: number[] = getGame(updated).monsterHP || []
             newMonHP.forEach((hp, idx) => {
               if (hp <= 0 && (prevMonHP[idx] ?? 1) > 0) {
-                const displayName = getMonsterName(idx, updated.spec.currentRoom || 1, updated.spec.monsterTypes)
+                const displayName = getMonsterName(idx, getGame(updated).currentRoom || 1, getGame(updated).monsterTypes)
                 addEvent('skull', `${displayName} slain!`)
               }
             })
@@ -576,10 +591,12 @@ export default function App() {
       }
       // State change events (only if poll succeeded and state actually changed)
       if (pollSucceeded) {
-        const prevBossHP = detail?.spec.bossHP ?? 1
-        const newBossHP = updated.spec.bossHP ?? 1
-        const prevAllDead = (detail?.spec.monsterHP || []).every((hp: number) => hp <= 0)
-        const nowAllDead = (updated.spec.monsterHP || []).every((hp: number) => hp <= 0)
+        const updatedGame = getGame(updated)
+        const detailGame = getGame(detail)
+        const prevBossHP = detailGame.bossHP ?? 1
+        const newBossHP = updatedGame.bossHP ?? 1
+        const prevAllDead = (detailGame.monsterHP || []).every((hp: number) => hp <= 0)
+        const nowAllDead = (updatedGame.monsterHP || []).every((hp: number) => hp <= 0)
         if (nowAllDead && !prevAllDead) { addEvent('dragon', 'Boss unlocked! All monsters slain!'); triggerInsight('boss-ready'); triggerInsight('all-monsters-dead') }
         if (newBossHP <= 0 && prevBossHP > 0) { addEvent('crown', 'VICTORY! Boss defeated!'); triggerInsight('boss-killed') }
         // Boss phase transitions
@@ -609,15 +626,15 @@ export default function App() {
             `# boss-graph.yaml — damageMultiplier specPatch (phase3)\nphase: "\${hp * 100 / maxHP > 50 ? 'phase1' : hp * 100 / maxHP > 25 ? 'phase2' : 'phase3'}"\ndamageMultiplier: "\${... > 50 ? '10' : ... > 25 ? '13' : '16'}"  # ×10 integer`
           )
         }
-        if ((updated.spec.heroHP ?? 100) <= 0 && (detail?.spec.heroHP ?? 100) > 0) addEvent('skull', 'Hero has fallen...')
+        if ((updatedGame.heroHP ?? 100) <= 0 && (detailGame.heroHP ?? 100) > 0) addEvent('skull', 'Hero has fallen...')
         // DoT floating damage on hero
-        const prevHeroHP = detail?.spec.heroHP ?? 100
-        const newHeroHP = updated.spec.heroHP ?? 100
+        const prevHeroHP = detailGame.heroHP ?? 100
+        const newHeroHP = updatedGame.heroHP ?? 100
         const hpDropped = newHeroHP < prevHeroHP
-        const prevPoisonTurns = detail?.spec.poisonTurns ?? 0
-        const prevBurnTurns = detail?.spec.burnTurns ?? 0
-        const newPoisonTurns = updated.spec.poisonTurns ?? 0
-        const newBurnTurns = updated.spec.burnTurns ?? 0
+        const prevPoisonTurns = detailGame.poisonTurns ?? 0
+        const prevBurnTurns = detailGame.burnTurns ?? 0
+        const newPoisonTurns = updatedGame.poisonTurns ?? 0
+        const newBurnTurns = updatedGame.burnTurns ?? 0
         // Detect tickDoT specPatch: poisonTurns or burnTurns actually decremented
         // (#500: use counter decrement as the reliable signal — HP drop can be obscured by simultaneous counter-attack)
         const dotTicked = (prevPoisonTurns > 0 && newPoisonTurns < prevPoisonTurns) || (prevBurnTurns > 0 && newBurnTurns < prevBurnTurns)
@@ -633,8 +650,8 @@ export default function App() {
           triggerInsight('dot-applied')
         }
         // Detect monster kill
-        const prevDeadCount = (detail?.spec.monsterHP || []).filter((hp: number) => hp <= 0).length
-        const newDeadCount = (updated.spec.monsterHP || []).filter((hp: number) => hp <= 0).length
+        const prevDeadCount = (detailGame.monsterHP || []).filter((hp: number) => hp <= 0).length
+        const newDeadCount = (updatedGame.monsterHP || []).filter((hp: number) => hp <= 0).length
         if (newDeadCount > prevDeadCount) triggerInsight('monster-killed')
         // First attack
         if ((detail?.spec.attackSeq ?? 0) === 0 && (updated.spec.attackSeq ?? 0) > 0) triggerInsight('first-attack')
@@ -895,7 +912,7 @@ export default function App() {
         </>
       ) : loading ? (
         <div className="loading">Initializing dungeon</div>
-      ) : detail && (detail.spec.initProcessedSeq ?? 0) === 0 ? (
+      ) : detail && (getGame(detail).initProcessedSeq ?? 0) === 0 ? (
         <div className="loading">Initializing dungeon</div>
       ) : detail ? (
         <DungeonView
@@ -1832,17 +1849,17 @@ function EventLogTabs({ events, k8sLog, reconcileStream, kroUnlocked, onViewKroC
 // ── DungeonMiniMap ────────────────────────────────────────────────────────────
 // Shows a compact 2-room progress strip: Room 1 → Room 2
 // Room states: 'current' (gold) | 'cleared' (green) | 'locked' (gray) | 'active-boss' (red pulse)
-function DungeonMiniMap({ spec }: { spec: any }) {
-  const currentRoom = spec.currentRoom || 1
-  const bossHP = spec.bossHP ?? 1
-  const room2BossHP = spec.room2BossHP ?? 1
-  const monsterHP: number[] = spec.monsterHP || []
-  const room2MonsterHP: number[] = spec.room2MonsterHP || []
-  const treasureOpened = spec.treasureOpened ?? 0
-  const doorUnlocked = spec.doorUnlocked ?? 0
+function DungeonMiniMap({ spec, game }: { spec: any; game: any }) {
+  const currentRoom = game.currentRoom || 1
+  const bossHP = game.bossHP ?? 1
+  const room2BossHP = game.room2BossHP ?? 1
+  const monsterHP: number[] = game.monsterHP || []
+  const room2MonsterHP: number[] = game.room2MonsterHP || []
+  const treasureOpened = game.treasureOpened ?? 0
+  const doorUnlocked = game.doorUnlocked ?? 0
   const allDead1 = monsterHP.length > 0 && monsterHP.every((h: number) => h <= 0)
   const allDead2 = room2MonsterHP.length > 0 && room2MonsterHP.every((h: number) => h <= 0)
-  const heroHP = spec.heroHP ?? 1
+  const heroHP = game.heroHP ?? 1
 
   // Room 1 state
   let r1State: 'current' | 'cleared' | 'boss-active' = 'current'
@@ -2125,7 +2142,7 @@ function DungeonView({ cr, prevCr, onBack, onGameOverBack, onNewGamePlus, onAtta
   showHelp: boolean; onToggleHelp: () => void
   floatingDmg: { target: string; amount: string; color: string } | null
   bossPhaseFlash: 'enraged' | 'berserk' | null
-  combatModal: { phase: string; formula: string; heroAction: string; enemyAction: string; spec: any; oldHP: number } | null
+  combatModal: { phase: string; formula: string; heroAction: string; enemyAction: string; spec: any; game: any; oldHP: number } | null
   onDismissCombat: () => void
   lootDrop: string | null; onDismissLoot: () => void
   wsConnected: boolean
@@ -2141,49 +2158,50 @@ function DungeonView({ cr, prevCr, onBack, onGameOverBack, onNewGamePlus, onAtta
   if (!cr?.metadata?.name) return <div className="loading">Loading dungeon</div>
   const spec = cr.spec || { monsters: 0, difficulty: 'normal', monsterHP: [], bossHP: 0, heroHP: 100 }
   const status = cr.status
+  const game = getGame(cr)
   const dungeonName = cr.metadata.name
-  const maxMonsterHP = Number(status?.maxMonsterHP) || Math.max(...(spec.monsterHP || [1]))
-  const maxBossHP = Number(status?.maxBossHP) || spec.bossHP
-  const heroHP = spec.heroHP ?? 100
+  const maxMonsterHP = Number(status?.maxMonsterHP) || Math.max(...(game.monsterHP || [1]))
+  const maxBossHP = Number(status?.maxBossHP) || game.bossHP
+  const heroHP = game.heroHP ?? 100
   const classMaxHP = spec.heroClass === 'warrior' ? 200 : spec.heroClass === 'mage' ? 120 : 150
   const maxHeroHP = Number(status?.maxHeroHP) || classMaxHP
   const isDefeated = status?.defeated || heroHP <= 0
-  const allMonstersDead = (spec.monsterHP || []).every((hp: number) => hp <= 0)
-  const bossState = spec.bossHP <= 0 ? 'defeated' : allMonstersDead ? 'ready' : 'pending'
+  const allMonstersDead = (game.monsterHP || []).every((hp: number) => hp <= 0)
+  const bossState = game.bossHP <= 0 ? 'defeated' : allMonstersDead ? 'ready' : 'pending'
   // Boss phase — always derive from HP % (instant, no kro lag), status is only used when HP is 0
   const bossPhase: 'phase1' | 'phase2' | 'phase3' | 'defeated' = (() => {
-    if (spec.bossHP <= 0) return 'defeated'
+    if (game.bossHP <= 0) return 'defeated'
     if (maxBossHP > 0) {
-      const pct = (spec.bossHP / maxBossHP) * 100
+      const pct = (game.bossHP / maxBossHP) * 100
       if (pct <= 25) return 'phase3'
       if (pct <= 50) return 'phase2'
     }
     return 'phase1'
   })()
-  const gameOver = isDefeated || (spec.bossHP <= 0 && allMonstersDead)
-  const currentRoom = spec.currentRoom || 1
+  const gameOver = isDefeated || (game.bossHP <= 0 && allMonstersDead)
+  const currentRoom = game.currentRoom || 1
   // room2BossHP > 0 guards against the brief kro reconciliation window where currentRoom=2
   // but enterRoom2Resolve hasn't fired yet (monsterHP/bossHP still show Room 1 cleared state)
-  const isVictory = gameOver && !isDefeated && (spec.currentRoom || 1) === 2 && (spec.room2BossHP || 0) > 0
+  const isVictory = gameOver && !isDefeated && (game.currentRoom || 1) === 2 && (game.room2BossHP || 0) > 0
 
   // XP earned breakdown for the victory/defeat screen (#360)
   const xpRunBreakdown = (() => {
     const earned = spec.xpEarned ?? 0
-    const kills = (spec.monsterHP || []).filter((hp: number) => hp <= 0).length
-    const bossR1Dead = (spec.currentRoom || 1) >= 2 || spec.bossHP <= 0
-    const bossR2Dead = (spec.currentRoom || 1) === 2 && spec.bossHP <= 0
+    const kills = (game.monsterHP || []).filter((hp: number) => hp <= 0).length
+    const bossR1Dead = (game.currentRoom || 1) >= 2 || game.bossHP <= 0
+    const bossR2Dead = (game.currentRoom || 1) === 2 && game.bossHP <= 0
     const rows: { label: string; xp: number }[] = []
     if (kills > 0) rows.push({ label: `Monster kills (${kills})`, xp: kills * 10 })
-    if (bossR1Dead && (spec.currentRoom || 1) === 1) rows.push({ label: 'Boss kill (Room 1)', xp: 50 })
-    if ((spec.currentRoom || 1) >= 2) rows.push({ label: 'Room 1 boss kill', xp: 50 })
-    if ((spec.currentRoom || 1) >= 2) rows.push({ label: 'Room 1 clear bonus', xp: 25 })
-    if ((spec.currentRoom || 1) >= 2) rows.push({ label: 'Enter Room 2', xp: 10 })
+    if (bossR1Dead && (game.currentRoom || 1) === 1) rows.push({ label: 'Boss kill (Room 1)', xp: 50 })
+    if ((game.currentRoom || 1) >= 2) rows.push({ label: 'Room 1 boss kill', xp: 50 })
+    if ((game.currentRoom || 1) >= 2) rows.push({ label: 'Room 1 clear bonus', xp: 25 })
+    if ((game.currentRoom || 1) >= 2) rows.push({ label: 'Enter Room 2', xp: 10 })
     if (bossR2Dead) rows.push({ label: 'Room 2 boss kill', xp: 100 })
     if (bossR2Dead) rows.push({ label: 'Room 2 clear bonus', xp: 25 })
     if (isVictory) {
       rows.push({ label: 'Victory bonus', xp: 150 })
       if (spec.difficulty === 'hard') rows.push({ label: 'Hard difficulty', xp: 50 })
-      if (spec.heroHP >= classMaxHP) rows.push({ label: 'Flawless (full HP)', xp: 25 })
+      if (game.heroHP >= classMaxHP) rows.push({ label: 'Flawless (full HP)', xp: 25 })
       if ((spec.attackSeq ?? 0) + (spec.actionSeq ?? 0) <= 30) rows.push({ label: 'Speedrun (≤30 turns)', xp: 25 })
       if ((spec.runCount ?? 0) >= 1) rows.push({ label: 'New Game+', xp: 50 })
     }
@@ -2220,7 +2238,7 @@ function DungeonView({ cr, prevCr, onBack, onGameOverBack, onNewGamePlus, onAtta
   // Room 1 cleared celebration — show for 3s when boss defeated in room 1
   const [showRoom1Cleared, setShowRoom1Cleared] = useState(false)
   const room1ClearedRef = useRef(false)
-  const room1IsCleared = (spec.currentRoom || 1) === 1 && spec.bossHP <= 0 && allMonstersDead && !isDefeated
+  const room1IsCleared = (game.currentRoom || 1) === 1 && game.bossHP <= 0 && allMonstersDead && !isDefeated
   useEffect(() => {
     if (room1IsCleared && !room1ClearedRef.current) {
       room1ClearedRef.current = true
@@ -2278,10 +2296,10 @@ function DungeonView({ cr, prevCr, onBack, onGameOverBack, onNewGamePlus, onAtta
 
   // Auto-open treasure and unlock door after boss kill (room 1 only)
   useEffect(() => {
-    const currentRoom = spec.currentRoom || 1
-    if (currentRoom !== 1 || !allMonstersDead || spec.bossHP > 0 || isDefeated || attackPhase) return
-    const treasureOpened = (spec.treasureOpened ?? 0) === 1
-    const doorUnlocked = (spec.doorUnlocked ?? 0) === 1
+    const currentRoom = game.currentRoom || 1
+    if (currentRoom !== 1 || !allMonstersDead || game.bossHP > 0 || isDefeated || attackPhase) return
+    const treasureOpened = (game.treasureOpened ?? 0) === 1
+    const doorUnlocked = (game.doorUnlocked ?? 0) === 1
     if (!treasureOpened && autoTriggeredRef.current !== 'open-treasure') {
       autoTriggeredRef.current = 'open-treasure'
       onAttack('open-treasure', 0)
@@ -2289,11 +2307,11 @@ function DungeonView({ cr, prevCr, onBack, onGameOverBack, onNewGamePlus, onAtta
       autoTriggeredRef.current = 'unlock-door'
       onAttack('unlock-door', 0)
     }
-  }, [spec.bossHP, allMonstersDead, spec.treasureOpened, spec.doorUnlocked, attackPhase])
+  }, [game.bossHP, allMonstersDead, game.treasureOpened, game.doorUnlocked, attackPhase])
 
   // Build turn order for display
   const turnOrder: { id: string; label: string; alive: boolean }[] = [{ id: 'hero', label: 'Hero', alive: !isDefeated }]
-  ;(spec.monsterHP || []).forEach((hp, i) => {
+  ;(game.monsterHP || []).forEach((hp: number, i: number) => {
     turnOrder.push({ id: `monster-${i}`, label: `M${i}`, alive: hp > 0 })
   })
   if (bossState !== 'pending') {
@@ -2323,7 +2341,7 @@ function DungeonView({ cr, prevCr, onBack, onGameOverBack, onNewGamePlus, onAtta
        </div>
 
        {/* ── Mini-map ─────────────────────────────────────────────────── */}
-       <DungeonMiniMap spec={spec} />
+       <DungeonMiniMap spec={spec} game={game} />
 
 
 
@@ -2368,7 +2386,7 @@ function DungeonView({ cr, prevCr, onBack, onGameOverBack, onNewGamePlus, onAtta
               <>
                 <button className="modal-close" aria-label="Close combat results" onClick={onDismissCombat}>✕</button>
                 <h2 style={{ color: 'var(--gold)', fontSize: 14, marginBottom: 12 }}>COMBAT RESULTS</h2>
-                <CombatBreakdown heroAction={combatModal.heroAction} enemyAction={combatModal.enemyAction} spec={combatModal.spec} oldHP={combatModal.oldHP} />
+                <CombatBreakdown heroAction={combatModal.heroAction} enemyAction={combatModal.enemyAction} spec={combatModal.spec} game={combatModal.game} oldHP={combatModal.oldHP} />
                 {combatModal.heroAction && (
                   <CelTrace
                     data={{
@@ -2377,9 +2395,9 @@ function DungeonView({ cr, prevCr, onBack, onGameOverBack, onNewGamePlus, onAtta
                       heroClass: combatModal.spec?.heroClass || spec.heroClass || 'warrior',
                       heroAction: combatModal.heroAction,
                       combatLog: combatModal.spec?.lastCombatLog || '',
-                      modifier: combatModal.spec?.modifier ?? spec.modifier,
-                      helmetBonus: combatModal.spec?.helmetBonus ?? spec.helmetBonus,
-                      pantsBonus: combatModal.spec?.pantsBonus ?? spec.pantsBonus,
+                      modifier: combatModal.game?.modifier ?? game.modifier,
+                      helmetBonus: combatModal.game?.helmetBonus ?? game.helmetBonus,
+                      pantsBonus: combatModal.game?.pantsBonus ?? game.pantsBonus,
                     }}
                     onLearnMore={() => onViewKroConcept('cel-basics')}
                   />
@@ -2393,7 +2411,7 @@ function DungeonView({ cr, prevCr, onBack, onGameOverBack, onNewGamePlus, onAtta
 
       {!gameOver && !combatModal && (
         <div className="turn-bar">
-          {(spec.stunTurns ?? 0) > 0 ? (
+          {(game.stunTurns ?? 0) > 0 ? (
             <span className="turn-indicator" style={{ color: '#f1c40f' }}><PixelIcon name="stun" size={12} /> STUNNED — skipping this turn</span>
           ) : (
             <span className="turn-indicator"><PixelIcon name="sword" size={12} /> Ready to attack!</span>
@@ -2409,11 +2427,11 @@ function DungeonView({ cr, prevCr, onBack, onGameOverBack, onNewGamePlus, onAtta
             <span>Turns: <span style={{ color: 'var(--gold)' }}>{spec.attackSeq ?? 0}</span></span>
             <span>Hero: <span style={{ color: 'var(--gold)' }}>{spec.heroClass ?? 'warrior'}</span></span>
             <span>Difficulty: <span style={{ color: 'var(--gold)' }}>{spec.difficulty}</span></span>
-            <span>Room: <span style={{ color: 'var(--gold)' }}>{spec.currentRoom ?? 1}</span></span>
-            {spec.weaponBonus ? <span><PixelIcon name="sword" size={8} /> Weapon +{spec.weaponBonus}</span> : null}
-            {spec.armorBonus ? <span><PixelIcon name="shield" size={8} /> Armor {spec.armorBonus}%</span> : null}
-            {spec.ringBonus ? <span><PixelIcon name="ring" size={8} /> Ring +{spec.ringBonus}/turn</span> : null}
-            {spec.amuletBonus ? <span><PixelIcon name="amulet" size={8} /> Amulet +{spec.amuletBonus}%dmg</span> : null}
+            <span>Room: <span style={{ color: 'var(--gold)' }}>{game.currentRoom ?? 1}</span></span>
+            {game.weaponBonus ? <span><PixelIcon name="sword" size={8} /> Weapon +{game.weaponBonus}</span> : null}
+            {game.armorBonus ? <span><PixelIcon name="shield" size={8} /> Armor {game.armorBonus}%</span> : null}
+            {game.ringBonus ? <span><PixelIcon name="ring" size={8} /> Ring +{game.ringBonus}/turn</span> : null}
+            {game.amuletBonus ? <span><PixelIcon name="amulet" size={8} /> Amulet +{game.amuletBonus}%dmg</span> : null}
           </div>
           {xpRunBreakdown.total > 0 && (
             <div className="xp-summary">
@@ -2432,7 +2450,7 @@ function DungeonView({ cr, prevCr, onBack, onGameOverBack, onNewGamePlus, onAtta
         </div>
       )}
 
-      {gameOver && !isDefeated && (spec.currentRoom || 1) === 2 && (spec.room2BossHP || 0) > 0 && (
+      {gameOver && !isDefeated && (game.currentRoom || 1) === 2 && (game.room2BossHP || 0) > 0 && (
         <div className="victory-banner">
           <h2><PixelIcon name="crown" size={18} /> VICTORY! <PixelIcon name="crown" size={18} /></h2>
           <p className="loot">The dungeon has been conquered!</p>
@@ -2440,12 +2458,12 @@ function DungeonView({ cr, prevCr, onBack, onGameOverBack, onNewGamePlus, onAtta
             <span>Turns: <span style={{ color: 'var(--gold)' }}>{spec.attackSeq ?? 0}</span></span>
             <span>Hero: <span style={{ color: 'var(--gold)' }}>{spec.heroClass ?? 'warrior'}</span></span>
             <span>Difficulty: <span style={{ color: 'var(--gold)' }}>{spec.difficulty}</span></span>
-            {spec.weaponBonus ? <span><PixelIcon name="sword" size={8} /> Weapon +{spec.weaponBonus}</span> : null}
-            {spec.armorBonus ? <span><PixelIcon name="shield" size={8} /> Armor {spec.armorBonus}%</span> : null}
-            {spec.helmetBonus ? <span><PixelIcon name="helmet" size={8} /> Helmet +{spec.helmetBonus}%crit</span> : null}
-            {spec.pantsBonus ? <span><PixelIcon name="pants" size={8} /> Pants +{spec.pantsBonus}%dodge</span> : null}
-            {spec.ringBonus ? <span><PixelIcon name="ring" size={8} /> Ring +{spec.ringBonus}/turn</span> : null}
-            {spec.amuletBonus ? <span><PixelIcon name="amulet" size={8} /> Amulet +{spec.amuletBonus}%dmg</span> : null}
+            {game.weaponBonus ? <span><PixelIcon name="sword" size={8} /> Weapon +{game.weaponBonus}</span> : null}
+            {game.armorBonus ? <span><PixelIcon name="shield" size={8} /> Armor {game.armorBonus}%</span> : null}
+            {game.helmetBonus ? <span><PixelIcon name="helmet" size={8} /> Helmet +{game.helmetBonus}%crit</span> : null}
+            {game.pantsBonus ? <span><PixelIcon name="pants" size={8} /> Pants +{game.pantsBonus}%dodge</span> : null}
+            {game.ringBonus ? <span><PixelIcon name="ring" size={8} /> Ring +{game.ringBonus}/turn</span> : null}
+            {game.amuletBonus ? <span><PixelIcon name="amulet" size={8} /> Amulet +{game.amuletBonus}%dmg</span> : null}
           </div>
           {xpRunBreakdown.total > 0 && (
             <div className="xp-summary">
@@ -2458,7 +2476,7 @@ function DungeonView({ cr, prevCr, onBack, onGameOverBack, onNewGamePlus, onAtta
               <div className="xp-summary-total">Total: +{xpRunBreakdown.total} XP</div>
             </div>
           )}
-          <AchievementBadges achievements={computeAchievements(spec, spec.heroClass === 'mage' ? 120 : spec.heroClass === 'rogue' ? 150 : 200)} />
+          <AchievementBadges achievements={computeAchievements(spec, game, maxHeroHP)} />
 
           {/* #456 — Run card: shareable SVG generated by backend */}
           {(() => {
@@ -2634,7 +2652,7 @@ function DungeonView({ cr, prevCr, onBack, onGameOverBack, onNewGamePlus, onAtta
           <div><span className="label">Difficulty:</span><span className="value">{spec.difficulty}</span></div>
         </Tooltip>
         <Tooltip text={KRO_STATUS_TIPS.room}>
-          <div><span className="label">Room:</span><span className="value">{spec.currentRoom || 1}</span></div>
+          <div><span className="label">Room:</span><span className="value">{game.currentRoom || 1}</span></div>
         </Tooltip>
         <Tooltip text={KRO_STATUS_TIPS.turn}>
           <div><span className="label">Turn:</span><span className="value">{(spec.attackSeq ?? 0) + 1}</span></div>
@@ -2644,7 +2662,7 @@ function DungeonView({ cr, prevCr, onBack, onGameOverBack, onNewGamePlus, onAtta
       <div className="game-layout">
         {/* LEFT PANEL — Dungeon Arena */}
         <div className="left-panel">
-          <div className={`dungeon-arena${spec.modifier === 'blessing-fortune' ? ' arena-blessing-fortune' : ''}`} style={getModifierArenaStyle(spec.modifier)}>
+          <div className={`dungeon-arena${game.modifier === 'blessing-fortune' ? ' arena-blessing-fortune' : ''}`} style={getModifierArenaStyle(game.modifier)}>
             {/* Stone floor texture layers */}
             <div className="arena-floor" style={{ backgroundImage: `url('/sprites/dungeon/floor-${currentRoom === 2 ? 2 : 1}.png')`, ...(currentRoom === 2 ? { backgroundSize: '80px' } : {}) }} />
             <div className="arena-glow" />
@@ -2679,18 +2697,18 @@ function DungeonView({ cr, prevCr, onBack, onGameOverBack, onNewGamePlus, onAtta
             ))}
 
             {/* Door at top of arena — room 1 only */}
-             {(spec.currentRoom || 1) === 1 && (
-             <div className="arena-entity door-entity" style={{ top: '8%', left: '50%', cursor: (spec.doorUnlocked ?? 0) === 1 ? 'pointer' : 'default' }}
-               role={(spec.doorUnlocked ?? 0) === 1 ? 'button' : undefined}
-               tabIndex={(spec.doorUnlocked ?? 0) === 1 ? 0 : undefined}
-               aria-label={(spec.doorUnlocked ?? 0) === 1 ? 'Enter Room 2' : undefined}
+             {(game.currentRoom || 1) === 1 && (
+             <div className="arena-entity door-entity" style={{ top: '8%', left: '50%', cursor: (game.doorUnlocked ?? 0) === 1 ? 'pointer' : 'default' }}
+               role={(game.doorUnlocked ?? 0) === 1 ? 'button' : undefined}
+               tabIndex={(game.doorUnlocked ?? 0) === 1 ? 0 : undefined}
+               aria-label={(game.doorUnlocked ?? 0) === 1 ? 'Enter Room 2' : undefined}
                 onClick={() => {
                   if (attackPhase) return
-                  if ((spec.doorUnlocked ?? 0) === 1) onAttack('enter-room-2', 0)
+                  if ((game.doorUnlocked ?? 0) === 1) onAttack('enter-room-2', 0)
                 }}>
                {(() => {
-                 const doorUnlocked = (spec.doorUnlocked ?? 0) === 1
-                 const unlocking = (spec.treasureOpened ?? 0) === 1 && !doorUnlocked
+                 const doorUnlocked = (game.doorUnlocked ?? 0) === 1
+                 const unlocking = (game.treasureOpened ?? 0) === 1 && !doorUnlocked
                  return <>
                    <img src={`/sprites/dungeon/door-${doorUnlocked ? 'opened' : 'closed'}.png`}
                      alt="door" style={{ width: 64, height: 64, imageRendering: 'pixelated' as any, filter: doorUnlocked ? 'drop-shadow(0 0 6px #f5c518)' : 'none' }} />
@@ -2702,12 +2720,12 @@ function DungeonView({ cr, prevCr, onBack, onGameOverBack, onNewGamePlus, onAtta
              )}
 
             {/* Treasure chest — appears after boss defeated in room 1, auto-opens */}
-            {(spec.currentRoom || 1) === 1 && (spec.bossHP <= 0 && allMonstersDead) && (
+            {(game.currentRoom || 1) === 1 && (game.bossHP <= 0 && allMonstersDead) && (
               <div className="arena-entity chest-entity" style={{ top: '55%', left: '30%' }}>
-                <img src={`/sprites/dungeon/chest-${(spec.treasureOpened ?? 0) === 1 ? 'opened' : 'closed'}.png`}
-                  alt="chest" style={{ width: 56, height: 56, imageRendering: 'pixelated' as any, filter: (spec.treasureOpened ?? 0) === 0 ? 'drop-shadow(0 0 4px gold)' : 'none' }} />
-                {(spec.treasureOpened ?? 0) === 0 && <div style={{ fontSize: 7, color: '#aaa', textAlign: 'center', marginTop: 2 }}>Opening...</div>}
-                {(spec.treasureOpened ?? 0) === 1 && status?.loot && (
+                <img src={`/sprites/dungeon/chest-${(game.treasureOpened ?? 0) === 1 ? 'opened' : 'closed'}.png`}
+                  alt="chest" style={{ width: 56, height: 56, imageRendering: 'pixelated' as any, filter: (game.treasureOpened ?? 0) === 0 ? 'drop-shadow(0 0 4px gold)' : 'none' }} />
+                {(game.treasureOpened ?? 0) === 0 && <div style={{ fontSize: 7, color: '#aaa', textAlign: 'center', marginTop: 2 }}>Opening...</div>}
+                {(game.treasureOpened ?? 0) === 1 && status?.loot && (
                   <div style={{ fontSize: 7, color: 'var(--gold)', textAlign: 'center', marginTop: 4, textShadow: '1px 1px 2px #000' }}><PixelIcon name="key" size={8} /> {status.loot}</div>
                 )}
               </div>
@@ -2716,10 +2734,10 @@ function DungeonView({ cr, prevCr, onBack, onGameOverBack, onNewGamePlus, onAtta
             {/* Boss — visible when kro sets bossState to ready or defeated */}
             {bossState !== 'pending' && (() => {
               const inCombatB = combatModal && (combatModal.phase === 'rolling' || combatModal.phase === 'resolved')
-              let bAction: SpriteAction = (bossState === 'defeated' || spec.bossHP <= 0) ? 'victory' : 'idle'
+              let bAction: SpriteAction = (bossState === 'defeated' || game.bossHP <= 0) ? 'victory' : 'idle'
               if (inCombatB && attackTarget?.includes('boss')) bAction = 'attack'
               else if (inCombatB && bossState === 'ready') bAction = 'attack'
-              if (!inCombatB && (status?.victory || spec.bossHP <= 0)) bAction = 'victory'
+              if (!inCombatB && (status?.victory || game.bossHP <= 0)) bAction = 'victory'
               const bossName = `${dungeonName}-boss`
               const phaseClass = bossState === 'ready' ? (bossPhase === 'phase3' ? ' boss-phase3' : bossPhase === 'phase2' ? ' boss-phase2' : '') : ''
               const phaseFlashClass = bossPhaseFlash ? ` boss-phase-flash-${bossPhaseFlash}` : ''
@@ -2728,7 +2746,7 @@ function DungeonView({ cr, prevCr, onBack, onGameOverBack, onNewGamePlus, onAtta
                   style={{ top: '40%', left: '50%' }}
                   role={bossState === 'ready' && !gameOver && !attackPhase ? 'button' : undefined}
                   tabIndex={bossState === 'ready' && !gameOver && !attackPhase ? 0 : undefined}
-                  aria-label={`Boss · HP: ${spec.bossHP}/${maxBossHP}${bossState === 'defeated' ? ' (defeated)' : ''}`}
+                  aria-label={`Boss · HP: ${game.bossHP}/${maxBossHP}${bossState === 'defeated' ? ' (defeated)' : ''}`}
                   onKeyDown={bossState === 'ready' && !gameOver && !attackPhase ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onAttack(bossName, 0) } } : undefined}>
                   {floatingDmg?.target?.includes('boss') && <div className="floating-dmg" style={{ color: '#e94560' }}>{floatingDmg.amount}</div>}
                   {bossPhaseFlash && (
@@ -2741,15 +2759,15 @@ function DungeonView({ cr, prevCr, onBack, onGameOverBack, onNewGamePlus, onAtta
                       {bossPhase === 'phase2' ? 'ENRAGED' : 'BERSERK'}
                     </div>
                   )}
-                   <Sprite spriteType={(spec.currentRoom || 1) === 2 ? 'bat-boss' : 'dragon'} action={bAction} size={144} />
+                   <Sprite spriteType={(game.currentRoom || 1) === 2 ? 'bat-boss' : 'dragon'} action={bAction} size={144} />
                    <div className="arena-shadow" style={{ width: 120 }} />
                    <div className="arena-hover-ui">
-                    <div className="arena-hp-bar"><div className={`arena-hp-fill ${spec.bossHP > 0 ? 'high' : 'low'}`} style={{ width: `${Math.min((spec.bossHP / maxBossHP) * 100, 100)}%` }} /></div>
-                    <div className="arena-name">Boss · {spec.bossHP}/{maxBossHP}</div>
+                    <div className="arena-hp-bar"><div className={`arena-hp-fill ${game.bossHP > 0 ? 'high' : 'low'}`} style={{ width: `${Math.min((game.bossHP / maxBossHP) * 100, 100)}%` }} /></div>
+                    <div className="arena-name">Boss · {game.bossHP}/{maxBossHP}</div>
                     {bossState === 'ready' && !gameOver && !attackPhase && (
                       <div className="arena-actions">
                         <button className="btn btn-primary arena-atk-btn" onClick={() => onAttack(bossName, 0)}><PixelIcon name="dice" size={8} /> {status?.diceFormula || '2d12+6'}</button>
-                        {spec.heroClass === 'rogue' && (spec.backstabCooldown ?? 0) === 0 && (
+                        {spec.heroClass === 'rogue' && (game.backstabCooldown ?? 0) === 0 && (
                           <button className="btn btn-ability arena-atk-btn" onClick={() => onAttack(bossName + '-backstab', 0)}>Backstab</button>
                         )}
                       </div>
@@ -2760,11 +2778,11 @@ function DungeonView({ cr, prevCr, onBack, onGameOverBack, onNewGamePlus, onAtta
             })()}
 
             {/* Monsters in semicircle */}
-            {(spec.monsterHP || []).map((hp, idx) => {
-              const count = spec.monsterHP.length
+            {(game.monsterHP || []).map((hp: number, idx: number) => {
+              const count = game.monsterHP.length
               const mName = `${dungeonName}-monster-${idx}`
-              const mSprite = getMonsterSprite(idx, spec.currentRoom || 1, spec.monsterTypes)
-              const mDisplayName = getMonsterName(idx, spec.currentRoom || 1, spec.monsterTypes)
+              const mSprite = getMonsterSprite(idx, game.currentRoom || 1, game.monsterTypes)
+              const mDisplayName = getMonsterName(idx, game.currentRoom || 1, game.monsterTypes)
               const isDead = hp <= 0
               let mAction: SpriteAction = isDead ? 'dead' : 'idle'
               const inCombat = combatModal && (combatModal.phase === 'rolling' || combatModal.phase === 'resolved')
@@ -2796,7 +2814,7 @@ function DungeonView({ cr, prevCr, onBack, onGameOverBack, onNewGamePlus, onAtta
                        {!gameOver && !attackPhase && (
                          <div className="arena-actions">
                            <button className="btn btn-primary arena-atk-btn" onClick={() => onAttack(mName, 0)}><PixelIcon name="dice" size={8} /> {status?.diceFormula || '2d12+6'}</button>
-                           {spec.heroClass === 'rogue' && (spec.backstabCooldown ?? 0) === 0 && (
+                           {spec.heroClass === 'rogue' && (game.backstabCooldown ?? 0) === 0 && (
                              <button className="btn btn-ability arena-atk-btn" onClick={() => onAttack(mName + '-backstab', 0)}>Backstab</button>
                            )}
                          </div>
@@ -2824,7 +2842,7 @@ function DungeonView({ cr, prevCr, onBack, onGameOverBack, onNewGamePlus, onAtta
             )}
 
             {/* Flying bats — Room 2 only (bat-boss lives here) */}
-            {(spec.currentRoom || 1) === 2 && <DungeonBats />}
+            {(game.currentRoom || 1) === 2 && <DungeonBats />}
 
             {/* Room 1 cleared — 3s celebration overlay */}
             {showRoom1Cleared && (
@@ -2849,49 +2867,49 @@ function DungeonView({ cr, prevCr, onBack, onGameOverBack, onNewGamePlus, onAtta
                 style={{ width: `${Math.min((heroHP / maxHeroHP) * 100, 100)}%` }} />
             </div>
             <div className="hero-hp-text">HP: {heroHP} / {maxHeroHP}</div>
-            {spec.heroClass === 'mage' && <div className="mana-text"><PixelIcon name="mana" size={10} /> Mana: {spec.heroMana ?? 0}</div>}
+            {spec.heroClass === 'mage' && <div className="mana-text"><PixelIcon name="mana" size={10} /> Mana: {game.heroMana ?? 0}</div>}
             {floatingDmg?.target === 'hero' && <div className="floating-dmg" style={{ color: floatingDmg.color }}>{floatingDmg.amount}</div>}
           </div>
 
           {!gameOver && !attackPhase && (
             <div className="ability-bar">
               {spec.heroClass === 'mage' && (
-                <button className="btn btn-ability" disabled={(spec.heroMana ?? 0) < 2 || heroHP >= maxHeroHP}
+                <button className="btn btn-ability" disabled={(game.heroMana ?? 0) < 2 || heroHP >= maxHeroHP}
                   onClick={() => onAttack('hero', 0)}>
                   <PixelIcon name="heal" size={12} /> Heal
                 </button>
               )}
               {spec.heroClass === 'warrior' && (
-                <button className={`btn btn-ability${(spec.tauntActive ?? 0) > 0 ? ' active' : ''}`}
-                  disabled={(spec.tauntActive ?? 0) > 0}
+                <button className={`btn btn-ability${(game.tauntActive ?? 0) > 0 ? ' active' : ''}`}
+                  disabled={(game.tauntActive ?? 0) > 0}
                   onClick={() => onAttack('activate-taunt', 0)}>
                   <PixelIcon name="shield" size={12} /> Taunt
                 </button>
               )}
               {spec.heroClass === 'rogue' && (
                 <span className="cooldown-text">
-                  <PixelIcon name="dagger" size={12} /> Backstab: {(spec.backstabCooldown ?? 0) > 0 ? `${spec.backstabCooldown} CD` : 'Ready'}
+                  <PixelIcon name="dagger" size={12} /> Backstab: {(game.backstabCooldown ?? 0) > 0 ? `${game.backstabCooldown} CD` : 'Ready'}
                 </span>
               )}
             </div>
           )}
 
           {(() => {
-            const items = parseInventory(spec.inventory)
-            const wb = spec.weaponBonus || 0
-            const wu = spec.weaponUses || 0
-            const ab = spec.armorBonus || 0
-            const sb = spec.shieldBonus || 0
-            const hb = spec.helmetBonus || 0
-            const pb = spec.pantsBonus || 0
-            const bb = spec.bootsBonus || 0
-            const rb = spec.ringBonus || 0
-            const amb = spec.amuletBonus || 0
-            const modifier = spec.modifier || 'none'
-            const poison = spec.poisonTurns || 0
-            const burn = spec.burnTurns || 0
-            const stun = spec.stunTurns || 0
-            const taunt = spec.tauntActive || 0
+            const items = parseInventory(game.inventory)
+            const wb = game.weaponBonus || 0
+            const wu = game.weaponUses || 0
+            const ab = game.armorBonus || 0
+            const sb = game.shieldBonus || 0
+            const hb = game.helmetBonus || 0
+            const pb = game.pantsBonus || 0
+            const bb = game.bootsBonus || 0
+            const rb = game.ringBonus || 0
+            const amb = game.amuletBonus || 0
+            const modifier = game.modifier || 'none'
+            const poison = game.poisonTurns || 0
+            const burn = game.burnTurns || 0
+            const stun = game.stunTurns || 0
+            const taunt = game.tauntActive || 0
             const RARITY_COLOR: Record<string, string> = { common: '#aaa', rare: '#5dade2', epic: '#9b59b6' }
             return (
               <div className="equip-panel">
@@ -3011,7 +3029,7 @@ function DungeonView({ cr, prevCr, onBack, onGameOverBack, onNewGamePlus, onAtta
 }
 
 // Parse dice formula from CR status (e.g. "1d20+2" -> {count:2, sides:8, mod:5})
-function CombatBreakdown({ heroAction, enemyAction, spec, oldHP }: { heroAction: string; enemyAction: string; spec: any; oldHP: number }) {
+function CombatBreakdown({ heroAction, enemyAction, spec, game, oldHP }: { heroAction: string; enemyAction: string; spec: any; game: any; oldHP: number }) {
   const lines: { icon: string; text: string; color?: string }[] = []
 
   // DoT effects
@@ -3045,14 +3063,14 @@ function CombatBreakdown({ heroAction, enemyAction, spec, oldHP }: { heroAction:
   // Mana regen on kill (from Go log text — reliable)
   if (heroAction.includes('+1 mana')) lines.push({ icon: 'mana', text: '+1 mana (monster kill)', color: '#9b59b6' })
 
-  // Loot — show from spec.lastLootDrop (kro-authoritative), not from Go log text
-  if (spec?.lastLootDrop) lines.push({ icon: 'chest', text: `Loot: ${spec.lastLootDrop}`, color: '#f5c518' })
+  // Loot — show from game.lastLootDrop (kro-authoritative), not from Go log text
+  if (game?.lastLootDrop) lines.push({ icon: 'chest', text: `Loot: ${game.lastLootDrop}`, color: '#f5c518' })
 
   // Enemy action
   if (enemyAction) {
     const counterMatch = enemyAction.match(/(\d+) (?:total )?damage/)
     if (counterMatch) {
-      const hpLost = oldHP - (spec.heroHP ?? 0)
+      const hpLost = oldHP - (game?.heroHP ?? 0)
       lines.push({ icon: 'skull', text: enemyAction })
       if (heroAction.includes('Rogue dodged')) lines.push({ icon: 'star', text: 'Rogue dodged the counter-attack!', color: '#2ecc71' })
     } else {
@@ -3067,7 +3085,7 @@ function CombatBreakdown({ heroAction, enemyAction, spec, oldHP }: { heroAction:
 
   // Kill / victory — check whether the specific target hit this turn reached 0 HP
   // dmgMatch[3] is the post-attack HP of the target hit this turn; avoids false positives
-  // from Room 1 dead monsters persisting in spec.monsterHP for the rest of the dungeon
+  // from Room 1 dead monsters persisting in game.monsterHP for the rest of the dungeon
   const targetKilled = dmgMatch != null && parseInt(dmgMatch[3]) === 0
   if (targetKilled || heroAction.includes('defeated')) lines.push({ icon: 'skull', text: 'Target slain!', color: '#f5c518' })
   if (enemyAction.includes('defeated')) lines.push({ icon: 'crown', text: 'BOSS DEFEATED!', color: '#f5c518' })

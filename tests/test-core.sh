@@ -25,10 +25,10 @@ wait_for "bossState=pending" "[ \$(kctl get dungeon $D -o jsonpath='{.status.bos
 log "Attack monster-0 until dead"
 for i in $(seq 1 10); do
   submit_attack "$D" "${D}-monster-0"
-  HP=$(kctl get dungeon "$D" -o jsonpath='{.spec.monsterHP[0]}' 2>/dev/null || echo "30")
+  HP=$(kctl get dungeon "$D" -o jsonpath='{.status.game.monsterHP[0]}' 2>/dev/null || echo "30")
   [ "$HP" -le 0 ] && break
 done
-HP=$(kctl get dungeon "$D" -o jsonpath='{.spec.monsterHP[0]}' 2>/dev/null)
+HP=$(kctl get dungeon "$D" -o jsonpath='{.status.game.monsterHP[0]}' 2>/dev/null)
 [ "$HP" -le 0 ] && pass "monster-0 HP=0" || fail "monster-0 HP=$HP after 10 attacks"
 
 wait_for "living=1" "[ \$(kctl get dungeon $D -o jsonpath='{.status.livingMonsters}' 2>/dev/null) = '1' ]" 60 && pass "livingMonsters=1" || fail "livingMonsters"
@@ -36,7 +36,7 @@ wait_for "living=1" "[ \$(kctl get dungeon $D -o jsonpath='{.status.livingMonste
 log "Kill monster-1, boss unlocks"
 for i in $(seq 1 10); do
   submit_attack "$D" "${D}-monster-1"
-  HP=$(kctl get dungeon "$D" -o jsonpath='{.spec.monsterHP[1]}' 2>/dev/null || echo "30")
+  HP=$(kctl get dungeon "$D" -o jsonpath='{.status.game.monsterHP[1]}' 2>/dev/null || echo "30")
   [ "$HP" -le 0 ] && break
 done
 wait_for "living=0" "[ \$(kctl get dungeon $D -o jsonpath='{.status.livingMonsters}' 2>/dev/null) = '0' ]" 30 && pass "livingMonsters=0" || fail "livingMonsters"
@@ -45,7 +45,7 @@ wait_for "boss ready" "[ \$(kctl get dungeon $D -o jsonpath='{.status.bossState}
 log "Defeat boss"
 for i in $(seq 1 50); do
   submit_attack "$D" "${D}-boss"
-  BOSS_HP=$(kctl get dungeon "$D" -o jsonpath='{.spec.bossHP}' 2>/dev/null || echo "200")
+  BOSS_HP=$(kctl get dungeon "$D" -o jsonpath='{.status.game.bossHP}' 2>/dev/null || echo "200")
   [ "$BOSS_HP" -le 0 ] && break
 done
 wait_for "victory" "[ \$(kctl get dungeon $D -o jsonpath='{.status.victory}' 2>/dev/null) = 'true' ]" 60 && pass "victory=true" || fail "victory"

@@ -48,9 +48,9 @@ func (h *Handler) pollGameMetrics() {
 			// #475: emit structured log for CloudWatch active_dungeons metric filter
 			slog.Info("active_dungeons", "component", "game", "count", len(list.Items))
 			for _, d := range list.Items {
-				spec, _ := d.Object["spec"].(map[string]interface{})
+				game := getGameState(d.Object)
 				status, _ := d.Object["status"].(map[string]interface{})
-				if hps, ok := spec["monsterHP"].([]interface{}); ok {
+				if hps, ok := game["monsterHP"].([]interface{}); ok {
 					for _, hp := range hps {
 						if sliceInt(hp) > 0 {
 							alive++
@@ -302,6 +302,7 @@ func (h *Handler) ListDungeons(w http.ResponseWriter, r *http.Request) {
 		}
 		spec, _ := d.Object["spec"].(map[string]interface{})
 		status, _ := d.Object["status"].(map[string]interface{})
+		game := getGameState(d.Object)
 		items = append(items, summary{
 			Name:           d.GetName(),
 			Namespace:      d.GetNamespace(),
@@ -309,7 +310,7 @@ func (h *Handler) ListDungeons(w http.ResponseWriter, r *http.Request) {
 			LivingMonsters: status["livingMonsters"],
 			BossState:      status["bossState"],
 			Victory:        status["victory"],
-			Modifier:       spec["modifier"],
+			Modifier:       game["modifier"],
 			RunCount:       spec["runCount"],
 		})
 	}
@@ -364,8 +365,18 @@ func (h *Handler) DeleteDungeon(w http.ResponseWriter, r *http.Request) {
 			if sess2 := sessionFromCtx(r.Context()); sess2 != nil {
 				login = sess2.Login
 			}
-			go h.recordLeaderboard(spec, kroStatus, name, login)
-			go h.recordProfile(login, spec, kroStatus)
+			// Merge spec + game state for recordLeaderboard/recordProfile
+			// (game state lives in status.game after migration)
+			merged := make(map[string]interface{}, len(spec))
+			for k, v := range spec {
+				merged[k] = v
+			}
+			game := getGameState(dungeon.Object)
+			for k, v := range game {
+				merged[k] = v
+			}
+			go h.recordLeaderboard(merged, kroStatus, name, login)
+			go h.recordProfile(login, merged, kroStatus)
 		}
 	}
 
@@ -1255,8 +1266,9 @@ func (h *Handler) processCombat(ctx context.Context, r *http.Request, ns, name, 
 	}
 	spec := getMap(dungeon.Object, "spec")
 	dungeonStatus := getMap(dungeon.Object, "status")
+	game := getGameState(dungeon.Object)
 
-	heroHP := getInt(spec, "heroHP")
+	heroHP := getInt(game, "heroHP")
 	heroClass = getString(spec, "heroClass", "warrior")
 	difficulty = getString(spec, "difficulty", "normal")
 	// #399: reject if kro has not yet provided maxHeroHP (hero-graph not reconciled yet)
@@ -1264,14 +1276,12 @@ func (h *Handler) processCombat(ctx context.Context, r *http.Request, ns, name, 
 		writeError(w, "dungeon initializing — hero max HP not yet computed by kro, please retry", http.StatusServiceUnavailable)
 		return fmt.Errorf("hero maxHeroHP not yet available from kro")
 	}
-	heroMana := getInt(spec, "heroMana")
+	heroMana := getInt(game, "heroMana")
 	attackSeq := getInt(spec, "attackSeq")
-	bossHP := getInt(spec, "bossHP")
-	monsterHPRaw, _ := spec["monsterHP"].([]interface{})
-	currentRoom := getInt(spec, "currentRoom")
-	stunTurns := getInt(spec, "stunTurns")
-	ringBonus := getInt(spec, "ringBonus")
-	amuletBonus := getInt(spec, "amuletBonus")
+	bossHP := getInt(game, "bossHP")
+	monsterHPRaw, _ := game["monsterHP"].([]interface{})
+	currentRoom := getInt(game, "currentRoom")
+	stunTurns := getInt(game, "stunTurns")
 
 	// Conflict guard: reject stale requests
 	if clientSeq >= 0 && clientSeq != attackSeq {
@@ -1316,6 +1326,9 @@ func (h *Handler) processCombat(ctx context.Context, r *http.Request, ns, name, 
 				"lastEnemyAction": "No counter-attack during heal",
 				"lastLootDrop":    "",
 				"attackSeq":       newSeq,
+				// Clear cross-triggers
+				"lastAttackTarget": "",
+				"lastAction":       "",
 			},
 		}
 		if err := h.patchDungeon(ctx, ns, name, patch); err != nil {
@@ -1335,7 +1348,7 @@ func (h *Handler) processCombat(ctx context.Context, r *http.Request, ns, name, 
 	}
 
 	// Warrior taunt activation
-	tauntActive := getInt(spec, "tauntActive")
+	tauntActive := getInt(game, "tauntActive")
 	if target == "activate-taunt" {
 		if heroClass != "warrior" {
 			writeError(w, "only warrior can taunt", http.StatusBadRequest)
@@ -1352,6 +1365,9 @@ func (h *Handler) processCombat(ctx context.Context, r *http.Request, ns, name, 
 				"lastEnemyAction": "",
 				"lastLootDrop":    "",
 				"attackSeq":       newSeq,
+				// Clear cross-triggers
+				"lastAttackTarget": "",
+				"lastAction":       "",
 			},
 		}
 		// Business metric: ability used (Issue #358)
@@ -1368,7 +1384,7 @@ func (h *Handler) processCombat(ctx context.Context, r *http.Request, ns, name, 
 	// Determine real target (strip -backstab suffix)
 	isBackstab := false
 	realTarget := target
-	backstabCD := getInt(spec, "backstabCooldown")
+	backstabCD := getInt(game, "backstabCooldown")
 	if strings.HasSuffix(target, "-backstab") {
 		isBackstab = true
 		realTarget = strings.TrimSuffix(target, "-backstab")
@@ -1448,8 +1464,8 @@ func (h *Handler) processCombat(ctx context.Context, r *http.Request, ns, name, 
 	// Per-turn seed (unique per dungeon+turn, ensures real dice variance)
 	turnSeed := name + "-seq-" + strconv.FormatInt(newSeq, 10)
 
-	// Step 3: Write trigger fields only — kro's combatResolve specPatch computes
-	// all actual game state (HP, mana, DoT, loot, inventory).
+	// Step 3: Write trigger fields only — kro's combatResolve state node computes
+	// all actual game state (HP, mana, DoT, loot, inventory) and writes to status.game.
 	patchSpec := map[string]interface{}{
 		"attackSeq":            newSeq,
 		"lastAttackTarget":     realTarget,
@@ -1457,12 +1473,12 @@ func (h *Handler) processCombat(ctx context.Context, r *http.Request, ns, name, 
 		"lastAttackIndex":      int64(idxInt),
 		"lastAttackIsBoss":     isBossTarget,
 		"lastAttackIsBackstab": isBackstab,
-		"ringBonus":            ringBonus,
-		"amuletBonus":          amuletBonus,
+		// Clear cross-triggers so other state nodes don't misfire
+		"lastAbility": "",
+		"lastAction":  "",
 		// Clear log fields so stale text isn't visible before kro fires
 		"lastHeroAction":  "",
 		"lastEnemyAction": "",
-		"lastLootDrop":    "",
 	}
 	if err := h.patchDungeon(ctx, ns, name, map[string]interface{}{"spec": patchSpec}); err != nil {
 		slog.Error("failed to patch trigger fields", "component", "api", "dungeon", name, "namespace", ns, "error", err)
@@ -1479,14 +1495,15 @@ func (h *Handler) processCombat(ctx context.Context, r *http.Request, ns, name, 
 	}
 	postSpec := getMap(postDungeon.Object, "spec")
 	postStatus := getMap(postDungeon.Object, "status")
+	postGame := getGameState(postDungeon.Object)
 
 	// Populate telemetry vars from post-combat state.
-	postHeroHP = getInt(postSpec, "heroHP")
+	postHeroHP = getInt(postGame, "heroHP")
 	if isBossTarget {
-		damageDealt = getInt(spec, "bossHP") - getInt(postSpec, "bossHP")
+		damageDealt = getInt(game, "bossHP") - getInt(postGame, "bossHP")
 	} else if idxInt >= 0 {
-		preMonHPs, _ := spec["monsterHP"].([]interface{})
-		postMonHPs, _ := postSpec["monsterHP"].([]interface{})
+		preMonHPs, _ := game["monsterHP"].([]interface{})
+		postMonHPs, _ := postGame["monsterHP"].([]interface{})
 		if idxInt < len(preMonHPs) && idxInt < len(postMonHPs) {
 			damageDealt = sliceInt(preMonHPs[idxInt]) - sliceInt(postMonHPs[idxInt])
 		}
@@ -1495,8 +1512,8 @@ func (h *Handler) processCombat(ctx context.Context, r *http.Request, ns, name, 
 		damageDealt = 0
 	}
 	// Determine combat outcome for metrics.
-	postBossHP := getInt(postSpec, "bossHP")
-	postMonsterHPRaw, _ := postSpec["monsterHP"].([]interface{})
+	postBossHP := getInt(postGame, "bossHP")
+	postMonsterHPRaw, _ := postGame["monsterHP"].([]interface{})
 	postAllMonstersDead := true
 	for _, v := range postMonsterHPRaw {
 		if sliceInt(v) > 0 {
@@ -1518,22 +1535,22 @@ func (h *Handler) processCombat(ctx context.Context, r *http.Request, ns, name, 
 	}
 
 	// Emit status-effect metrics from log derivation state.
-	prePoisonTurns := getInt(spec, "poisonTurns")
-	preBurnTurns := getInt(spec, "burnTurns")
-	preStunTurns := getInt(spec, "stunTurns")
-	if getInt(postSpec, "poisonTurns") > prePoisonTurns {
+	prePoisonTurns := getInt(game, "poisonTurns")
+	preBurnTurns := getInt(game, "burnTurns")
+	preStunTurns := getInt(game, "stunTurns")
+	if getInt(postGame, "poisonTurns") > prePoisonTurns {
 		statusEffectsInflicted.With(map[string]string{"effect": "poison"}).Inc()
 	}
-	if getInt(postSpec, "burnTurns") > preBurnTurns {
+	if getInt(postGame, "burnTurns") > preBurnTurns {
 		statusEffectsInflicted.With(map[string]string{"effect": "burn"}).Inc()
 	}
-	if getInt(postSpec, "stunTurns") > preStunTurns {
+	if getInt(postGame, "stunTurns") > preStunTurns {
 		statusEffectsInflicted.With(map[string]string{"effect": "stun"}).Inc()
 	}
 
 	// Business metrics: emit kill events (Issue #358)
 	if combatOutcome == "kill" || combatOutcome == "boss_kill" || combatOutcome == "victory" {
-		monstersTypeRaw, _ := spec["monsterTypes"].([]interface{})
+		monstersTypeRaw, _ := game["monsterTypes"].([]interface{})
 		targetType := realTarget
 		if isBossTarget {
 			slog.Info("boss_killed",
@@ -1574,7 +1591,7 @@ func (h *Handler) processCombat(ctx context.Context, r *http.Request, ns, name, 
 	}
 
 	// Emit loot drop metric + business event if a new item was dropped.
-	postLoot := getString(postSpec, "lastLootDrop", "")
+	postLoot := getString(postGame, "lastLootDrop", "")
 	if postLoot != "" {
 		parts := strings.SplitN(postLoot, "-", 2)
 		if len(parts) == 2 {
@@ -1596,14 +1613,14 @@ func (h *Handler) processCombat(ctx context.Context, r *http.Request, ns, name, 
 		}
 	}
 
-	// Step 5: Derive log text from pre→post spec diff (no math — kro is authoritative).
+	// Step 5: Derive log text from pre→post game state diff (no math — kro is authoritative).
 	diceFormula := getString(postStatus, "diceFormula", getString(dungeonStatus, "diceFormula", ""))
 	bossPhaseStr := getString(postStatus, "bossPhase", getString(dungeonStatus, "bossPhase", "phase1"))
 	// bossDamageMultiplier is stored ×10 as a string in dungeon status (from boss-graph CEL).
 	// e.g. '10'=1.0×, '13'=1.3×, '16'=1.6×. Default '10' when not yet set.
 	bossDmgMultStr := getString(postStatus, "bossDamageMultiplier", getString(dungeonStatus, "bossDamageMultiplier", "10"))
 	heroAction, enemyAction := deriveCombatLog(
-		spec, postSpec, realTarget, isBossTarget, idxInt, isBackstab, stunTurns > 0,
+		game, postGame, realTarget, isBossTarget, idxInt, isBackstab, stunTurns > 0,
 		heroClass, diceFormula, bossPhaseStr, bossDmgMultStr,
 	)
 
@@ -1656,10 +1673,13 @@ func (h *Handler) processCombat(ctx context.Context, r *http.Request, ns, name, 
 		if sess := sessionFromCtx(r.Context()); sess != nil {
 			victoryLogin = sess.Login
 		}
-		// Build a merged spec that includes the final xpEarned value (not yet
-		// written to the CR) so the leaderboard entry reflects the full run XP.
-		victorySpec := make(map[string]interface{}, len(postSpec)+1)
+		// Build a merged map that includes spec + game state + final xpEarned value
+		// so the leaderboard/profile entries reflect the full run state.
+		victorySpec := make(map[string]interface{}, len(postSpec)+len(postGame)+1)
 		for k, v := range postSpec {
+			victorySpec[k] = v
+		}
+		for k, v := range postGame {
 			victorySpec[k] = v
 		}
 		victorySpec["xpEarned"] = newXPEarned
@@ -1670,16 +1690,16 @@ func (h *Handler) processCombat(ctx context.Context, r *http.Request, ns, name, 
 	return h.patchAndRespond(ctx, ns, name, logPatch, w)
 }
 
-// pollUntilCombatProcessed polls the Dungeon CR until spec.combatProcessedSeq == targetSeq,
-// indicating kro's combatResolve specPatch has fired and all game state is up to date.
+// pollUntilCombatProcessed polls the Dungeon CR until status.game.combatProcessedSeq >= targetSeq,
+// indicating kro's combatResolve state node has fired and all game state is up to date.
 // Max wait: 10s (100ms intervals × 100 attempts).
 func (h *Handler) pollUntilCombatProcessed(ctx context.Context, ns, name string, targetSeq int64) (*unstructured.Unstructured, error) {
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
 		d, err := h.client.Dynamic.Resource(k8s.DungeonGVR).Namespace(ns).Get(ctx, name, metav1.GetOptions{})
 		if err == nil {
-			s := getMap(d.Object, "spec")
-			if getInt(s, "combatProcessedSeq") >= targetSeq {
+			game := getGameState(d.Object)
+			if getInt(game, "combatProcessedSeq") >= targetSeq {
 				return d, nil
 			}
 		}
@@ -1693,8 +1713,8 @@ func (h *Handler) pollUntilCombatProcessed(ctx context.Context, ns, name string,
 	return d, fmt.Errorf("combatProcessedSeq did not reach %d", targetSeq)
 }
 
-// deriveCombatLog generates heroAction and enemyAction log strings from a pre→post spec diff.
-// No RNG or math — all values are read directly from kro's computed post-state.
+// deriveCombatLog generates heroAction and enemyAction log strings from a pre→post game state diff.
+// No RNG or math — all values are read directly from kro's computed post-state in status.game.
 func deriveCombatLog(
 	pre, post map[string]interface{},
 	realTarget string, isBossTarget bool, idxInt int,
@@ -1934,9 +1954,10 @@ func (h *Handler) processAction(ctx context.Context, r *http.Request, ns, name, 
 	}
 	spec := getMap(dungeon.Object, "spec")
 	dungeonStatusAction := getMap(dungeon.Object, "status")
+	gameAction := getGameState(dungeon.Object)
 
-	heroHP := getInt(spec, "heroHP")
-	heroMana := getInt(spec, "heroMana")
+	heroHP := getInt(gameAction, "heroHP")
+	heroMana := getInt(gameAction, "heroMana")
 	heroClass := getString(spec, "heroClass", "warrior")
 	heroClassAction = heroClass
 	difficultyAction = getString(spec, "difficulty", "normal")
@@ -1945,8 +1966,8 @@ func (h *Handler) processAction(ctx context.Context, r *http.Request, ns, name, 
 		writeError(w, "dungeon initializing — hero max HP not yet computed by kro, please retry", http.StatusServiceUnavailable)
 		return fmt.Errorf("hero maxHeroHP not yet available from kro")
 	}
-	inventory := getString(spec, "inventory", "")
-	bossHP := getInt(spec, "bossHP")
+	inventory := getString(gameAction, "inventory", "")
+	bossHP := getInt(gameAction, "bossHP")
 	actionSeq := getInt(spec, "actionSeq")
 
 	// Conflict guard: reject stale requests where the client's observed
@@ -1957,9 +1978,9 @@ func (h *Handler) processAction(ctx context.Context, r *http.Request, ns, name, 
 		writeError(w, "stale request — dungeon state has changed, please retry", http.StatusConflict)
 		return fmt.Errorf("stale action: clientSeq=%d serverSeq=%d", clientSeq, actionSeq)
 	}
-	monsterHPRaw, _ := spec["monsterHP"].([]interface{})
+	monsterHPRaw, _ := gameAction["monsterHP"].([]interface{})
 
-	// NOTE: backstabCooldown decrement is now handled by kro specPatch node (tickCooldown)
+	// NOTE: backstabCooldown decrement is now handled by kro state node (tickCooldown)
 	// in dungeon-graph.yaml, gated on attackSeq + actionSeq advancement.
 
 	newSeq := actionSeq + 1
@@ -1992,8 +2013,11 @@ func (h *Handler) processAction(ctx context.Context, r *http.Request, ns, name, 
 
 	patchSpec := map[string]interface{}{
 		"actionSeq":    newSeq,
-		"lastAction":   action, // trigger field for kro's actionResolve specPatch
+		"lastAction":   action, // trigger field for kro's actionResolve state node
 		"lastLootDrop": "",     // clear stale loot from previous combat turn (#AGENTS rule)
+		// Clear cross-triggers so combat/ability state nodes don't misfire
+		"lastAttackTarget": "",
+		"lastAbility":      "",
 	}
 
 	// MIGRATION: state mutations (inventory, heroHP, heroMana, equipment bonuses,
@@ -2156,7 +2180,7 @@ func (h *Handler) processAction(ctx context.Context, r *http.Request, ns, name, 
 		patchSpec["lastEnemyAction"] = ""
 
 	case action == "unlock-door":
-		treasureOpened := getInt(spec, "treasureOpened")
+		treasureOpened := getInt(gameAction, "treasureOpened")
 		if treasureOpened != 1 {
 			writeError(w, "open the treasure first", http.StatusBadRequest)
 			return fmt.Errorf("open treasure first")
@@ -2165,7 +2189,7 @@ func (h *Handler) processAction(ctx context.Context, r *http.Request, ns, name, 
 		patchSpec["lastEnemyAction"] = ""
 
 	case action == "enter-room-2":
-		doorUnlocked := getInt(spec, "doorUnlocked")
+		doorUnlocked := getInt(gameAction, "doorUnlocked")
 		if doorUnlocked != 1 {
 			writeError(w, "unlock the door first", http.StatusBadRequest)
 			return fmt.Errorf("unlock door first")
@@ -2490,6 +2514,21 @@ func getMap(obj map[string]interface{}, key string) map[string]interface{} {
 	return v
 }
 
+// getGameState returns the kro-computed game state map from status.game.
+// During rolling migration, it falls back to spec if status.game is empty
+// (old dungeons created before the state-node migration).
+// After the 4-hour dungeon reaper cleans all old dungeons, the fallback
+// can be removed and this function can simply return status.game.
+func getGameState(dungeonObj map[string]interface{}) map[string]interface{} {
+	status := getMap(dungeonObj, "status")
+	game := getMap(status, "game")
+	if len(game) > 0 {
+		return game
+	}
+	// Fallback: old dungeon with game state in spec (pre-migration).
+	return getMap(dungeonObj, "spec")
+}
+
 func getInt(m map[string]interface{}, key string) int64 {
 	switch v := m[key].(type) {
 	case int64:
@@ -2539,10 +2578,10 @@ func sliceInt(v interface{}) int64 {
 	return 0
 }
 
-// CelEvalHandler evaluates a CEL expression against the live dungeon spec
+// CelEvalHandler evaluates a CEL expression against the live dungeon state
 // using the real kro CEL environment (same libraries as kro reconcile).
 // POST /api/v1/dungeons/{namespace}/{name}/cel-eval
-// Body: { "expr": "cel.bind(x, schema.spec.heroHP, x * 2)" }
+// Body: { "expr": "cel.bind(x, schema.status.game.heroHP, x * 2)" }
 // Returns: { "result": "300" } or { "error": "..." }
 func (h *Handler) CelEvalHandler(w http.ResponseWriter, r *http.Request) {
 	ns := r.PathValue("namespace")
@@ -2585,8 +2624,10 @@ func (h *Handler) CelEvalHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	spec := getMap(dungeon.Object, "spec")
-	// Pass spec + metadata to EvalCEL, which builds the nested schema.spec / schema.metadata
-	// activation matching kro's RGD variable layout.
+	status := getMap(dungeon.Object, "status")
+	// Pass spec + status + metadata to EvalCEL, which builds the nested
+	// schema.spec / schema.status / schema.metadata activation matching kro's
+	// RGD variable layout. status.game contains kro-computed game state.
 	bindings := make(map[string]interface{}, len(spec)+2)
 	for k, v := range spec {
 		bindings[k] = v
@@ -2594,7 +2635,7 @@ func (h *Handler) CelEvalHandler(w http.ResponseWriter, r *http.Request) {
 	bindings["name"] = dungeon.GetName()
 	bindings["namespace"] = dungeon.GetNamespace()
 
-	result, celErr := EvalCEL(req.Expr, bindings)
+	result, celErr := EvalCEL(req.Expr, bindings, status)
 
 	w.Header().Set("Content-Type", "application/json")
 	if celErr != "" {
@@ -2746,6 +2787,7 @@ func (h *Handler) RunCard(w http.ResponseWriter, r *http.Request) {
 		writeError(w, "dungeon spec not found", http.StatusNotFound)
 		return
 	}
+	game := getGameState(dungeon.Object)
 
 	heroClass, _ := spec["heroClass"].(string)
 	if heroClass == "" {
@@ -2756,7 +2798,7 @@ func (h *Handler) RunCard(w http.ResponseWriter, r *http.Request) {
 		difficulty = "normal"
 	}
 	attackSeq := getInt(spec, "attackSeq")
-	currentRoom := getInt(spec, "currentRoom")
+	currentRoom := getInt(game, "currentRoom")
 	if currentRoom < 1 {
 		currentRoom = 1
 	}
@@ -2929,6 +2971,7 @@ func (h *Handler) RunNarrative(w http.ResponseWriter, r *http.Request) {
 		writeError(w, "dungeon spec not found", http.StatusNotFound)
 		return
 	}
+	game := getGameState(dungeon.Object)
 
 	heroClass, _ := spec["heroClass"].(string)
 	if heroClass == "" {
@@ -2939,13 +2982,13 @@ func (h *Handler) RunNarrative(w http.ResponseWriter, r *http.Request) {
 		difficulty = "normal"
 	}
 	attackSeq := getInt(spec, "attackSeq")
-	currentRoom := getInt(spec, "currentRoom")
+	currentRoom := getInt(game, "currentRoom")
 	if currentRoom < 1 {
 		currentRoom = 1
 	}
-	bossHP := getInt(spec, "bossHP")
-	room2BossHP := getInt(spec, "room2BossHP")
-	modifier, _ := spec["modifier"].(string)
+	bossHP := getInt(game, "bossHP")
+	room2BossHP := getInt(game, "room2BossHP")
+	modifier, _ := game["modifier"].(string)
 	monstersRaw, _ := spec["monsters"].(int64)
 	monsters := int(monstersRaw)
 	if monsters == 0 {
@@ -3018,7 +3061,7 @@ func (h *Handler) RunNarrative(w http.ResponseWriter, r *http.Request) {
 	events = append(events, kroEvent{
 		turn: 1,
 		desc: fmt.Sprintf("The Dungeon CR `%s` was created. kro's `dungeon-graph` RGD immediately reconciled and created a Namespace, Hero CR, %d Monster CR(s), a Boss CR, Treasure CR, Modifier CR, and supporting ConfigMaps — all from a single custom resource.", name, monsters),
-		cel:  `size(schema.spec.monsterHP.filter(hp, hp > 0))  // monstersAlive count`,
+		cel:  `size(schema.status.game.monsterHP.filter(hp, hp > 0))  // monstersAlive count`,
 		rgd:  "dungeon-graph",
 	})
 
@@ -3051,7 +3094,7 @@ func (h *Handler) RunNarrative(w http.ResponseWriter, r *http.Request) {
 		events = append(events, kroEvent{
 			turn: 1,
 			desc: fmt.Sprintf("The dungeon modifier `%s` was active: %s The `modifier-graph` RGD computed the effect and multiplier entirely in CEL — no backend code involved.", modifier, modDesc),
-			cel:  `schema.spec.modifier == "blessing-strength" ? 1.25 : (schema.spec.modifier == "curse-darkness" ? 0.80 : 1.0)`,
+			cel:  `schema.status.game.modifier == "blessing-strength" ? 1.25 : (schema.status.game.modifier == "curse-darkness" ? 0.80 : 1.0)`,
 			rgd:  "modifier-graph",
 		})
 	}
@@ -3061,7 +3104,7 @@ func (h *Handler) RunNarrative(w http.ResponseWriter, r *http.Request) {
 		events = append(events, kroEvent{
 			turn: attackSeq / 3,
 			desc: fmt.Sprintf("As the battle progressed, the `boss-graph` RGD tracked the boss phase in real time via CEL. When boss HP dropped below 50%%, kro recomputed `damageMultiplier` from 1.0 → 1.3; below 25%% it became 1.6. No backend code was needed — CEL expressions in the RGD drove the entire state machine."),
-			cel:  `schema.spec.bossHP <= schema.status.maxBossHP * 0.25 ? 1.6 : (schema.spec.bossHP <= schema.status.maxBossHP * 0.5 ? 1.3 : 1.0)`,
+			cel:  `schema.status.game.bossHP <= schema.status.maxBossHP * 0.25 ? 1.6 : (schema.status.game.bossHP <= schema.status.maxBossHP * 0.5 ? 1.3 : 1.0)`,
 			rgd:  "boss-graph",
 		})
 	}
@@ -3070,14 +3113,14 @@ func (h *Handler) RunNarrative(w http.ResponseWriter, r *http.Request) {
 	if currentRoom >= 2 && room2BossHP > 0 {
 		events = append(events, kroEvent{
 			turn: attackSeq / 2,
-			desc: fmt.Sprintf("After clearing Room 1, the dungeon transitioned to Room 2. kro patched `spec.monsterHP` with 1.5x scaled values (trolls and ghouls replace goblins) and `spec.bossHP` with 1.3x values. The entire room state was driven by a single PATCH to the Dungeon CR spec — kro's `dungeon-graph` RGD reconciled all 16 child resources automatically."),
-			cel:  `schema.spec.currentRoom >= 2 ? int(schema.spec.room2BossHP * 1.3) : schema.spec.bossHP`,
+			desc: fmt.Sprintf("After clearing Room 1, the dungeon transitioned to Room 2. kro wrote `status.game.monsterHP` with 1.5x scaled values (trolls and ghouls replace goblins) and `status.game.bossHP` with 1.3x values. The entire room state was driven by a single state node in kro's `dungeon-graph` RGD — all 16 child resources reconciled automatically."),
+			cel:  `schema.status.game.currentRoom >= 2 ? int(schema.status.game.room2BossHP * 1.3) : schema.status.game.bossHP`,
 			rgd:  "dungeon-graph",
 		})
 	}
 
 	// Event 6: Loot drop via loot-graph (if inventory non-empty)
-	inventory, _ := spec["inventory"].(string)
+	inventory, _ := game["inventory"].(string)
 	if inventory != "" {
 		var invItems []string
 		json.Unmarshal([]byte(inventory), &invItems)
@@ -3091,7 +3134,7 @@ func (h *Handler) RunNarrative(w http.ResponseWriter, r *http.Request) {
 		if firstItem != "" {
 			events = append(events, kroEvent{
 				turn: attackSeq / 4,
-				desc: fmt.Sprintf("A monster kill triggered a loot drop. The `loot-graph` RGD computed the item type (`%s`), rarity, and description entirely in CEL — the result was written to a Kubernetes Secret managed by kro, then surfaced to the frontend via the dungeon spec.", firstItem),
+				desc: fmt.Sprintf("A monster kill triggered a loot drop. The `loot-graph` RGD computed the item type (`%s`), rarity, and description entirely in CEL — the result was written to a Kubernetes Secret managed by kro, then surfaced to the frontend via `status.game`.", firstItem),
 				cel:  `schema.spec.difficulty == "hard" ? "epic" : (random.seededInt(0, 3, schema.metadata.uid) == 0 ? "rare" : "common")`,
 				rgd:  "loot-graph",
 			})
