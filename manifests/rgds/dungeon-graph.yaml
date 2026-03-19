@@ -494,7 +494,7 @@ spec:
                     : postArr
                   ))
                 : postArr
-              )))))))))))))))
+              ))))))))))))))))
               : has(schema.status.game.monsterHP) ? schema.status.game.monsterHP : (has(schema.spec.monsterHP) ? schema.spec.monsterHP : [])}
 
           # --- Boss HP: apply hero damage to boss ---
@@ -524,7 +524,7 @@ spec:
               cel.bind(finalDmg, kstate(schema.status.game, 'stunTurns', schema.spec.stunTurns) > 0 ? 0 : amuDmg,
               cel.bind(newBossHP, kstate(schema.status.game, 'bossHP', schema.spec.bossHP) - finalDmg < 0 ? 0 : kstate(schema.status.game, 'bossHP', schema.spec.bossHP) - finalDmg,
                 newBossHP
-              ))))))))))))
+              )))))))))))
               : kstate(schema.status.game, 'bossHP', schema.spec.bossHP)}
 
           # --- Weapon uses: decrement if weapon was used ---
@@ -572,7 +572,7 @@ spec:
             cel.bind(regenMana,
               killedMonster && schema.spec.heroClass == 'mage' && manaAfterUse < 8,
               killedMonster && regenMana ? manaAfterUse + 1 : manaAfterUse
-            )))))))))))))))))}
+            ))))))))))))))))}
 
           # --- Hero HP: ring regen + counter-attack from boss or monsters ---
           heroHP: >-
@@ -653,7 +653,7 @@ spec:
               : 0,
             cel.bind(totalCounter, bossCounter + monsterCounter,
               hp - totalCounter < 0 ? 0 : hp - totalCounter
-            ))))))))))))))))))))))}
+            )))))))))))))))))))))))}
 
           # --- Ring processed sentinel (handled by combatResolve) ---
           ringProcessedSeq: "${schema.spec.attackSeq}"
@@ -737,7 +737,7 @@ spec:
                       archerHit && !archerResisted ? 1 : st
                     )))
                   : st
-                )))))))))))
+                ))))))))))))))
             )))))))}
 
           # --- Combat processed sentinel ---
@@ -807,7 +807,7 @@ spec:
                   : ''
                 )))
               : ''
-            ))))))))))))))))))))}
+            )))))))))))))))))))}
 
           # --- Inventory: add loot item if dropped and under cap ---
           inventory: >-
