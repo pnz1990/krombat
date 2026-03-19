@@ -42,12 +42,12 @@ Read `manifests/rgds/boss-graph.yaml`. Find the `lootCR` resource.
 
 Read the `monsterCRs` resource in `manifests/rgds/dungeon-graph.yaml`.
 
-**If `spec.monsterHP` is `[50, 50, 50]`, how many Monster CRs does kro create? What is the name of the second one (index 1)?**
+**`status.game.monsterHP` is set by the `dungeonInit` state node. If it contains `[50, 50, 50]`, how many Monster CRs does kro create? What is the name of the second one (index 1)?**
 
 ---
 
-## Q5 — specPatch concept
+## Q5 — state node concept
 
-Read the `combatResolve` specPatch resource in `manifests/rgds/dungeon-graph.yaml`.
+Read the `combatResolve` state node in `manifests/rgds/dungeon-graph.yaml`.
 
-**In plain English: what is a `specPatch` resource in kro, and why is it used here instead of a ConfigMap?**
+**In plain English: what is a state node (`type: stateNode`) in kro's fork, and why is it used here instead of a ConfigMap? Where does it write its results?**

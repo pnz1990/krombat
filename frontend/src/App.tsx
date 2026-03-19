@@ -482,14 +482,14 @@ export default function App() {
         // Teach specific item/room events
         if (target === 'enter-room-2') {
           triggerInsight('enter-room-2')
-          // #444: K8s log entry for room transition — enterRoom2Resolve specPatch fired
+          // #444: K8s log entry for room transition — enterRoom2Resolve state node fired
           const updatedGame = getGame(updated)
           const newMonHP = updatedGame.room2MonsterHP?.join(',') ?? '...'
           const newBossHP = updatedGame.room2BossHP ?? '...'
           addK8s(
-            `kubectl patch dungeon ${selected.name} --type=merge -p '{"spec":{"currentRoom":2}}'`,
-            `enterRoom2Resolve specPatch fired — monsterHP: [${newMonHP}], bossHP: ${newBossHP}`,
-            `# dungeon-graph.yaml — enterRoom2Resolve specPatch\ntype: specPatch\npatch:\n  currentRoom: "2"\n  monsterHP: "<scaled ×1.5 via CEL>"\n  bossHP: "<scaled ×1.3 via CEL>"`
+            `kubectl patch dungeon ${selected.name} --type=merge -p '{"spec":{"enterRoom2":1}}'`,
+            `enterRoom2Resolve state node fired — status.game.monsterHP: [${newMonHP}], status.game.bossHP: ${newBossHP}`,
+            `# dungeon-graph.yaml — enterRoom2Resolve state node\ntype: stateNode\npatch:\n  currentRoom: 2\n  monsterHP: "<scaled ×1.5 via CEL>"\n  bossHP: "<scaled ×1.3 via CEL>"`
           )
         }
         if (target === 'open-treasure') triggerInsight('treasure-opened')
@@ -619,7 +619,7 @@ export default function App() {
           addK8s(
             `kubectl get cm ${selected?.name ?? '...'}-boss -n ${selected?.ns ?? '...'}`,
             `bossPhase: phase2, damageMultiplier: 13 (1.3×)`,
-            `# boss-graph.yaml — damageMultiplier specPatch (phase2)\nphase: "\${hp * 100 / maxHP > 50 ? 'phase1' : hp * 100 / maxHP > 25 ? 'phase2' : 'phase3'}"\ndamageMultiplier: "\${... > 50 ? '10' : ... > 25 ? '13' : '16'}"  # ×10 integer`
+            `# boss-graph.yaml — damageMultiplier CEL (phase2)\nphase: "\${hp * 100 / maxHP > 50 ? 'phase1' : hp * 100 / maxHP > 25 ? 'phase2' : 'phase3'}"\ndamageMultiplier: "\${... > 50 ? '10' : ... > 25 ? '13' : '16'}"  # ×10 integer`
           )
         }
         if (prevPct > 25 && newPct <= 25 && newBossHP > 0) {
@@ -630,7 +630,7 @@ export default function App() {
           addK8s(
             `kubectl get cm ${selected?.name ?? '...'}-boss -n ${selected?.ns ?? '...'}`,
             `bossPhase: phase3, damageMultiplier: 16 (1.6×)`,
-            `# boss-graph.yaml — damageMultiplier specPatch (phase3)\nphase: "\${hp * 100 / maxHP > 50 ? 'phase1' : hp * 100 / maxHP > 25 ? 'phase2' : 'phase3'}"\ndamageMultiplier: "\${... > 50 ? '10' : ... > 25 ? '13' : '16'}"  # ×10 integer`
+            `# boss-graph.yaml — damageMultiplier CEL (phase3)\nphase: "\${hp * 100 / maxHP > 50 ? 'phase1' : hp * 100 / maxHP > 25 ? 'phase2' : 'phase3'}"\ndamageMultiplier: "\${... > 50 ? '10' : ... > 25 ? '13' : '16'}"  # ×10 integer`
           )
         }
         if ((updatedGame.heroHP ?? 100) <= 0 && (detailGame.heroHP ?? 100) > 0) addEvent('skull', 'Hero has fallen...')
@@ -642,7 +642,7 @@ export default function App() {
         const prevBurnTurns = detailGame.burnTurns ?? 0
         const newPoisonTurns = updatedGame.poisonTurns ?? 0
         const newBurnTurns = updatedGame.burnTurns ?? 0
-        // Detect tickDoT specPatch: poisonTurns or burnTurns actually decremented
+        // Detect tickDoT state node: poisonTurns or burnTurns actually decremented
         // (#500: use counter decrement as the reliable signal — HP drop can be obscured by simultaneous counter-attack)
         const dotTicked = (prevPoisonTurns > 0 && newPoisonTurns < prevPoisonTurns) || (prevBurnTurns > 0 && newBurnTurns < prevBurnTurns)
         if (dotTicked) {
@@ -653,7 +653,7 @@ export default function App() {
             setFloatingDmg({ target: 'hero', amount: `-${dotDmg}`, color })
             setTimeout(() => setFloatingDmg(null), 1200)
           }
-          // #450/#500: fire spec-patch insight on tickDoT — tickDoT is a specPatch node that writes heroHP/poisonTurns/burnTurns back to spec
+          // #450/#500: fire insight on tickDoT — tickDoT state node writes status.game.heroHP/poisonTurns/burnTurns
           triggerInsight('dot-applied')
         }
         // Detect monster kill
@@ -1018,7 +1018,7 @@ const FAQ_ITEMS: { q: string; a: () => ReactNode }[] = [
     a: () => (
       <>
         <p>Krombat is a turn-based dungeon RPG where the entire game state lives in a single Kubernetes Custom Resource on a real Amazon EKS cluster. There is no game database, no game server, and no custom controller — the game engine is <a href="https://github.com/kubernetes-sigs/kro" target="_blank" rel="noopener noreferrer" className="faq-link">kro (Kubernetes Resource Orchestrator)</a>, evaluating CEL expressions on every reconcile cycle.</p>
-        <p>Every attack, every item pickup, every boss phase transition is computed by a CEL expression inside a <code>dungeon-graph</code> ResourceGraphDefinition and written back into the Dungeon CR spec.</p>
+        <p>Every attack, every item pickup, every boss phase transition is computed by a CEL expression inside a <code>dungeon-graph</code> ResourceGraphDefinition and written into <code>status.game</code> on the Dungeon CR.</p>
       </>
     ),
   },
@@ -1044,19 +1044,19 @@ const FAQ_ITEMS: { q: string; a: () => ReactNode }[] = [
     q: 'What is a forked version of kro? What patches does Krombat maintain?',
     a: () => (
       <>
-        <p>Krombat runs on a custom fork of kro called <code>cel-writeback-d</code>. Stock kro is a one-way projection engine: CEL reads from a CR and projects child resources. It has no mechanism for writing computed values back into the CR itself. Krombat's entire game engine depends on exactly that — the combat result, HP changes, and state transitions must be written back into <code>spec</code> on every reconcile.</p>
+        <p>Krombat runs on a custom fork of kro called <code>cel-writeback-d</code>. Stock kro is a one-way projection engine: CEL reads from a CR and projects child resources. It has no mechanism for writing computed values back into the CR itself. Krombat's entire game engine depends on exactly that — the combat result, HP changes, and state transitions must be written into <code>status.game</code> on every reconcile.</p>
         <p>The fork adds the following capabilities on top of upstream kro:</p>
         <table className="help-table">
           <thead><tr><th>Patch</th><th>What it adds</th><th>Status</th></tr></thead>
           <tbody>
             <tr>
-              <td><code>specPatch</code> node type</td>
-              <td>A virtual RGD node that evaluates CEL expressions and writes results back into the instance CR's <code>spec</code> via Server-Side Apply. Powers all combat math, DoT ticks, room transitions, and ability resolution.</td>
+              <td><code>stateNode</code> / <code>specPatch</code> node type</td>
+              <td>A virtual RGD node that evaluates CEL expressions and writes results into <code>status.game</code> on the Dungeon CR (via a <code>stateWrite</code> node). Powers all combat math, DoT ticks, room transitions, and ability resolution.</td>
               <td>Upstream discussion open — pending design consensus with kro maintainers</td>
             </tr>
             <tr>
               <td><code>stateWrite</code> node type</td>
-              <td>Like <code>specPatch</code> but writes to <code>status.kstate</code> — controller-private state that does not appear in the Git manifest and does not trigger Argo CD drift. Useful for counters and bookkeeping that should not be user-settable.</td>
+              <td>Writes CEL-computed values to <code>status.game</code> on the Dungeon CR — controller-managed state that does not appear in the Git manifest and does not trigger Argo CD drift. All game state (heroHP, monsterHP, bossHP, bonuses, etc.) lives here after the KREP-023 migration.</td>
               <td>Upstream discussion open — paired with <code>specPatch</code></td>
             </tr>
             <tr>
@@ -2017,7 +2017,7 @@ function HelpModal({ onClose }: { onClose: () => void }) {
             <tr><td style={{color:'#e74c3c'}}>BERSERK</td><td>1–25%</td><td>1.6×</td><td>25%</td><td>15%</td><td>30%</td></tr>
           </tbody>
         </table>
-        <p>Status effect chances are fixed regardless of boss phase (computed by <code>combatResolve</code> specPatch in dungeon-graph).</p>
+        <p>Status effect chances are fixed regardless of boss phase (computed by the <code>combatResolve</code> state node in dungeon-graph).</p>
         <p><b>Room 2:</b> After defeating the Room 1 boss, treasure opens and the door unlocks automatically. Click the door to enter Room 2 with trolls, ghouls, and a Bat-boss (stronger than Room 1). Mage mana is fully restored on entry. Defeating the Room 2 boss wins the dungeon.</p>
       </>
     )},

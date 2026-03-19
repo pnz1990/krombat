@@ -47,7 +47,7 @@ By the end of Day 1 you will be able to:
 | Green | Treasure CR | kro created this |
 | Green | Modifier CR | kro created this |
 | Yellow | GameConfig CM | kro created this ConfigMap with dice formula and HP tables |
-| Orange | specPatch nodes | kro writes CEL-computed values back to Dungeon CR `spec` |
+| Orange | State nodes | kro writes CEL-computed values to Dungeon CR `status.game` |
 
 **Question to answer:** How many resources did kro create from your single Dungeon CR? *(See [exercises/day-1-exercises.md](exercises/day-1-exercises.md), Q1)*
 
@@ -80,7 +80,7 @@ By the end of Day 1 you will be able to:
 3. Find an entry for an attack action and expand the kro annotation
 4. The annotation shows which RGD reconciled, which CEL expression fired, and links to the concept
 
-**Question to answer:** What does the `combatResolve` specPatch node write back to the Dungeon CR spec? *(Q3)*
+**Question to answer:** What does the `combatResolve` state node write to the Dungeon CR? *(Q3)*
 
 ---
 
@@ -102,7 +102,7 @@ By the end of Day 1 you will be able to:
 3. Try evaluating these expressions:
 
 ```
-schema.spec.heroHP > 0 ? "alive" : "dead"
+schema.status.game.heroHP > 0 ? "alive" : "dead"
 ```
 
 ```

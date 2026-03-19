@@ -17,7 +17,7 @@ tmux kill-session -t rpg 2>/dev/null || true
 tmux new-session -d -s rpg -n dashboard
 
 # Top-left: Dungeon CR status (live)
-tmux send-keys "watch -n2 'echo \"=== DUNGEON: ${DUNGEON} ===\"; echo \"\"; kubectl get dungeon ${DUNGEON} -o custom-columns=\"LIVING:.status.livingMonsters,BOSS:.status.bossState,VICTORY:.status.victory,STATE:.status.state\" 2>/dev/null; echo \"\"; echo \"=== SPEC ===\"; kubectl get dungeon ${DUNGEON} -o jsonpath=\"monsterHP: {.spec.monsterHP}  bossHP: {.spec.bossHP}  difficulty: {.spec.difficulty}\" 2>/dev/null; echo \"\"'" C-m
+tmux send-keys "watch -n2 'echo \"=== DUNGEON: ${DUNGEON} ===\"; echo \"\"; kubectl get dungeon ${DUNGEON} -o custom-columns=\"LIVING:.status.livingMonsters,BOSS:.status.bossState,VICTORY:.status.victory,STATE:.status.state\" 2>/dev/null; echo \"\"; echo \"=== GAME STATE ===\"; kubectl get dungeon ${DUNGEON} -o jsonpath=\"monsterHP: {.status.game.monsterHP}  bossHP: {.status.game.bossHP}  difficulty: {.spec.difficulty}\" 2>/dev/null; echo \"\"'" C-m
 
 # Top-right: Pods with HP and state
 tmux split-window -h

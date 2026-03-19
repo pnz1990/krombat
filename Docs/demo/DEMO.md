@@ -44,9 +44,9 @@ Open the **K8s Logs tab** in the event log panel. You can see the creation event
 
 **[Click a node — e.g., combatResolve]**
 
-> "Each node shows the CEL expression that defines it. This is the actual CEL that runs on every reconcile. kro evaluates it, gets a value, and writes it back to the Dungeon CR spec."
+> "Each node shows the CEL expression that defines it. This is the actual CEL that runs on every reconcile. kro evaluates it, gets a value, and writes it to `status.game` on the Dungeon CR."
 
-> "Look at the spec fields in the Reconcile Stream tab — `spec.heroHP`, `spec.monsterHP`, `spec.bossHP`. This is not a database row. This is Kubernetes spec. kro owns it."
+> "Look at the Reconcile Stream tab — `status.game.heroHP`, `status.game.monsterHP`, `status.game.bossHP`. This is not a database row. This is Kubernetes. kro owns it."
 
 ---
 
@@ -58,9 +58,9 @@ Open the **K8s Logs tab** in the event log panel. You can see the creation event
 
 **[Open: event log → K8s Logs tab]**
 
-> "You can see the Attack CR being created, kro reconciling, and the damage written back to `spec.monsterHP`. The monster's HP dropped. All of that happened via a Kubernetes reconcile — no custom controller, no game server socket."
+> "You can see the Attack CR being created, kro reconciling, and the damage written to `status.game.monsterHP`. The monster's HP dropped. All of that happened via a Kubernetes reconcile — no custom controller, no game server socket."
 
-> "The CEL expression that computed the damage is right here in the log annotation: `monsterHP[i] = monsterHP[i] - heroDamage`. That runs inside kro's combatResolve specPatch node."
+> "The CEL expression that computed the damage is right here in the log annotation: `monsterHP[i] = monsterHP[i] - heroDamage`. That runs inside kro's combatResolve state node."
 
 ---
 
@@ -68,11 +68,11 @@ Open the **K8s Logs tab** in the event log panel. You can see the creation event
 
 **[Open: event log → Reconcile Stream tab]**
 
-> "Every time kro processes a reconcile event, you see the exact field diffs right here. Old value → new value. Which specPatch node fired. Which CEL expression computed it."
+> "Every time kro processes a reconcile event, you see the exact field diffs right here. Old value → new value. Which state node fired. Which CEL expression computed it."
 
 **[Click Attack on a monster, point to stream]**
 
-> "Watch `spec.monsterHP[0]` change. That's kro writing the result of `monsterHP[i] - heroDamage` back into the spec. No controller code — just CEL in a YAML file."
+> "Watch `status.game.monsterHP[0]` change. That's kro writing the result of `monsterHP[i] - heroDamage` to `status.game`. No controller code — just CEL in a YAML file."
 
 > "This is the ResourceGraphDefinition pattern: declare what to create, declare how to compute it in CEL, and let kro wire the whole thing together. No imperative code."
 

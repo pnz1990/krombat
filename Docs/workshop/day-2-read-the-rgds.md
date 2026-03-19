@@ -140,35 +140,34 @@ Notice that the HP-percentage expression is repeated three times. Why can't you 
 ```yaml
 - id: monsterCRs
   forEach:
-    in: "${schema.spec.monsterHP}"
-    as: hp
-    index: idx
+    - idx: "${has(schema.status.game.monsterHP) ? lists.range(size(schema.status.game.monsterHP)) : []}"
   template:
     apiVersion: game.k8s.example/v1alpha1
     kind: Monster
     metadata:
-      name: "${schema.spec.dungeonName + '-monster-' + string(idx)}"
+      name: "${schema.metadata.name + '-monster-' + string(idx)}"
     spec:
-      hp: ${hp}
+      hp: ${int(schema.status.game.monsterHP[idx])}
 ```
 
-This creates one Monster CR per element in `schema.spec.monsterHP`. With 3 monsters, kro creates 3 CRs.
+This creates one Monster CR per element in `status.game.monsterHP`. With 3 monsters, kro creates 3 CRs.
 
-**specPatch — CEL writes back to spec:**
+**State nodes — CEL writes to status.game:**
 
 ```yaml
 - id: combatResolve
-  template:
-    apiVersion: kro.run/v1alpha1
-    kind: specPatch
-    spec:
-      target: dungeons.game.k8s.example
-      patch:
-        heroHP: ${...}
-        bossHP: ${...}
+  type: stateNode
+  includeWhen:
+    - "${schema.spec.attackSeq > kstate(schema.status.game, 'combatProcessedSeq', 0)
+        && schema.spec.lastAttackTarget != ''}"
+  patch:
+    heroHP: ${...}
+    monsterHP: ${...}
+    bossHP: ${...}
+    combatProcessedSeq: "${schema.spec.attackSeq}"
 ```
 
-A `specPatch` resource is a kro-specific type that writes computed values back to the parent CR's `spec`. This is how CEL expressions on the server can mutate game state.
+A `stateNode` resource is a kro-fork-specific type that writes computed values to `status.game` on the parent CR. This is how CEL expressions on the server can mutate game state — without touching `spec`.
 
 *(See exercises Q4-Q5)*
 
@@ -191,9 +190,9 @@ Verify each of the following expressions produces the expected output:
 | Expression | Expected output |
 |---|---|
 | `schema.spec.difficulty == "hard" ? "3d20+8" : schema.spec.difficulty == "normal" ? "2d12+6" : "1d20+3"` | The dice formula for your difficulty |
-| `schema.spec.heroHP > 0 ? "alive" : "dead"` | `"alive"` (if your hero is alive) |
-| `size(schema.spec.monsterHP.filter(hp, hp > 0))` | Number of monsters still alive |
-| `schema.spec.bossHP * 100 / 400 > 50 ? "phase1" : schema.spec.bossHP * 100 / 400 > 25 ? "phase2" : "phase3"` | Current boss phase |
+| `schema.status.game.heroHP > 0 ? "alive" : "dead"` | `"alive"` (if your hero is alive) |
+| `size(schema.status.game.monsterHP.filter(hp, hp > 0))` | Number of monsters still alive |
+| `schema.status.game.bossHP * 100 / 400 > 50 ? "phase1" : schema.status.game.bossHP * 100 / 400 > 25 ? "phase2" : "phase3"` | Current boss phase |
 
 ---
 

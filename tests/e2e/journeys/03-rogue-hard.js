@@ -152,7 +152,7 @@ async function run() {
       const cdBefore = await getBackstabCD(page);
       const r = await doAttackMonster(page);
       if (!r) { warn(`Monster attack ${turn} did not resolve`); break; }
-      // Wait for kro's tickCooldown specPatch to fire after combatResolve clears lastAttackTarget.
+      // Wait for kro's tickCooldown state node to fire after combatResolve writes to status.game.
       // tickCooldown fires in a subsequent reconcile cycle (~2-3s after combat modal dismissed).
       await page.waitForTimeout(3500);
       const cdAfter = await getBackstabCD(page);

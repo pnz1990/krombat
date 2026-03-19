@@ -123,33 +123,33 @@ var celAnnotations = map[string]celAnnotation{
 		rgd:     "dungeon-graph (gameConfig)",
 		concept: "rgd",
 	},
-	// ── Hero CR spec fields (written by dungeon-graph specPatch) ───────────
+	// ── Hero CR spec fields (driven by dungeon-graph dungeonInit state node) ───────────
 	"hero/spec.hp": {
-		cel:     `dungeonInit specPatch: heroClass == "warrior" ? 200 : heroClass == "mage" ? 120 : 150`,
-		rgd:     "dungeon-graph (dungeonInit specPatch)",
+		cel:     `dungeonInit state node: heroClass == "warrior" ? 200 : heroClass == "mage" ? 120 : 150`,
+		rgd:     "dungeon-graph (dungeonInit)",
 		concept: "spec-patch",
 	},
 	// ── Monster CR spec fields ─────────────────────────────────────────────
 	"monster/spec.hp": {
-		cel:     `combatResolve specPatch: monsterHP[idx] recomputed after attack`,
-		rgd:     "dungeon-graph (combatResolve specPatch)",
+		cel:     `combatResolve state node: status.game.monsterHP[idx] recomputed after attack`,
+		rgd:     "dungeon-graph (combatResolve)",
 		concept: "spec-patch",
 	},
 	// ── Boss CR spec fields ────────────────────────────────────────────────
 	"boss/spec.hp": {
-		cel:     `combatResolve specPatch: bossHP recomputed after attack`,
-		rgd:     "dungeon-graph (combatResolve specPatch)",
+		cel:     `combatResolve state node: status.game.bossHP recomputed after attack`,
+		rgd:     "dungeon-graph (combatResolve)",
 		concept: "spec-patch",
 	},
 	"boss/spec.monstersalive": {
-		cel:     `size(schema.spec.monsterHP.filter(hp, hp > 0))`,
+		cel:     `size(schema.status.game.monsterHP.filter(hp, hp > 0))`,
 		rgd:     "dungeon-graph (bossCR template)",
 		concept: "status-aggregation",
 	},
 	// ── Treasure CR spec fields ────────────────────────────────────────────
 	"treasure/spec.opened": {
-		cel:     `actionResolve specPatch: treasureOpened = 1 when hero opens treasure`,
-		rgd:     "dungeon-graph (actionResolve specPatch)",
+		cel:     `actionResolve state node: status.game.treasureOpened = 1 when hero opens treasure`,
+		rgd:     "dungeon-graph (actionResolve)",
 		concept: "spec-patch",
 	},
 	"configmap/data.state": {

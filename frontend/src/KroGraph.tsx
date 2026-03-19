@@ -15,8 +15,8 @@
  *       ├── [Boss CR] → [boss CM] → [Loot CR?]
  *       ├── [Treasure CR] → [treasure-state CM] → [treasureSecret?]
  *       ├── [Modifier CR?] → [modifierState CM]
- *       ├── [combatResolve specPatch]
- *       ├── [actionResolve specPatch]
+ *       ├── [combatResolve stateNode] → writes status.game.*
+ *       ├── [actionResolve stateNode] → writes status.game.*
  *       └── [gameConfig CM]
  */
 
@@ -350,31 +350,31 @@ export function buildGraph(cr: DungeonCR, reconciling: boolean): { nodes: GraphN
     edges.push({ from: 'modifier', to: 'modifier-cm', label: 'modifier-graph\nreadyWhen' })
   }
 
-  // specPatch nodes — virtual nodes in dungeon-graph that write back to spec
+  // State nodes — virtual nodes in dungeon-graph that write computed game state to status.game
   // (combat, action, DoT, taunt, cooldown, ring, room2 transitions)
   nodes.push({
     id: 'combat-cm',
     label: 'combatResolve',
-    kind: 'specPatch',
+    kind: 'stateNode',
     state: reconciling ? 'reconciling' : 'ok',
     exists: true,
     concept: 'cel-basics',
-    detail: reconciling ? 'CEL writing spec.monsterHP/bossHP' : `dice: ${status?.diceFormula || '?'}`,
+    detail: reconciling ? 'CEL writing status.game.monsterHP/bossHP' : `dice: ${status?.diceFormula || '?'}`,
     pulse: reconciling,
   })
-  edges.push({ from: 'dungeon', to: 'combat-cm', label: 'specPatch' })
+  edges.push({ from: 'dungeon', to: 'combat-cm', label: 'stateNode' })
 
-  // actionResolve specPatch node
+  // actionResolve state node
   nodes.push({
     id: 'action-cm',
     label: 'actionResolve',
-    kind: 'specPatch',
+    kind: 'stateNode',
     state: reconciling ? 'reconciling' : 'ok',
     exists: true,
     concept: 'spec-mutation',
     detail: 'equip/use/door/room logic',
   })
-  edges.push({ from: 'dungeon', to: 'action-cm', label: 'specPatch' })
+  edges.push({ from: 'dungeon', to: 'action-cm', label: 'stateNode' })
 
   // gameConfig ConfigMap
   nodes.push({
@@ -399,7 +399,7 @@ export function buildGraph(cr: DungeonCR, reconciling: boolean): { nodes: GraphN
     detail: reconciling ? 'attack-graph CRD factory — triggers combatResolve' : 'resources:[] CRD factory',
     pulse: reconciling,
   })
-  edges.push({ from: 'dungeon', to: 'attack-cr', label: 'spec patch', dashed: !reconciling })
+  edges.push({ from: 'dungeon', to: 'attack-cr', label: 'trigger', dashed: !reconciling })
 
   // Ephemeral Action CR — appears during reconcile (items/room/treasure), teaches empty-RGD
   nodes.push({
@@ -913,7 +913,7 @@ export function KroGraphPanel({ cr, prevCr, reconciling, onViewConcept, onExpand
       'boss-loot': 'bossloot',
       'boss-loot-info': 'bosslootinfo',
       'boss-loot-secret': 'bosslootsecret',
-      // combat-cm / action-cm are specPatch virtual nodes — no persistent K8s resource, skip
+      // combat-cm / action-cm are state nodes (virtual) — no persistent K8s resource, skip
       // attack-cr / action-cr are empty RGD CRs — no managed resources, skip
     }
 
@@ -1006,7 +1006,7 @@ export function KroGraphPanel({ cr, prevCr, reconciling, onViewConcept, onExpand
             <div className="kro-rgd-diff">
               <div className="kro-rgd-diff-header">
                 <span className="kro-insight-badge" style={{ fontSize: 6 }}>kro</span>
-                <span style={{ fontSize: 7, color: '#00d4ff', marginLeft: 6 }}>What just changed (spec patch → kro reconcile)</span>
+                <span style={{ fontSize: 7, color: '#00d4ff', marginLeft: 6 }}>What just changed (trigger → kro state node reconcile)</span>
                 <button
                   onClick={() => setDiffVisible(false)}
                   style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#555', cursor: 'pointer', fontFamily: 'inherit', fontSize: 10 }}
