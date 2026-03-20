@@ -67,15 +67,15 @@ kind: ClusterRole
 metadata:
   name: rpg-backend-reconcile-watch
 rules:
-  # Watch ConfigMaps in dungeon namespaces — kro-generated monster/hero/boss/game state CMs
+  # Watch/get ConfigMaps in dungeon namespaces — kro-generated monster/hero/boss/game state CMs
   - apiGroups: [""]
     resources: [configmaps]
-    verbs: [list, watch]
-  # Watch all kro-managed child game CRs (heroes, monsters, bosses, treasures, modifiers, loots)
+    verbs: [get, list, watch]
+  # Watch/get all kro-managed child game CRs (heroes, monsters, bosses, treasures, modifiers, loots)
   - apiGroups: [game.k8s.example]
     resources: [heroes, heroes/status, monsters, monsters/status, bosses, bosses/status,
                 treasures, treasures/status, modifiers, modifiers/status, loots, loots/status]
-    verbs: [list, watch]
+    verbs: [get, list, watch]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
