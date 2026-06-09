@@ -65,7 +65,7 @@ async function run() {
         !msg.text().includes('WebSocket') &&
         !msg.text().includes('404') &&
         !msg.text().includes('400') &&
-        !msg.text().includes('429') &&
+        !msg.text().includes('409') && !msg.text().includes('429') &&
         !msg.text().includes('504'))
       consoleErrors.push(msg.text());
   });

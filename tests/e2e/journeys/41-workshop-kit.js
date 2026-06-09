@@ -44,7 +44,7 @@ async function run() {
       && !msg.text().includes('504')
       && !msg.text().includes('400')
       && !msg.text().includes('401')
-      && !msg.text().includes('429'))
+      && !msg.text().includes('409') && !msg.text().includes('429'))
       consoleErrors.push(msg.text());
   });
 

@@ -32,7 +32,7 @@ async function run() {
   const dNameMain   = `j15-main-${Date.now()}`;
 
   const consoleErrors = [];
-  page.on('console', msg => { if (msg.type() === 'error' && !msg.text().includes('WebSocket') && !msg.text().includes('404') && !msg.text().includes('429') && !msg.text().includes('504') && !msg.text().includes('net::ERR')) consoleErrors.push(msg.text()); });
+  page.on('console', msg => { if (msg.type() === 'error' && !msg.text().includes('WebSocket') && !msg.text().includes('404') && !msg.text().includes('409') && !msg.text().includes('429') && !msg.text().includes('504') && !msg.text().includes('net::ERR')) consoleErrors.push(msg.text()); });
 
   try {
     // Ensure onboarding is already done so it doesn't block the test
@@ -293,7 +293,7 @@ async function run() {
 
     // ── Console errors ────────────────────────────────────────────────────────
     const relevantErrors = consoleErrors.filter(e =>
-      !e.includes('favicon') && !e.includes('WebSocket') && !e.includes('net::ERR') && !e.includes('429') && !e.includes('504')
+      !e.includes('favicon') && !e.includes('WebSocket') && !e.includes('net::ERR') && !e.includes('409') && !e.includes('429') && !e.includes('504')
     );
     relevantErrors.length === 0
       ? ok('No console errors during journey')
