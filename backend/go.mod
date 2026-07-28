@@ -3,7 +3,7 @@ module github.com/pnz1990/krombat/backend
 go 1.25.1
 
 require (
-	github.com/google/cel-go v0.27.0
+	github.com/google/cel-go v0.29.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
 	github.com/kubernetes-sigs/kro v0.0.0-00010101000000-000000000000
